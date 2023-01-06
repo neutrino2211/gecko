@@ -9,7 +9,7 @@ import (
 	"text/template"
 
 	"github.com/fatih/color"
-	"github.com/neutrino2211/Gecko/logger"
+	"github.com/neutrino2211/gecko/logger"
 )
 
 var (
@@ -89,7 +89,7 @@ type Listener struct {
 	Method func(interface{})
 }
 
-//Command : Interface describing properties held by command
+// Command : Interface describing properties held by command
 type Command struct {
 	logger.Logger
 	CommandName string
@@ -219,7 +219,7 @@ type Commandable interface {
 	RegisterPositionals([]string)
 }
 
-//Commander : Command line parser
+// Commander : Command line parser
 type Commander struct {
 	logger.Logger
 	commands  map[string]Commandable

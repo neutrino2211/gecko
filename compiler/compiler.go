@@ -6,8 +6,8 @@ import (
 
 	"github.com/alecthomas/participle/lexer"
 	"github.com/alecthomas/repr"
-	"github.com/neutrino2211/Gecko/parser"
-	"github.com/neutrino2211/Gecko/tokens"
+	"github.com/neutrino2211/gecko/parser"
+	"github.com/neutrino2211/gecko/tokens"
 )
 
 func Compile(file string) {

@@ -1,6 +1,6 @@
 package ast
 
-import "github.com/neutrino2211/Gecko/errors"
+import "github.com/neutrino2211/gecko/errors"
 
 type Ast struct {
 	Scope      string

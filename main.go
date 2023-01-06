@@ -3,10 +3,10 @@ package main
 import (
 	"os"
 
-	"github.com/neutrino2211/Gecko/commander"
-	"github.com/neutrino2211/Gecko/commands"
-	"github.com/neutrino2211/Gecko/config"
-	"github.com/neutrino2211/Gecko/logger"
+	"github.com/neutrino2211/gecko/commander"
+	"github.com/neutrino2211/gecko/commands"
+	"github.com/neutrino2211/gecko/config"
+	"github.com/neutrino2211/gecko/logger"
 )
 
 func main() {

@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/mitchellh/go-homedir"
-	"github.com/neutrino2211/Gecko/logger"
+	"github.com/neutrino2211/gecko/logger"
 )
 
 var (

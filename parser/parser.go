@@ -4,7 +4,7 @@ import (
 	"github.com/alecthomas/participle"
 	"github.com/alecthomas/participle/lexer"
 	"github.com/alecthomas/participle/lexer/ebnf"
-	"github.com/neutrino2211/Gecko/tokens"
+	"github.com/neutrino2211/gecko/tokens"
 )
 
 var graphQLLexer = lexer.Must(ebnf.New(`

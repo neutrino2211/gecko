@@ -3,7 +3,7 @@ package tokens
 import (
 	"fmt"
 
-	"github.com/neutrino2211/Gecko/ast"
+	"github.com/neutrino2211/gecko/ast"
 )
 
 func (f *FuncCall) ToCString(scope *ast.Ast) string {

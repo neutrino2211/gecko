@@ -1,8 +1,8 @@
 package tokens
 
 import (
-	"github.com/neutrino2211/Gecko/ast"
-	"github.com/neutrino2211/Gecko/errors"
+	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/errors"
 )
 
 func assignEntriesToAst(entries []*Entry, scope *ast.Ast) {

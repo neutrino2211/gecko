@@ -1,7 +1,7 @@
 package tokens
 
 import (
-	"github.com/neutrino2211/Gecko/ast"
+	"github.com/neutrino2211/gecko/ast"
 )
 
 func (d *Declaration) ToAstVariable(scope *ast.Ast) *ast.Variable {

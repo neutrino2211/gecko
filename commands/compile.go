@@ -3,12 +3,12 @@ package commands
 import (
 	"os"
 
-	"github.com/neutrino2211/Gecko/compiler"
-	"github.com/neutrino2211/Gecko/config"
-	"github.com/neutrino2211/Gecko/logger"
+	"github.com/neutrino2211/gecko/compiler"
+	"github.com/neutrino2211/gecko/config"
+	"github.com/neutrino2211/gecko/logger"
 
 	"github.com/fatih/color"
-	"github.com/neutrino2211/Gecko/commander"
+	"github.com/neutrino2211/gecko/commander"
 )
 
 // func streamPipe(std io.ReadCloser) {

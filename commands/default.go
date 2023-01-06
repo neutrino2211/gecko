@@ -5,7 +5,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/neutrino2211/Gecko/commander"
+	"github.com/neutrino2211/gecko/commander"
 )
 
 var GeckoCommands = map[string]commander.Commandable{

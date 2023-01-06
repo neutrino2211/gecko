@@ -1,4 +1,4 @@
-module github.com/neutrino2211/Gecko
+module github.com/neutrino2211/gecko
 
 go 1.17
 

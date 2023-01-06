@@ -1,0 +1,39 @@
+package main
+
+cimport "stdio.h"
+
+declare func printf (format: string, value: unknown): void
+
+const PI: float = 3.14159
+
+external func main (argc: int, argv: [char]) {
+    let PI: float = 3
+    const value: float = PI * 2
+    const vertices: [4][4][3]int = [
+        [
+            [10,10,10],
+            [20,20,20],
+            [30,30,30],
+            [40,40,40]
+        ],
+        [
+            [10,10,10],
+            [20,20,20],
+            [30,30,30],
+            [40,40,40]
+        ],
+        [
+            [10,10,10],
+            [20,20,20],
+            [30,30,30],
+            [40,40,40]
+        ],
+        [
+            [10,10,10],
+            [20,20,20],
+            [30,30,30],
+            [40,40,40]
+        ]
+    ]
+    printf("%s\n", value)
+}

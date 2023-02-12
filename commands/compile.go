@@ -39,6 +39,10 @@ var CompileCommand = &cli.Command{
 	Usage:       "gecko compile ...sources",
 	Description: compileHelp,
 	Action: func(ctx *cli.Context) error {
+		if ctx.Args().Len() == 0 {
+			println("No sources provided")
+		}
+
 		for _, pos := range ctx.Args().Slice() {
 			compiler.Compile(pos)
 		}

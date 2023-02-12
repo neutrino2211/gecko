@@ -5,12 +5,17 @@ import (
 	"os"
 
 	"github.com/alecthomas/participle/lexer"
+	"github.com/fatih/color"
+	"github.com/neutrino2211/gecko/config"
+	"github.com/neutrino2211/gecko/errors"
 	"github.com/neutrino2211/gecko/parser"
 	"github.com/neutrino2211/gecko/tokens"
 	"github.com/neutrino2211/go-option"
 )
 
-func Compile(file string) {
+var allErrorScopes []*errors.ErrorScope = make([]*errors.ErrorScope, 0)
+
+func Compile(file string, config *config.CompileCfg) {
 	fileOpt := option.SomePair(os.ReadFile(file))
 	fileContents := fileOpt.Expect("Unable to read file '" + file + "'")
 
@@ -24,7 +29,7 @@ func Compile(file string) {
 	sourceFile.Content = string(fileContents)
 	sourceFile.Path = file
 
-	ast := sourceFile.ToAst()
+	ast := sourceFile.ToAst(config)
 
 	// repr.Println(ast)
 
@@ -55,13 +60,36 @@ func Compile(file string) {
 		}
 	}
 
-	fmt.Println(ast.ErrorScope.CompileTimeErrors)
+	allErrorScopes = append(allErrorScopes, ast.ErrorScope)
+}
 
-	if ast.ErrorScope.HasErrors() {
-		for _, e := range ast.ErrorScope.CompileTimeErrors {
-			fmt.Println(e.GetError())
+func PrintErrorSummary() {
+	var warnings, errors int = 0, 0
+	var bold, boldYellow, boldRed *color.Color = color.New(color.Bold), color.New(color.Bold, color.FgHiYellow), color.New(color.Bold, color.FgHiRed)
+	for _, e := range allErrorScopes {
+		if e.HasWarnings() {
+			for _, e := range e.CompileTimeWarnings {
+				fmt.Println(e.GetWarning())
+			}
 		}
+
+		if e.HasErrors() {
+			for _, e := range e.CompileTimeErrors {
+				fmt.Println(e.GetError())
+			}
+		}
+
+		fmt.Println(e.GetSummary() + "\n")
+
+		errors += len(e.CompileTimeErrors)
+		warnings += len(e.CompileTimeWarnings)
 	}
 
-	fmt.Println(ast.ErrorScope.GetSummary())
+	fmt.Printf(
+		bold.Sprint("\nTotal of ")+
+			boldYellow.Sprint("%d warnings")+
+			bold.Sprint(" and ")+
+			boldRed.Sprint("%d errors")+
+			bold.Sprint(" generated\n"),
+		warnings, errors)
 }

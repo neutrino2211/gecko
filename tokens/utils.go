@@ -3,6 +3,7 @@ package tokens
 import (
 	"github.com/alecthomas/repr"
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/errors"
 )
 
@@ -15,7 +16,11 @@ func assignEntriesToAst(entries []*Entry, scope *ast.Ast) {
 		} else if entry.Class != nil {
 			scope.Classes[entry.Class.Name] = entry.Class.ToAst(scope)
 		} else if entry.Implementation != nil {
-			entry.Implementation.ForClass(scope)
+			if entry.Implementation.For != "" {
+				entry.Implementation.ForClass(scope)
+			} else {
+				entry.Implementation.ForArch(scope)
+			}
 		} else if entry.Trait != nil {
 			entry.Trait.AssignToScope(scope)
 		} else if entry.Declaration != nil {
@@ -68,12 +73,13 @@ func assignArgumentsToMethodArguments(args []*Value, mth *ast.Method) {
 	}
 }
 
-func (f *File) ToAst() *ast.Ast {
+func (f *File) ToAst(config *config.CompileCfg) *ast.Ast {
 	file := &ast.Ast{
 		Scope: f.PackageName,
 	}
 
 	file.Init(errors.NewErrorScope(f.Name, f.Path, f.Content))
+	file.Config = config
 
 	assignEntriesToAst(f.Entries, file)
 
@@ -87,6 +93,7 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 	}
 
 	methodScope.Init(scope.ErrorScope)
+	methodScope.Config = scope.Config
 
 	returnType := "void"
 

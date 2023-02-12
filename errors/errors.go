@@ -44,8 +44,15 @@ func (ce *CompileTimeMessage) getText(level string) string {
 	var normal *color.Color
 	var bold *color.Color
 
-	lineNumber := ce.Pos.Line - 1
-	columnNumber := ce.Pos.Column - 1
+	var lineNumber, columnNumber = 0, 0
+
+	if ce.Pos.Line > 0 {
+		lineNumber = ce.Pos.Line - 1
+	}
+
+	if ce.Pos.Column > 0 {
+		columnNumber = ce.Pos.Column - 1
+	}
 
 	lines := strings.Split(*ce.Scope.Source, "\n")
 
@@ -71,7 +78,7 @@ func (ce *CompileTimeMessage) getText(level string) string {
 		previousLine = lines[lineNumber-1]
 	}
 
-	if len(lines)-lineNumber > 0 {
+	if len(lines) > lineNumber+1 {
 		nextLine = lines[lineNumber+1]
 	}
 
@@ -129,7 +136,7 @@ func (e *ErrorScope) GetSummary() string {
 		)
 	}
 
-	return color.HiWhiteString("No warnings or errors generated")
+	return color.HiWhiteString(e.SourceName + ": No warnings or errors generated")
 }
 
 func NewErrorScope(name string, sourceName string, source string) *ErrorScope {

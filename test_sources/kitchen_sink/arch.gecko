@@ -1,0 +1,35 @@
+package main
+
+declare func my_asm_func(num: uint)
+
+impl aarch64 {
+    func print(): void {
+        asm "
+            .global my_asm_func
+
+            .section .text
+
+            my_asm_func:
+                mul 8, r24
+                ret
+        "
+    }
+}
+
+impl amd64 {
+    func print(): void {
+        asm "
+            .global my_asm_func
+
+            .section .text
+
+            my_asm_func:
+                mul 8, r24
+                ret
+        "
+    }
+}
+
+func main() {
+    print()
+}

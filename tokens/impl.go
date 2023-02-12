@@ -53,3 +53,27 @@ func (i *Implementation) ForClass(scope *ast.Ast) {
 
 	class.Traits[i.Name] = &mthdList
 }
+
+func (i *Implementation) ForArch(scope *ast.Ast) {
+	if i.Default {
+		scope.ErrorScope.NewCompileTimeError(
+			"Implementation Error",
+			"An architecture implementation must not be default",
+			i.Pos,
+		)
+
+		return
+	}
+
+	if scope.Config.Arch == i.Name {
+		for _, m := range i.ToMethodTokens(scope) {
+			scope.Methods[m.Name] = *m.ToAstMethod(scope)
+		}
+	} else {
+		scope.ErrorScope.NewCompileTimeWarning(
+			"Arch Implementation",
+			"Implementation for the arch '"+i.Name+"' was skipped due to target being '"+scope.Config.Arch+"'",
+			i.Pos,
+		)
+	}
+}

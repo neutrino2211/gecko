@@ -2,8 +2,10 @@ package commands
 
 import (
 	"os"
+	"runtime"
 
 	"github.com/neutrino2211/gecko/compiler"
+	"github.com/neutrino2211/gecko/config"
 	"github.com/urfave/cli/v2"
 
 	"github.com/fatih/color"
@@ -41,11 +43,20 @@ var CompileCommand = &cli.Command{
 	Action: func(ctx *cli.Context) error {
 		if ctx.Args().Len() == 0 {
 			println("No sources provided")
+			return nil
 		}
 
 		for _, pos := range ctx.Args().Slice() {
-			compiler.Compile(pos)
+			compiler.Compile(pos, &config.CompileCfg{
+				Arch:     ctx.String("target-arch"),
+				CFlags:   []string{},
+				CLFlags:  []string{},
+				CObjects: []string{},
+			})
 		}
+
+		compiler.PrintErrorSummary()
+
 		return nil
 	},
 	Flags: []cli.Flag{
@@ -58,6 +69,11 @@ var CompileCommand = &cli.Command{
 			Name:  "type",
 			Value: "executable",
 			Usage: "Output type for program. (executable | library)",
+		},
+		&cli.StringFlag{
+			Name:  "target-arch",
+			Value: runtime.GOARCH,
+			Usage: "The compilation target architecture",
 		},
 	},
 }

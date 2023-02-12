@@ -1,6 +1,7 @@
 package ast
 
 import (
+	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/errors"
 	"github.com/neutrino2211/go-option"
 )
@@ -14,6 +15,7 @@ type Ast struct {
 	Traits     map[string]*[]*Method
 	Parent     *Ast
 	ErrorScope *errors.ErrorScope
+	Config     *config.CompileCfg
 }
 
 func (a *Ast) Init(errorScope *errors.ErrorScope) {
@@ -23,6 +25,7 @@ func (a *Ast) Init(errorScope *errors.ErrorScope) {
 	a.Traits = make(map[string]*[]*Method)
 	a.Imports = []string{}
 	a.ErrorScope = errorScope
+	a.Config = &config.CompileCfg{}
 }
 
 func (a *Ast) FullScopeName() string {

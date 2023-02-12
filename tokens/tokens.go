@@ -3,6 +3,7 @@ package tokens
 
 import (
 	"github.com/alecthomas/participle/lexer"
+	"github.com/neutrino2211/gecko/config"
 )
 
 type baseToken struct {
@@ -16,6 +17,7 @@ type File struct {
 	PackageName string   `parser:"['package' @Ident]"`
 	Entries     []*Entry `parser:"@@*"`
 	Imports     []*File
+	Config      *config.CompileCfg
 	Name        string
 	Path        string
 	Content     string
@@ -30,15 +32,20 @@ type CImport struct {
 
 type Import struct {
 	baseToken
-	Package string   `parser:"@Ident"`
-	Objects []string `parser:"'{' [ @Any { ',' @Any } ] '}'"`
+	Package string   `parser:"'import' @Ident"`
+	Objects []string `parser:"['use' '{' [ @Ident { ',' @Ident } ] '}']"`
+}
+
+type ASM struct {
+	baseToken
+	Code string `parser:"'asm' @ASMBlock"`
 }
 
 type Entry struct {
 	baseToken
-	CCode          string          `parser:"@CCode"`
-	Return         *Literal        `parser:"| 'return' @@"`
+	Return         *Literal        `parser:"'return' @@"`
 	VoidReturn     string          `parser:"| @'return'"`
+	AsmBlock       *ASM            `parser:"| @@"`
 	Assignment     *Assignment     `parser:"| @@"`
 	ElseIf         *ElseIf         `parser:"| @@"`
 	Else           *Else           `parser:"| @@"`
@@ -53,7 +60,7 @@ type Entry struct {
 	Loop           *Loop           `parser:"| @@"`
 	CImport        *CImport        `parser:"| @@"`
 	Declaration    *Declaration    `parser:"| @@"`
-	Import         *Import         `parser:"| 'import' @@"`
+	Import         *Import         `parser:"| @@"`
 }
 
 // Class tokens
@@ -175,7 +182,7 @@ type Implementation struct {
 	Visibility string                 `parser:"[ @'private' | @'public' | @'protected' ]"`
 	Default    bool                   `parser:"[ @'default' ]"`
 	Name       string                 `parser:"'impl' @Ident"`
-	For        string                 `parser:"'for' @Ident"`
+	For        string                 `parser:"['for' @Ident]"`
 	Fields     []*ImplementationField `parser:"[ '{' { @@ } '}' ]"`
 }
 

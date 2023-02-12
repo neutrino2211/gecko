@@ -2,11 +2,12 @@ package tokens
 
 import (
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/go-option"
 )
 
-func (d *Declaration) ToAstVariable(scope *ast.Ast) *ast.Variable {
+func (d *Declaration) ToAstVariable(scope *ast.Ast) option.Optional[*ast.Variable] {
 	if d.Field == nil {
-		return nil
+		return option.None[*ast.Variable]()
 	}
 
 	declaredVariable := d.Field.ToAstVariable(scope)
@@ -16,12 +17,12 @@ func (d *Declaration) ToAstVariable(scope *ast.Ast) *ast.Variable {
 		scope.ErrorScope.NewCompileTimeError("Declaration Error", "A variable declaration must not have a value", d.Field.Value.Pos)
 	}
 
-	return declaredVariable
+	return option.Some(declaredVariable)
 }
 
-func (d *Declaration) ToAstMethod(scope *ast.Ast) *ast.Method {
+func (d *Declaration) ToAstMethod(scope *ast.Ast) option.Optional[*ast.Method] {
 	if d.Method == nil {
-		return nil
+		return option.None[*ast.Method]()
 	}
 
 	declaredMethod := d.Method.ToAstMethod(scope)
@@ -31,5 +32,5 @@ func (d *Declaration) ToAstMethod(scope *ast.Ast) *ast.Method {
 		scope.ErrorScope.NewCompileTimeError("Declaration Error", "A method declaration must not have a body", d.Method.Pos)
 	}
 
-	return declaredMethod
+	return option.Some(declaredMethod)
 }

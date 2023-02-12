@@ -11,8 +11,8 @@ var graphQLLexer = lexer.Must(ebnf.New(`
 Comment = "//"  { "\u0000"…"\uffff"-"\n" } .
 CCode = "#"  { "\u0000"…"\uffff"-"\n" } .
 Ident = (alpha | "_" | ".") { "_" | "." | alpha | digit } .
-SingleQuoteString = "'" [ { "\u0000"…"\uffff"-"\""-"\\" | "\\" any } ] "'" .
-String = "\"" [ { "\u0000"…"\uffff"-"\""-"\\" | "\\" any } ] "\"" .
+SingleQuoteString = "'" [ { "\u0000"…"\uffff"-"\""-"\\" | "\\" Any } ] "'" .
+String = "\"" [ { "\u0000"…"\uffff"-"\""-"\\" | "\\" Any } ] "\"" .
 Number = ( digit | "0x" | "." | "_" ) { digit | "." | "_" } .
 Whitespace = " " | "\t" | "\n" | "\r" .
 Digit = digit .
@@ -20,7 +20,7 @@ Punct = "!"…"/" | ":"…"@" | "["…` + "\"`\"" + ` | "{"…"~" .
 alpha = "a"…"z" | "A"…"Z" .
 digit = "0"…"9" .
 EOL = ( "\n" | "\r" ) { "\n" | "\r" } .
-any = "\u0000"…"\uffff" .
+Any = "\u0000"…"\uffff" .
 `))
 
 var Parser = participle.MustBuild(

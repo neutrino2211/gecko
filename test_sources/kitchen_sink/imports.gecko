@@ -1,0 +1,7 @@
+package main
+
+import gecko {RHSable, String, List}
+
+external (uint) class uint {}
+
+default impl RHSable for uint

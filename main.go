@@ -1,22 +1,25 @@
 package main
 
 import (
+	"log"
 	"os"
 
-	"github.com/neutrino2211/gecko/commander"
 	"github.com/neutrino2211/gecko/commands"
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/logger"
+	"github.com/urfave/cli/v2"
 )
 
 func main() {
 	config.Init()
 	logger.SetDefaultChannel("Gecko")
 
-	cmd := &commander.Commander{}
+	cmd := &cli.App{
+		Commands:    commands.GeckoCommands,
+		Description: "A playful new language written in Go",
+	}
 
-	cmd.Init()
-	cmd.RegisterCommands(commands.GeckoCommands)
-
-	cmd.Parse(os.Args)
+	if err := cmd.Run(os.Args); err != nil {
+		log.Fatal(err)
+	}
 }

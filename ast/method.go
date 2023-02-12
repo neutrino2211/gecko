@@ -1,16 +1,12 @@
 package ast
 
-import "strings"
-
-type MethodArgument struct {
-	Name      string
-	Type      string
-	IsPointer bool
-}
+import (
+	"strings"
+)
 
 type Method struct {
 	Name       string
-	Arguments  []MethodArgument
+	Arguments  []Variable
 	Scope      *Ast
 	Visibility string
 	Parent     *Ast

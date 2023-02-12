@@ -1,0 +1,48 @@
+package main
+
+trait Serializable<T> {
+    func serialize(self: T): [byte]
+    func deserialize(self: T, in: [byte]): T
+}
+
+trait Sizeable<T> {
+    func size(self: T): uint {
+        return C.sizeof(self)
+    }
+}
+
+class User {
+    let name: string = ""
+    let age: int = 0
+
+    func init(self: User, name: string = "Mainasara", age: int = 22): User {
+        self.name = name
+        self.age = age
+
+        return self
+    }
+
+    func greet(self: User) {
+        printf("Hi %s", self.name)
+    }
+}
+
+default impl Sizeable for User
+
+impl Serializable for User {
+    func serialize(self: User is Sizeable): [byte] {
+        const bytes: [byte] = [
+            ...self.name.as_bytes(),
+            self.age
+        ]
+
+        return bytes
+    }
+
+    func deserialize(self: User is Sizeable, in: [byte]): User {
+        return {
+            name: in.slice(0, -2).to_string(),
+            age: in[-1]
+        }
+    }
+}

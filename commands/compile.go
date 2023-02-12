@@ -4,11 +4,9 @@ import (
 	"os"
 
 	"github.com/neutrino2211/gecko/compiler"
-	"github.com/neutrino2211/gecko/config"
-	"github.com/neutrino2211/gecko/logger"
+	"github.com/urfave/cli/v2"
 
 	"github.com/fatih/color"
-	"github.com/neutrino2211/gecko/commander"
 )
 
 // func streamPipe(std io.ReadCloser) {
@@ -35,41 +33,32 @@ import (
 // 	streamPipe(stderr)
 // }
 
-type CompileCommand struct {
-	commander.Command
-}
-
-func (c *CompileCommand) Init() {
-	c.Optionals = map[string]*commander.Optional{
-		"output": {
-			Type:        "string",
-			Description: "Output file path " + color.HiYellowString("(warning: this overrides the build configuration's output path)"),
+var CompileCommand = &cli.Command{
+	Name:        "compile",
+	Aliases:     []string{"c"},
+	Usage:       "gecko compile ...sources",
+	Description: compileHelp,
+	Action: func(ctx *cli.Context) error {
+		for _, pos := range ctx.Args().Slice() {
+			compiler.Compile(pos)
+		}
+		return nil
+	},
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:  "output",
+			Value: ".",
+			Usage: "Output file path " + color.HiYellowString("(warning: this overrides the build configuration's output path)"),
 		},
-		"type": {
-			Type:        "string",
-			Description: "Output type for program. (executable | library)",
+		&cli.StringFlag{
+			Name:  "type",
+			Value: "executable",
+			Usage: "Output type for program. (executable | library)",
 		},
-	}
-
-	c.Usage = "gecko compile sources... [options]"
-
-	c.Values = map[string]string{}
-
-	compileCommandLogger.Init(c.CommandName, 2)
-	c.Logger = *compileCommandLogger
-	c.Description = c.BuildHelp(compileHelp)
-}
-
-func (c *CompileCommand) Run() {
-	compileCommandLogger.Log(c.Positionals, c.Values, config.GeckoConfig, invokeDir)
-
-	for _, pos := range c.Positionals {
-		compiler.Compile(pos)
-	}
+	},
 }
 
 var (
-	compileHelp          = `compiles a gecko source file or a gecko project`
-	compileCommandLogger = &logger.Logger{}
-	invokeDir, _         = os.Getwd()
+	compileHelp  = `compiles a gecko source file or a gecko project`
+	invokeDir, _ = os.Getwd()
 )

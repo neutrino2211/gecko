@@ -93,8 +93,8 @@ func (p *Primary) ToCString(scope *ast.Ast) string {
 	} else if p.Symbol != "" {
 		symbolVariable := scope.ResolveSymbolAsVariable(p.Symbol)
 
-		if symbolVariable != nil {
-			base = symbolVariable.GetFullName()
+		if !symbolVariable.IsNil() {
+			base = symbolVariable.Unwrap().GetFullName()
 		}
 	} else if p.FuncCall != nil {
 		base = p.FuncCall.ToCString(scope)

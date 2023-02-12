@@ -11,12 +11,12 @@ func (f *FuncCall) ToCString(scope *ast.Ast) string {
 
 	mth := scope.ResolveMethod(f.Function)
 
-	if mth == nil {
+	if mth.IsNil() {
 		scope.ErrorScope.NewCompileTimeError("Function resolution error", fmt.Sprintf("Unable to resolve the function \"%s\"", f.Function), f.Pos)
 		return base
 	}
 
-	base += mth.GetFullName()
+	base += mth.Unwrap().GetFullName()
 
 	base += "("
 

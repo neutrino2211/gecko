@@ -28,36 +28,43 @@ type CImport struct {
 	WithLibrary string `parser:"| 'withlibrary' @String ]"`
 }
 
+type Import struct {
+	baseToken
+	Package string   `parser:"@Ident"`
+	Objects []string `parser:"'{' [ @Any { ',' @Any } ] '}'"`
+}
+
 type Entry struct {
 	baseToken
-	CCode       string       `parser:"@CCode"`
-	Return      *Literal     `parser:"| 'return' @@"`
-	VoidReturn  string       `parser:"| @'return'"`
-	Assignment  *Assignment  `parser:"| @@"`
-	ElseIf      *ElseIf      `parser:"| @@"`
-	Else        *Else        `parser:"| @@"`
-	If          *If          `parser:"| @@"`
-	FuncCall    *FuncCall    `parser:"| @@"`
-	Method      *Method      `parser:"| @@"`
-	Class       *Class       `parser:"| @@"`
-	Type        *Type        `parser:"| @@"`
-	Schema      *Schema      `parser:"| @@"`
-	Enum        *Enum        `parser:"| @@"`
-	Field       *Field       `parser:"| @@"`
-	Loop        *Loop        `parser:"| @@"`
-	CImport     *CImport     `parser:"| @@"`
-	Declaration *Declaration `parser:"| @@"`
-	Import      string       `parser:"| 'import' @Ident"`
+	CCode          string          `parser:"@CCode"`
+	Return         *Literal        `parser:"| 'return' @@"`
+	VoidReturn     string          `parser:"| @'return'"`
+	Assignment     *Assignment     `parser:"| @@"`
+	ElseIf         *ElseIf         `parser:"| @@"`
+	Else           *Else           `parser:"| @@"`
+	If             *If             `parser:"| @@"`
+	FuncCall       *FuncCall       `parser:"| @@"`
+	Method         *Method         `parser:"| @@"`
+	Class          *Class          `parser:"| @@"`
+	Implementation *Implementation `parser:"| @@"`
+	Trait          *Trait          `parser:"| @@"`
+	Enum           *Enum           `parser:"| @@"`
+	Field          *Field          `parser:"| @@"`
+	Loop           *Loop           `parser:"| @@"`
+	CImport        *CImport        `parser:"| @@"`
+	Declaration    *Declaration    `parser:"| @@"`
+	Import         *Import         `parser:"| 'import' @@"`
 }
 
 // Class tokens
 
 type Class struct {
 	baseToken
-	Visibility string             `parser:"[ @'private' | @'public' | @'protected' ]"`
-	Name       string             `parser:"'class' @Ident"`
-	Extends    []string           `parser:"[ 'extends' @Ident { ',' @Ident } ]"`
-	Fields     []*ClassBlockField `parser:"'{' { @@ } '}'"`
+	Visibility      string             `parser:"[ @'private' | @'public' | @'protected' ]"`
+	ExternalName    string             `parser:"[ 'external' '(' @Any ')' ]"`
+	Name            string             `parser:"'class' @Ident"`
+	Fields          []*ClassBlockField `parser:"'{' { @@ } '}'"`
+	Implementations []*Implementation
 }
 
 type ClassBlockField struct {
@@ -156,17 +163,20 @@ type Enum struct {
 	Cases []string `parser:"'{' { @Ident } '}'"`
 }
 
-type Schema struct {
+type Trait struct {
 	baseToken
-	Fields []*Field `parser:"'schema' '{' { @@ } '}'"`
+	Name   string                 `parser:"'trait' @Ident"`
+	Type   *TypeRef               `parser:"'<' @@ '>'"`
+	Fields []*ImplementationField `parser:"'{' { @@ } '}'"`
 }
 
-type Type struct {
+type Implementation struct {
 	baseToken
-	Visibility string       `parser:"[ @'private' | @'public' | @'protected' ]"`
-	Name       string       `parser:"'type' @Ident"`
-	Implements string       `parser:"[ 'implements' @Ident ]"`
-	Fields     []*TypeField `parser:"'{' { @@ } '}'"`
+	Visibility string                 `parser:"[ @'private' | @'public' | @'protected' ]"`
+	Default    bool                   `parser:"[ @'default' ]"`
+	Name       string                 `parser:"'impl' @Ident"`
+	For        string                 `parser:"'for' @Ident"`
+	Fields     []*ImplementationField `parser:"[ '{' { @@ } '}' ]"`
 }
 
 type Field struct {
@@ -190,12 +200,12 @@ type Declaration struct {
 	Field  *Field  `parser:"| 'declare' @@)"`
 }
 
-type TypeField struct {
+type ImplementationField struct {
 	baseToken
-	Name      string   `parser:"@Ident"`
+	Name      string   `parser:"'func' @Ident"`
 	Arguments []*Value `parser:"[ '(' [ @@ { ',' @@ } ] ')' ]"`
 	Type      *TypeRef `parser:"':' @@"`
-	Value     *Literal `parser:"[ '=' @@ ]"`
+	Value     []*Entry `parser:"[ '{' @@* '}' ]"`
 }
 
 type Method struct {
@@ -232,6 +242,7 @@ type TypeRef struct {
 	Array       *TypeRef `parser:"( '[' @@ ']'"`
 	Size        *SizeDef `parser:" | @@"`
 	Type        string   `parser:" | @Ident)"`
+	Trait       string   `parser:"[ 'is' @Ident ]"`
 	NonNullable bool     `parser:"[ @'!' ]"`
 	Pointer     bool     `parser:"[ @'*']"`
 }
@@ -253,6 +264,7 @@ type FuncCall struct {
 	baseToken
 	Function  string      `parser:"@Ident"`
 	Arguments []*Argument `parser:"'(' [ @@ { ',' @@ } ] ')'"`
+	SubCall   *FuncCall   `parser:"[ @@ ]"`
 }
 
 type Object struct {

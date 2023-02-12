@@ -5,17 +5,14 @@ import (
 	"os"
 
 	"github.com/alecthomas/participle/lexer"
-	"github.com/alecthomas/repr"
 	"github.com/neutrino2211/gecko/parser"
 	"github.com/neutrino2211/gecko/tokens"
+	"github.com/neutrino2211/go-option"
 )
 
 func Compile(file string) {
-	fileContents, err := os.ReadFile(file)
-
-	if err != nil {
-		return
-	}
+	fileOpt := option.SomePair(os.ReadFile(file))
+	fileContents := fileOpt.Expect("Unable to read file '" + file + "'")
 
 	sourceFile := &tokens.File{}
 
@@ -29,7 +26,7 @@ func Compile(file string) {
 
 	ast := sourceFile.ToAst()
 
-	repr.Println(ast)
+	// repr.Println(ast)
 
 	if tokenError != nil {
 		var line, column int
@@ -58,9 +55,13 @@ func Compile(file string) {
 		}
 	}
 
+	fmt.Println(ast.ErrorScope.CompileTimeErrors)
+
 	if ast.ErrorScope.HasErrors() {
 		for _, e := range ast.ErrorScope.CompileTimeErrors {
-			fmt.Println(e.GetText())
+			fmt.Println(e.GetError())
 		}
 	}
+
+	fmt.Println(ast.ErrorScope.GetSummary())
 }

@@ -14,8 +14,8 @@ func (l *Literal) ToCString(scope *ast.Ast) string {
 	} else if l.Symbol != "" {
 		symbolVariable := scope.ResolveSymbolAsVariable(l.Symbol)
 
-		if symbolVariable != nil {
-			base = symbolVariable.GetFullName()
+		if !symbolVariable.IsNil() {
+			base = symbolVariable.Unwrap().GetFullName()
 		}
 	} else if l.Number != "" {
 		base = l.Number

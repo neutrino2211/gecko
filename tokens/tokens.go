@@ -36,16 +36,10 @@ type Import struct {
 	Objects []string `parser:"['use' '{' [ @Ident { ',' @Ident } ] '}']"`
 }
 
-type ASM struct {
-	baseToken
-	Code string `parser:"'asm' @ASMBlock"`
-}
-
 type Entry struct {
 	baseToken
 	Return         *Literal        `parser:"'return' @@"`
 	VoidReturn     string          `parser:"| @'return'"`
-	AsmBlock       *ASM            `parser:"| @@"`
 	Assignment     *Assignment     `parser:"| @@"`
 	ElseIf         *ElseIf         `parser:"| @@"`
 	Else           *Else           `parser:"| @@"`
@@ -68,7 +62,7 @@ type Entry struct {
 type Class struct {
 	baseToken
 	Visibility      string             `parser:"[ @'private' | @'public' | @'protected' ]"`
-	ExternalName    string             `parser:"[ 'external' '(' @Any ')' ]"`
+	ExternalName    string             `parser:"[ 'external' @String ]"`
 	Name            string             `parser:"'class' @Ident"`
 	Fields          []*ClassBlockField `parser:"'{' { @@ } '}'"`
 	Implementations []*Implementation
@@ -234,8 +228,9 @@ type Value struct {
 
 type Argument struct {
 	baseToken
-	Name  string   `parser:"[ @Ident ':' ]"`
-	Value *Literal `parser:"@@"`
+	Name    string    `parser:"[ @Ident ':' ]"`
+	Value   *Literal  `parser:"( @@"`
+	SubCall *FuncCall `parser:"| @@)"`
 }
 
 type SizeDef struct {
@@ -271,7 +266,6 @@ type FuncCall struct {
 	baseToken
 	Function  string      `parser:"@Ident"`
 	Arguments []*Argument `parser:"'(' [ @@ { ',' @@ } ] ')'"`
-	SubCall   *FuncCall   `parser:"[ @@ ]"`
 }
 
 type Object struct {

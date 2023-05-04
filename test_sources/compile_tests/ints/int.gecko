@@ -1,0 +1,13 @@
+package main
+
+declare func printf(format: string, a1: int): void
+
+const A_CONST_INT: int = 256
+
+let a_mutable_int: int = 256
+
+func main (): void {
+  printf("A CONST %s\n", A_CONST_INT)
+  
+  printf("A let %s\n", a_mutable_int)
+}

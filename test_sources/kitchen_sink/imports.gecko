@@ -8,6 +8,6 @@ import gecko use {
 
 import standard
 
-external (uint) class uint {}
+external "uint" class uint {}
 
 default impl RHSable for uint

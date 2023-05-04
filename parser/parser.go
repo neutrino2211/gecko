@@ -9,7 +9,6 @@ import (
 
 var graphQLLexer = lexer.Must(ebnf.New(`
 Comment = "//"  { "\u0000"…"\uffff"-"\n" } .
-ASMBlock = "\"" [ { "\u0000"…"\uffff"-"\""-"\\" | "\\" Any } ] "\"" .
 Ident = (alpha | "_" | ".") { "_" | "." | alpha | digit } .
 Name = (alpha | "_" ) { "_" | alpha | digit } .
 SingleQuoteString = "'" [ { "\u0000"…"\uffff"-"\""-"\\" | "\\" Any } ] "'" .

@@ -10,7 +10,7 @@ func (c *Class) ToAst(scope *ast.Ast) *ast.Ast {
 		Parent: scope,
 	}
 
-	classAst.Init(scope.ErrorScope)
+	classAst.Init(scope.ErrorScope, scope.ExecutionContext)
 
 	for _, f := range c.Fields {
 		if f.Method != nil {

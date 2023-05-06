@@ -1,10 +1,16 @@
 package compiler
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
+	"strconv"
+	"time"
 
 	"github.com/alecthomas/participle/lexer"
+	"github.com/alecthomas/repr"
 	"github.com/fatih/color"
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/errors"
@@ -13,9 +19,34 @@ import (
 	"github.com/neutrino2211/go-option"
 )
 
+func streamPipe(std io.ReadCloser) {
+	buf := bufio.NewReader(std) // Notice that this is not in a loop
+	for {
+
+		line, _, err := buf.ReadLine()
+		if err != nil {
+			break
+		}
+		fmt.Println(string(line))
+	}
+}
+
+func streamCommand(cmd *exec.Cmd) error {
+	stdout, err := cmd.StdoutPipe()
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	cmd.Start()
+	streamPipe(stdout)
+	streamPipe(stderr)
+
+	return nil
+}
+
 var allErrorScopes []*errors.ErrorScope = make([]*errors.ErrorScope, 0)
 
-func Compile(file string, config *config.CompileCfg) {
+func Compile(file string, config *config.CompileCfg) string {
 	fileOpt := option.SomePair(os.ReadFile(file))
 	fileContents := fileOpt.Expect("Unable to read file '" + file + "'")
 
@@ -32,6 +63,13 @@ func Compile(file string, config *config.CompileCfg) {
 	ast := sourceFile.ToAst(config)
 
 	// repr.Println(ast)
+
+	repr.Println(ast.ProgramContext.Module)
+	llir := ast.ProgramContext.Module.String()
+
+	ts := strconv.Itoa(int(time.Now().UnixNano()))
+
+	buildDir := os.TempDir() + "/gecko/build/" + ts
 
 	if tokenError != nil {
 		var line, column int
@@ -60,7 +98,24 @@ func Compile(file string, config *config.CompileCfg) {
 		}
 	}
 
+	os.MkdirAll(buildDir, 0o755)
+
+	outName := buildDir + "/" + file + ".ll"
+	compiledName := buildDir + "/" + file + ".o"
+
+	os.WriteFile(outName, []byte(llir), 0o755)
+
+	cmd := exec.Command("llc", "-filetype=obj", outName)
+
+	err := streamCommand(cmd)
+
+	if err != nil {
+		ast.ErrorScope.NewCompileTimeError("LLVM compilation", "Error compiling LLVM IR "+err.Error(), lexer.Position{})
+	}
+
 	allErrorScopes = append(allErrorScopes, ast.ErrorScope)
+
+	return compiledName
 }
 
 func PrintErrorSummary() {

@@ -1,13 +1,11 @@
 package main
 
-declare func printf(format: string, a1: int): void
+declare external func printf(format: string, a1: int)
 
-const A_CONST_INT: int = 256
-
-let a_mutable_int: int = 256
-
-func main (): void {
-  printf("A CONST %s\n", A_CONST_INT)
+func main (): int {
+  printf("A CONST %d\n", 30)
   
-  printf("A let %s\n", a_mutable_int)
+  printf("A let %d\n", 20)
+
+  return 0
 }

@@ -1,7 +1,14 @@
 package tokens
 
 import (
+	"strconv"
+
+	"github.com/alecthomas/repr"
+	"github.com/llir/llvm/ir/constant"
+	"github.com/llir/llvm/ir/types"
+	"github.com/llir/llvm/ir/value"
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/go-option"
 )
 
 func (l *Literal) ToCString(scope *ast.Ast) string {
@@ -37,4 +44,24 @@ func (l *Literal) ToCString(scope *ast.Ast) string {
 	}
 
 	return base
+}
+
+func (l *Literal) ToLLIRValue(scope *ast.Ast) value.Value {
+	var val value.Value
+
+	if l.Bool != "" {
+		i := map[string]int64{"true": 1, "false": 0}[l.Bool]
+		val = constant.NewInt(types.I1, i)
+	} else if l.String != "" {
+		val = constant.NewCharArrayFromString(l.String)
+	} else if l.Number != "" {
+		conv := option.SomePair(strconv.Atoi(l.Number))
+		val = constant.NewInt(types.I64, int64(conv.Unwrap()))
+	} else if l.Expression != nil {
+		val = l.Expression.ToLLIRValue(scope)
+	}
+
+	repr.Println("Lit", val, l)
+
+	return val
 }

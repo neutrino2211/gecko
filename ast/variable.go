@@ -1,6 +1,10 @@
 package ast
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/llir/llvm/ir/types"
+)
 
 type Variable struct {
 	Name       string
@@ -22,6 +26,10 @@ func (v *Variable) GetFullName() string {
 	}
 
 	return cString
+}
+
+func (v *Variable) GetLLIRType(scope *Ast) *types.Type {
+	return scope.ResolveLLIRType(v.Type).Unwrap()
 }
 
 func (v *Variable) ToCDeclaration() string {

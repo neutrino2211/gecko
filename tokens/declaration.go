@@ -5,7 +5,7 @@ import (
 	"github.com/neutrino2211/go-option"
 )
 
-func (d *Declaration) ToAstVariable(scope *ast.Ast) option.Optional[*ast.Variable] {
+func (d *Declaration) ToAstVariable(scope *ast.Ast) *option.Optional[*ast.Variable] {
 	if d.Field == nil {
 		return option.None[*ast.Variable]()
 	}
@@ -20,7 +20,7 @@ func (d *Declaration) ToAstVariable(scope *ast.Ast) option.Optional[*ast.Variabl
 	return option.Some(declaredVariable)
 }
 
-func (d *Declaration) ToAstMethod(scope *ast.Ast) option.Optional[*ast.Method] {
+func (d *Declaration) ToAstMethod(scope *ast.Ast) *option.Optional[*ast.Method] {
 	if d.Method == nil {
 		return option.None[*ast.Method]()
 	}

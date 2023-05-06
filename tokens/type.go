@@ -1,8 +1,19 @@
 package tokens
 
 import (
+	"github.com/llir/llvm/ir/types"
 	"github.com/neutrino2211/gecko/ast"
 )
+
+func findPrimitive(name string) *ast.PrimitiveType {
+	for _, p := range ast.Primitives {
+		if p.Class.Scope == name {
+			return p
+		}
+	}
+
+	return nil
+}
 
 func (t *TypeRef) checkTrait(typeAst *ast.Ast, scope *ast.Ast) bool {
 	if t.Trait == "" {
@@ -43,4 +54,16 @@ func (t *TypeRef) Check(scope *ast.Ast) bool {
 	hasTrait := t.checkTrait(classAst, scope)
 
 	return hasTrait
+}
+
+func (t *TypeRef) GetLLIRType(scope *ast.Ast) types.Type {
+	prim := findPrimitive(t.Type)
+
+	if prim != nil {
+		return prim.Type
+	}
+
+	// TODO: Make LLIR type from compound types
+
+	return nil
 }

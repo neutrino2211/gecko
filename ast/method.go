@@ -2,6 +2,8 @@ package ast
 
 import (
 	"strings"
+
+	"github.com/neutrino2211/gecko/codegen"
 )
 
 type Method struct {
@@ -11,6 +13,7 @@ type Method struct {
 	Visibility string
 	Parent     *Ast
 	Type       string
+	Context    *codegen.LocalContext
 }
 
 func (m *Method) GetFullName() string {

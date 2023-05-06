@@ -2,7 +2,9 @@ package tokens
 
 import (
 	"github.com/alecthomas/repr"
+	"github.com/llir/llvm/ir"
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/codegen"
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/errors"
 )
@@ -47,7 +49,9 @@ func assignEntriesToAst(entries []*Entry, scope *ast.Ast) {
 				})
 			}
 		} else if entry.FuncCall != nil {
-			repr.Println(entry.FuncCall)
+			entry.FuncCall.AddToLLIR(scope)
+		} else if entry.Return != nil {
+			returnLiteral(scope, entry.Return)
 		}
 	}
 }
@@ -78,7 +82,7 @@ func (f *File) ToAst(config *config.CompileCfg) *ast.Ast {
 		Scope: f.PackageName,
 	}
 
-	file.Init(errors.NewErrorScope(f.Name, f.Path, f.Content))
+	file.Init(errors.NewErrorScope(f.Name, f.Path, f.Content), codegen.NewExecutionContext())
 	file.Config = config
 
 	assignEntriesToAst(f.Entries, file)
@@ -92,15 +96,33 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 		Parent: scope,
 	}
 
-	methodScope.Init(scope.ErrorScope)
-	methodScope.Config = scope.Config
+	fnParams := make([]*ir.Param, 0)
+
+	for _, a := range m.Arguments {
+		ty := a.Type.GetLLIRType(scope)
+		repr.Println("TY", a.Type, ty)
+		fnParams = append(fnParams, ir.NewParam(a.Name, ty))
+	}
+
+	methodScope.Init(scope.ErrorScope, scope.ExecutionContext)
 
 	returnType := "void"
+	irType := ast.VoidType.Type
 
 	if m.Type != nil {
 		m.Type.Check(scope)
 
 		returnType = m.Type.ToCString(scope)
+		irType = m.Type.GetLLIRType(scope)
+	}
+
+	irFunc := ir.NewFunc(m.Name, irType, fnParams...)
+
+	methodScope.Config = scope.Config
+	methodScope.LocalContext = codegen.NewLocalContext(irFunc)
+
+	if len(m.Value) > 0 {
+		methodScope.LocalContext.MainBlock = methodScope.LocalContext.Func.NewBlock(irFunc.Name() + "$main")
 	}
 
 	astMth := &ast.Method{
@@ -112,9 +134,18 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 		Type:       returnType,
 	}
 
+	astMth.Context = methodScope.LocalContext
+
+	scope.ChildContexts[astMth.GetFullName()] = methodScope.LocalContext
+	scope.ProgramContext.Module.Funcs = append(scope.ProgramContext.Module.Funcs, methodScope.LocalContext.Func)
+
 	assignEntriesToAst(m.Value, &methodScope)
 
 	assignArgumentsToMethodArguments(m.Arguments, astMth)
+
+	// if len(m.Value) > 0 {
+	// 	methodScope.LocalContext.MainBlock.NewRet(constant.NewInt(types.I1, 0))
+	// }
 
 	return astMth
 }

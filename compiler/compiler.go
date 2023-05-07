@@ -111,13 +111,15 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	os.WriteFile(outName, []byte(llir), 0o755)
 
-	appleCompensation := ""
+	llcArgs := []string{"-filetype=obj"}
 
 	if ast.Config.Arch == "arm64" && ast.Config.Platform == "darwin" {
-		appleCompensation = "--aarch64-neon-syntax=apple"
+		llcArgs = append(llcArgs, "--aarch64-neon-syntax=apple")
 	}
 
-	cmd := exec.Command("llc", appleCompensation, "-march="+ast.Config.Arch, "-filetype=obj", outName)
+	llcArgs = append(llcArgs, outName)
+
+	cmd := exec.Command("llc", llcArgs...)
 
 	err := streamCommand(cmd)
 

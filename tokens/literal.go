@@ -3,7 +3,6 @@ package tokens
 import (
 	"strconv"
 
-	"github.com/alecthomas/repr"
 	"github.com/llir/llvm/ir/constant"
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
@@ -60,8 +59,6 @@ func (l *Literal) ToLLIRValue(scope *ast.Ast) value.Value {
 	} else if l.Expression != nil {
 		val = l.Expression.ToLLIRValue(scope)
 	}
-
-	repr.Println("Lit", val, l)
 
 	return val
 }

@@ -87,6 +87,7 @@ var CompileCommand = &cli.Command{
 		for _, pos := range ctx.Args().Slice() {
 			outFile := compiler.Compile(pos, &config.CompileCfg{
 				Arch:     ctx.String("target-arch"),
+				Platform: ctx.String("target-platform"),
 				CFlags:   []string{},
 				CLFlags:  []string{},
 				CObjects: []string{},
@@ -114,6 +115,11 @@ var CompileCommand = &cli.Command{
 			Name:  "target-arch",
 			Value: runtime.GOARCH,
 			Usage: "The compilation target architecture",
+		},
+		&cli.StringFlag{
+			Name:  "target-platform",
+			Value: runtime.GOOS,
+			Usage: "The compilation target operating system",
 		},
 	},
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/value"
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/codegen"
 	"github.com/neutrino2211/go-option"
 )
 
@@ -63,6 +64,8 @@ func (f *FuncCall) AddToLLIR(scope *ast.Ast) *option.Optional[*ir.InstCall] {
 		fn = mthUnwrapped.Context.Func
 		fn.Linkage = enum.LinkageExternal
 	}
+
+	fn.CallingConv = codegen.CallingConventions[scope.Config.Arch][scope.Config.Platform]
 
 	args := make([]value.Value, 0)
 

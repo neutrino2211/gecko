@@ -33,11 +33,17 @@ func streamPipe(std io.ReadCloser) {
 
 func streamCommand(cmd *exec.Cmd) error {
 	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return err
 	}
-	cmd.Start()
+	err = cmd.Start()
+	if err != nil {
+		return err
+	}
 	streamPipe(stdout)
 	streamPipe(stderr)
 
@@ -105,7 +111,13 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	os.WriteFile(outName, []byte(llir), 0o755)
 
-	cmd := exec.Command("llc", "-filetype=obj", outName)
+	appleCompensation := ""
+
+	if ast.Config.Arch == "arm64" && ast.Config.Platform == "darwin" {
+		appleCompensation = "--aarch64-neon-syntax=apple"
+	}
+
+	cmd := exec.Command("llc", appleCompensation, "-march="+ast.Config.Arch, "-filetype=obj", outName)
 
 	err := streamCommand(cmd)
 

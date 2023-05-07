@@ -117,6 +117,7 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 	}
 
 	irFunc := ir.NewFunc(m.Name, irType, fnParams...)
+	irFunc.CallingConv = codegen.CallingConventions[scope.Config.Arch][scope.Config.Platform]
 
 	methodScope.Config = scope.Config
 	methodScope.LocalContext = codegen.NewLocalContext(irFunc)

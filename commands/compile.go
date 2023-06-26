@@ -91,6 +91,7 @@ var CompileCommand = &cli.Command{
 				CFlags:   []string{},
 				CLFlags:  []string{},
 				CObjects: []string{},
+				Ctx:      ctx,
 			})
 
 			CopyFile(outFile, pos+".o")
@@ -120,6 +121,11 @@ var CompileCommand = &cli.Command{
 			Name:  "target-platform",
 			Value: runtime.GOOS,
 			Usage: "The compilation target operating system",
+		},
+		&cli.BoolFlag{
+			Name:  "print-ir",
+			Value: false,
+			Usage: "Print the file's LLVM IR",
 		},
 	},
 }

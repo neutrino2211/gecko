@@ -38,7 +38,7 @@ type Import struct {
 
 type Entry struct {
 	baseToken
-	Return         *Literal        `parser:"'return' @@"`
+	Return         *Expression     `parser:"'return' @@"`
 	VoidReturn     string          `parser:"| @'return'"`
 	Assignment     *Assignment     `parser:"| @@"`
 	ElseIf         *ElseIf         `parser:"| @@"`
@@ -147,13 +147,15 @@ type Unary struct {
 
 type Primary struct {
 	baseToken
-	FuncCall      *FuncCall   `parser:"@@"`
-	Bool          string      `parser:"| ( @'true' | @'false' )"`
-	Nil           *bool       `parser:"| @'nil'"`
-	String        string      `parser:"| @String"`
-	Symbol        string      `parser:"| @Ident"`
-	Number        string      `parser:"| @Number"`
-	SubExpression *Expression `parser:"| '(' @@ ')'"`
+	Literal *Literal `parser:"@@"`
+	// IsPointer     *bool       `parser:"[ '&' ]"`
+	// FuncCall      *FuncCall   `parser:"( @@"`
+	// Bool          string      `parser:" | ( @'true' | @'false' )"`
+	// Nil           *bool       `parser:" | @'nil'"`
+	// String        string      `parser:" | @String"`
+	// Symbol        string      `parser:" | @Ident"`
+	// Number        string      `parser:" | @Number"`
+	SubExpression *Expression `parser:" | '(' @@ ')'"`
 }
 
 // Misc TODO: Sort
@@ -182,17 +184,17 @@ type Implementation struct {
 
 type Field struct {
 	baseToken
-	Visibility string   `parser:"[ @'private' | @'public' | @'protected' | @'external' ]"`
-	Mutability string   `parser:"@( 'const' | 'let' )"`
-	Name       string   `parser:"@Ident"`
-	Type       *TypeRef `parser:"[ ':' @@ ]"`
-	Value      *Literal `parser:"[ '=' @@ ]"`
+	Visibility string      `parser:"[ @'private' | @'public' | @'protected' | @'external' ]"`
+	Mutability string      `parser:"@( 'const' | 'let' )"`
+	Name       string      `parser:"@Ident"`
+	Type       *TypeRef    `parser:"[ ':' @@ ]"`
+	Value      *Expression `parser:"[ '=' @@ ]"`
 }
 
 type Assignment struct {
 	baseToken
-	Name  string   `parser:"@Ident"`
-	Value *Literal `parser:"'=' @@"`
+	Name  string      `parser:"@Ident"`
+	Value *Expression `parser:"'=' @@"`
 }
 
 type Declaration struct {
@@ -212,6 +214,7 @@ type ImplementationField struct {
 type Method struct {
 	baseToken
 	Visibility string   `parser:"[ @'private' | @'public' | @'protected' | @'external' ]"`
+	Variardic  bool     `parser:"[ @'variardic' ]"`
 	Name       string   `parser:"'func' @Ident"`
 	Arguments  []*Value `parser:"'(' [ @@ { ',' @@ } ] ')'"`
 	Type       *TypeRef `parser:"[ ':' @@ ]"`
@@ -220,17 +223,17 @@ type Method struct {
 
 type Value struct {
 	baseToken
-	External bool     `parser:"[ @'external' ]"`
-	Name     string   `parser:"@Ident"`
-	Type     *TypeRef `parser:"':' @@"`
-	Default  *Literal `parser:"[ '=' @@ ]"`
+	Variadic bool        `parser:"[ @'...' ]"`
+	Name     string      `parser:"@Ident"`
+	Type     *TypeRef    `parser:"':' @@"`
+	Default  *Expression `parser:"[ '=' @@ ]"`
 }
 
 type Argument struct {
 	baseToken
-	Name    string    `parser:"[ @Ident ':' ]"`
-	Value   *Literal  `parser:"( @@"`
-	SubCall *FuncCall `parser:"| @@)"`
+	Name    string      `parser:"[ @Ident ':' ]"`
+	Value   *Expression `parser:"( @@"`
+	SubCall *FuncCall   `parser:"| @@)"`
 }
 
 type SizeDef struct {
@@ -251,9 +254,9 @@ type TypeRef struct {
 
 type Literal struct {
 	baseToken
+	IsPointer  bool              `parser:"[ @'&' ]"`
 	FuncCall   *FuncCall         `parser:"( @@"`
 	Bool       string            `parser:" | @( 'true' | 'false' )"`
-	Expression *Expression       `parser:" | @@"`
 	String     string            `parser:" | @String"`
 	Symbol     string            `parser:" | @Ident"`
 	Number     string            `parser:" | @Number"`
@@ -274,8 +277,8 @@ type Object struct {
 
 type ObjectKeyValue struct {
 	baseToken
-	Key   string   `parser:"@Ident ':'"`
-	Value *Literal `parser:"@@"`
+	Key   string      `parser:"@Ident ':'"`
+	Value *Expression `parser:"@@"`
 }
 
 type Loop struct {
@@ -289,12 +292,12 @@ type Loop struct {
 
 type ForOfLoop struct {
 	baseToken
-	Variable    *Field   `parser:"@@ 'of'"`
-	SourceArray *Literal `parser:"@@"`
+	Variable    *Field      `parser:"@@ 'of'"`
+	SourceArray *Expression `parser:"@@"`
 }
 
 type ForInLoop struct {
 	baseToken
-	Variable    *Field   `parser:"@@ 'in'"`
-	SourceArray *Literal `parser:"@@"`
+	Variable    *Field      `parser:"@@ 'in'"`
+	SourceArray *Expression `parser:"@@"`
 }

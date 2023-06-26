@@ -34,8 +34,6 @@ func (l *Literal) ToCString(scope *ast.Ast) string {
 		base += l.Array[len(l.Array)-1].ToCString(scope)
 
 		base += "}"
-	} else if l.Expression != nil {
-		base = l.Expression.ToCString(scope)
 	}
 
 	if base != "" && l.ArrayIndex != nil {
@@ -56,8 +54,6 @@ func (l *Literal) ToLLIRValue(scope *ast.Ast) value.Value {
 	} else if l.Number != "" {
 		conv := option.SomePair(strconv.Atoi(l.Number))
 		val = constant.NewInt(types.I64, int64(conv.Unwrap()))
-	} else if l.Expression != nil {
-		val = l.Expression.ToLLIRValue(scope)
 	}
 
 	return val

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/llir/llvm/ir/constant"
+	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
 	"github.com/neutrino2211/gecko/ast"
@@ -91,14 +92,14 @@ func (p *Primary) ToLLIRValue(scope *ast.Ast) value.Value {
 
 	if p.SubExpression != nil {
 		base = p.SubExpression.ToLLIRValue(scope)
-	} else if p.Bool != "" {
-		i := map[string]int64{"true": 1, "false": 0}[p.Bool]
+	} else if p.Literal.Bool != "" {
+		i := map[string]int64{"true": 1, "false": 0}[p.Literal.Bool]
 		base = constant.NewInt(types.I1, i)
-	} else if p.Number != "" {
-		conv := option.SomePair(strconv.Atoi(p.Number))
+	} else if p.Literal.Number != "" {
+		conv := option.SomePair(strconv.Atoi(p.Literal.Number))
 		base = constant.NewInt(types.I64, int64(conv.Unwrap()))
-	} else if p.String != "" {
-		actual, err := strconv.Unquote(p.String)
+	} else if p.Literal.String != "" {
+		actual, err := strconv.Unquote(p.Literal.String)
 
 		if err != nil {
 			scope.ErrorScope.NewCompileTimeError("String Escape", "unable to escape the string provided "+err.Error(), p.Pos)
@@ -106,15 +107,23 @@ func (p *Primary) ToLLIRValue(scope *ast.Ast) value.Value {
 		}
 
 		str := constant.NewCharArrayFromString(actual + string('\x00'))
-		def := scope.ProgramContext.Module.NewGlobalDef("str_"+scope.FullScopeName()+"_"+strings.ReplaceAll(actual, " ", "_"), str)
-		base = constant.NewGetElementPtr(str.Typ, def, constant.NewInt(types.I64, 0), constant.NewInt(types.I64, 0))
-	} else if p.Symbol != "" {
+		println(actual, p.Literal.IsPointer)
+		if p.Literal.IsPointer {
+			def := scope.ProgramContext.Module.NewGlobalDef("__"+scope.FullScopeName()+strings.ReplaceAll(actual, " ", "_"), str)
+			def.Linkage = enum.LinkagePrivate
+			def.UnnamedAddr = enum.UnnamedAddrUnnamedAddr
+			def.Immutable = true
+			base = scope.LocalContext.MainBlock.NewGetElementPtr(str.Typ, def, constant.NewInt(types.I8, 0))
+		} else {
+			base = str
+		}
+	} else if p.Literal.Symbol != "" {
 		// symbolVariable := scope.ResolveSymbolAsVariable(p.Symbol)
 
 		// if !symbolVariable.IsNil() {
 		// 	base = symbolVariable.Unwrap().GetFullName()
 		// }
-	} else if p.FuncCall != nil {
+	} else if p.Literal.FuncCall != nil {
 		// base = p.FuncCall.(scope)
 	}
 

@@ -7,10 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/alecthomas/participle/lexer"
-	"github.com/alecthomas/repr"
 	"github.com/fatih/color"
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/errors"
@@ -68,10 +68,11 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	ast := sourceFile.ToAst(config)
 
-	// repr.Println(ast)
-
-	repr.Println(ast.ProgramContext.Module)
 	llir := ast.ProgramContext.Module.String()
+
+	if config.Ctx.Bool("print-ir") {
+		println(file + "\n" + strings.Repeat("_", len(file)) + "\n\n" + llir)
+	}
 
 	ts := strconv.Itoa(int(time.Now().UnixNano()))
 
@@ -114,7 +115,7 @@ func Compile(file string, config *config.CompileCfg) string {
 	llcArgs := []string{"-filetype=obj"}
 
 	if ast.Config.Arch == "arm64" && ast.Config.Platform == "darwin" {
-		llcArgs = append(llcArgs, "--aarch64-neon-syntax=apple")
+		llcArgs = append(llcArgs, "--mtriple", "arm64-apple-darwin21.4.0")
 	}
 
 	llcArgs = append(llcArgs, outName)

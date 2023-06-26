@@ -1,7 +1,6 @@
 package tokens
 
 import (
-	"github.com/alecthomas/repr"
 	"github.com/llir/llvm/ir"
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/codegen"
@@ -100,7 +99,7 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 
 	for _, a := range m.Arguments {
 		ty := a.Type.GetLLIRType(scope)
-		repr.Println("TY", a.Type, ty)
+
 		fnParams = append(fnParams, ir.NewParam(a.Name, ty))
 	}
 
@@ -118,6 +117,9 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 
 	irFunc := ir.NewFunc(m.Name, irType, fnParams...)
 	irFunc.CallingConv = codegen.CallingConventions[scope.Config.Arch][scope.Config.Platform]
+	if m.Variardic {
+		irFunc.Sig.Variadic = true
+	}
 
 	methodScope.Config = scope.Config
 	methodScope.LocalContext = codegen.NewLocalContext(irFunc)

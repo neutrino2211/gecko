@@ -5,6 +5,16 @@ import (
 )
 
 func (f *Field) ToAstVariable(scope *ast.Ast) *ast.Variable {
+	if f.Type == nil {
+		scope.ErrorScope.NewCompileTimeError("TODO: Infer variable type", "variable type inference not implemented", f.Pos)
+		f.Type = &TypeRef{}
+	}
+
+	if f.Value == nil && f.Mutability == "const" {
+		scope.ErrorScope.NewCompileTimeError("Uninitialesed constant", "constant must be initialised with a value", f.Pos)
+		f.Value = &Expression{}
+	}
+
 	fieldVariable := ast.Variable{
 		Name:       f.Name,
 		IsConst:    f.Mutability == "const",

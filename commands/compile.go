@@ -94,7 +94,9 @@ var CompileCommand = &cli.Command{
 				Ctx:      ctx,
 			})
 
-			CopyFile(outFile, pos+".o")
+			if outFile != "" {
+				CopyFile(outFile, pos+".o")
+			}
 		}
 
 		compiler.PrintErrorSummary()

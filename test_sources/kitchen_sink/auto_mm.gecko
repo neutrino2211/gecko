@@ -1,0 +1,49 @@
+///auto_mm.gecko - Idea on how automatic memory management could work in gecko
+package main
+
+class FileHandle {
+  private let fd: uint32 = 0
+
+  func init(self: FileHandle*, fd: uint32 = 0): FileHandle* {
+    self.fd = fd
+    return self
+  }
+
+  func get_fd(self: FileHandle*): uint32 {
+    return self.fd
+  }
+
+  func deinit(self: FileHandle*) {}
+}
+
+func return_fh_works(): FileHandle* {
+  const fh = FileHandle()
+
+  print(fh.get_fd())
+
+  return &fh // pointer to fh returned, it is left untouched
+}
+
+func return_fh_warns(): FileHandle { //warning similar to "FileHandle value returned is inefficient, please return pointers for classes"
+  const fh = FileHandle()
+
+  print(fh.get_fd())
+
+  return fh //fh copied to the caller scope and local fh gets deleted
+}
+
+func return_number_works(): uint32 {
+  const fh = FileHandle()
+
+  return fh.get_fd() // value gets copied, then fh gets deleted
+}
+
+func main() {
+  let worksFh = return_fh_works() // FileHandle* is untouched, so continue using the handle
+  const warnsFh = return_fh_warns() // FileHandle is a copy, gecko does not like that
+
+  const fd = return_number_works() // uint32 is a copy, gecko allows copying primitives
+
+
+  // Everything gets deleted at the bottom
+}

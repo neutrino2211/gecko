@@ -67,16 +67,14 @@ func Compile(file string, config *config.CompileCfg) string {
 	sourceFile.Path = file
 
 	ast := sourceFile.ToAst(config)
-
-	llir := ast.ProgramContext.Module.String()
-
-	if config.Ctx.Bool("print-ir") {
-		println(file + "\n" + strings.Repeat("_", len(file)) + "\n\n" + llir)
-	}
+	allErrorScopes = append(allErrorScopes, ast.ErrorScope)
 
 	ts := strconv.Itoa(int(time.Now().UnixNano()))
 
 	buildDir := os.TempDir() + "/gecko/build/" + ts
+
+	outName := buildDir + "/" + file + ".ll"
+	compiledName := buildDir + "/" + file + ".o"
 
 	if tokenError != nil {
 		var line, column int
@@ -105,10 +103,17 @@ func Compile(file string, config *config.CompileCfg) string {
 		}
 	}
 
-	os.MkdirAll(buildDir, 0o755)
+	if haveErrors() {
+		return ""
+	}
 
-	outName := buildDir + "/" + file + ".ll"
-	compiledName := buildDir + "/" + file + ".o"
+	llir := ast.ProgramContext.Module.String()
+
+	if config.Ctx.Bool("print-ir") {
+		println(file + "\n" + strings.Repeat("_", len(file)) + "\n\n" + llir)
+	}
+
+	os.MkdirAll(buildDir, 0o755)
 
 	os.WriteFile(outName, []byte(llir), 0o755)
 
@@ -128,9 +133,18 @@ func Compile(file string, config *config.CompileCfg) string {
 		ast.ErrorScope.NewCompileTimeError("LLVM compilation", "Error compiling LLVM IR "+err.Error(), lexer.Position{})
 	}
 
-	allErrorScopes = append(allErrorScopes, ast.ErrorScope)
-
 	return compiledName
+}
+
+func haveErrors() bool {
+	for _, e := range allErrorScopes {
+		println(e.Name, e.HasErrors())
+		if e.HasErrors() {
+			return true
+		}
+	}
+
+	return false
 }
 
 func PrintErrorSummary() {

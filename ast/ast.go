@@ -21,7 +21,7 @@ func loadPrimitives(ast *Ast) {
 type Ast struct {
 	Scope            string
 	Imports          []string
-	Methods          map[string]Method
+	Methods          map[string]*Method
 	Variables        map[string]Variable
 	Classes          map[string]*Ast
 	Traits           map[string]*[]*Method
@@ -35,7 +35,7 @@ type Ast struct {
 }
 
 func (a *Ast) Init(errorScope *errors.ErrorScope, executionContext *codegen.ExecutionContext) {
-	a.Methods = make(map[string]Method)
+	a.Methods = make(map[string]*Method)
 	a.Variables = make(map[string]Variable)
 	a.Classes = make(map[string]*Ast)
 	a.Traits = make(map[string]*[]*Method)
@@ -92,7 +92,7 @@ func (a *Ast) ResolveMethod(mth string) *option.Optional[*Method] {
 		mthMethod, ok = scope.Methods[mth]
 	}
 
-	return option.Some(&mthMethod)
+	return option.Some(mthMethod)
 }
 
 func (a *Ast) ResolveClass(class string) *option.Optional[*Ast] {

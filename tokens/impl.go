@@ -67,7 +67,7 @@ func (i *Implementation) ForArch(scope *ast.Ast) {
 
 	if scope.Config.Arch == i.Name {
 		for _, m := range i.ToMethodTokens(scope) {
-			scope.Methods[m.Name] = *m.ToAstMethod(scope)
+			scope.Methods[m.Name] = m.ToAstMethod(scope)
 		}
 	} else {
 		scope.ErrorScope.NewCompileTimeWarning(

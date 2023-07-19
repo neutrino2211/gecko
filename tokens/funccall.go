@@ -3,7 +3,6 @@ package tokens
 import (
 	"fmt"
 
-	"github.com/alecthomas/repr"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/value"
@@ -74,8 +73,6 @@ func (f *FuncCall) AddToLLIR(scope *ast.Ast) *option.Optional[*ir.InstCall] {
 	}
 
 	call := scope.LocalContext.MainBlock.NewCall(fn, args...)
-
-	repr.Println(fn)
 
 	return option.Some(call)
 }

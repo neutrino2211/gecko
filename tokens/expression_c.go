@@ -84,20 +84,20 @@ func (p *Primary) ToCString(scope *ast.Ast) string {
 
 	if p.SubExpression != nil {
 		base = p.SubExpression.ToCString(scope)
-	} else if p.Bool != "" {
-		base = p.Bool
-	} else if p.Number != "" {
-		base = p.Number
-	} else if p.String != "" {
-		base = p.String
-	} else if p.Symbol != "" {
-		symbolVariable := scope.ResolveSymbolAsVariable(p.Symbol)
+	} else if p.Literal.Bool != "" {
+		base = p.Literal.Bool
+	} else if p.Literal.Number != "" {
+		base = p.Literal.Number
+	} else if p.Literal.String != "" {
+		base = p.Literal.String
+	} else if p.Literal.Symbol != "" {
+		symbolVariable := scope.ResolveSymbolAsVariable(p.Literal.Symbol)
 
 		if !symbolVariable.IsNil() {
 			base = symbolVariable.Unwrap().GetFullName()
 		}
-	} else if p.FuncCall != nil {
-		base = p.FuncCall.ToCString(scope)
+	} else if p.Literal.FuncCall != nil {
+		base = p.Literal.FuncCall.ToCString(scope)
 	}
 
 	return base

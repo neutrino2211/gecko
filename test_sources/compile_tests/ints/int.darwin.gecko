@@ -1,0 +1,11 @@
+package main
+
+declare external variardic func printf(format: string)
+
+func main (): int {
+  printf(&"A CONST %d\n", 90)
+  
+  printf(&"A let %s\n", &"HH")
+
+  return 0
+}

@@ -1,7 +1,10 @@
 package tokens
 
 import (
-	"github.com/alecthomas/repr"
+	"math/rand"
+	"strconv"
+	"time"
+
 	"github.com/llir/llvm/ir"
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/codegen"
@@ -12,11 +15,11 @@ import (
 func assignEntriesToAst(entries []*Entry, scope *ast.Ast) {
 	for _, entry := range entries {
 		if entry.Method != nil {
-			scope.Methods[entry.Method.Name] = *entry.Method.ToAstMethod(scope)
+			entry.Method.ToAstMethod(scope)
 		} else if entry.Field != nil {
 			scope.Variables[entry.Field.Name] = *entry.Field.ToAstVariable(scope)
 		} else if entry.Class != nil {
-			scope.Classes[entry.Class.Name] = entry.Class.ToAst(scope)
+			entry.Class.ToAst(scope)
 		} else if entry.Implementation != nil {
 			if entry.Implementation.For != "" {
 				entry.Implementation.ForClass(scope)
@@ -38,7 +41,7 @@ func assignEntriesToAst(entries []*Entry, scope *ast.Ast) {
 				})
 			} else if entry.Declaration.Method != nil {
 				methodOpt := entry.Declaration.ToAstMethod(scope)
-				scope.Methods[entry.Declaration.Method.Name] = *methodOpt.UnwrapOrElse(func(err error) *ast.Method {
+				scope.Methods[entry.Declaration.Method.Name] = methodOpt.UnwrapOrElse(func(err error) *ast.Method {
 					scope.ErrorScope.NewCompileTimeError(
 						"Parse Error",
 						"Unable to parse the method named '"+entry.Declaration.Method.Name+"'",
@@ -100,7 +103,7 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 
 	for _, a := range m.Arguments {
 		ty := a.Type.GetLLIRType(scope)
-		repr.Println("TY", a.Type, ty)
+
 		fnParams = append(fnParams, ir.NewParam(a.Name, ty))
 	}
 
@@ -118,6 +121,9 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 
 	irFunc := ir.NewFunc(m.Name, irType, fnParams...)
 	irFunc.CallingConv = codegen.CallingConventions[scope.Config.Arch][scope.Config.Platform]
+	if m.Variardic {
+		irFunc.Sig.Variadic = true
+	}
 
 	methodScope.Config = scope.Config
 	methodScope.LocalContext = codegen.NewLocalContext(irFunc)
@@ -134,6 +140,7 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 		Parent:     scope,
 		Type:       returnType,
 	}
+	scope.Methods[m.Name] = astMth
 
 	astMth.Context = methodScope.LocalContext
 
@@ -149,4 +156,18 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 	// }
 
 	return astMth
+}
+
+func (t *baseToken) GetID() string {
+	s := rand.NewSource(time.Now().UnixNano() + rand.Int63())
+	r := rand.New(s)
+	if t.RefID == "" {
+		i := 0
+		for i < 32 {
+			t.RefID += strconv.Itoa(r.Intn(9))
+			i++
+		}
+	}
+
+	return t.RefID
 }

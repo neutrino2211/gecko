@@ -124,6 +124,8 @@ func Compile(file string, config *config.CompileCfg) string {
 		if err != nil {
 			ast.ErrorScope.NewCompileTimeError("LLIR copy", "Error copying LLVM IR "+err.Error(), lexer.Position{})
 		}
+
+		return outName
 	}
 
 	llcArgs := []string{"-filetype=obj"}

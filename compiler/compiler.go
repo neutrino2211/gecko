@@ -132,6 +132,8 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	if ast.Config.Arch == "arm64" && ast.Config.Platform == "darwin" {
 		llcArgs = append(llcArgs, "--mtriple", "arm64-apple-darwin21.4.0")
+	} else if ast.Config.Vendor != "" {
+		llcArgs = append(llcArgs, "-mtriple", ast.Config.Arch+"-"+ast.Config.Vendor+"-"+ast.Config.Platform)
 	}
 
 	llcArgs = append(llcArgs, outName)

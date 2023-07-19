@@ -88,6 +88,7 @@ var CompileCommand = &cli.Command{
 			outFile := compiler.Compile(pos, &config.CompileCfg{
 				Arch:     ctx.String("target-arch"),
 				Platform: ctx.String("target-platform"),
+				Vendor:   ctx.String("target-vendor"),
 				CFlags:   []string{},
 				CLFlags:  []string{},
 				CObjects: []string{},
@@ -124,6 +125,11 @@ var CompileCommand = &cli.Command{
 			Value: runtime.GOOS,
 			Usage: "The compilation target operating system",
 		},
+		&cli.StringFlag{
+			Name:  "target-vendor",
+			Value: "",
+			Usage: "The compilation target vendor of file type",
+		},
 		&cli.BoolFlag{
 			Name:  "print-ir",
 			Value: false,
@@ -133,6 +139,11 @@ var CompileCommand = &cli.Command{
 			Name:  "ir-only",
 			Value: false,
 			Usage: "Only compile to IR",
+		},
+		&cli.StringSliceFlag{
+			Name:  "llc-args",
+			Value: &cli.StringSlice{},
+			Usage: "Pass arguments to underlying llc command",
 		},
 	},
 }

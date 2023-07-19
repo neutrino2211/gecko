@@ -136,7 +136,7 @@ func Compile(file string, config *config.CompileCfg) string {
 		llcArgs = append(llcArgs, "--mtriple", ast.Config.Arch+"-"+ast.Config.Vendor+"-"+ast.Config.Platform)
 	}
 
-	llcArgs = append(llcArgs, outName)
+	llcArgs = append(llcArgs, ast.Config.Ctx.String("output")+"/"+outName)
 
 	cmd := exec.Command("llc", llcArgs...)
 

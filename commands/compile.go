@@ -106,9 +106,9 @@ var CompileCommand = &cli.Command{
 	},
 	Flags: []cli.Flag{
 		&cli.StringFlag{
-			Name:  "output",
+			Name:  "output-dir",
 			Value: ".",
-			Usage: "Output file path " + color.HiYellowString("(warning: this overrides the build configuration's output path)"),
+			Usage: "Output directory path " + color.HiYellowString("(warning: this overrides the build configuration's output directory)"),
 		},
 		&cli.StringFlag{
 			Name:  "type",

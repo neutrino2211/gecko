@@ -129,6 +129,11 @@ var CompileCommand = &cli.Command{
 			Value: false,
 			Usage: "Print the file's LLVM IR",
 		},
+		&cli.BoolFlag{
+			Name:  "ir-only",
+			Value: false,
+			Usage: "Only compile to IR",
+		},
 	},
 }
 

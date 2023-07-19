@@ -117,6 +117,15 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	os.WriteFile(outName, []byte(llir), 0o755)
 
+	if config.Ctx.Bool("ir-only") {
+		cmd := exec.Command("cp", outName, ".")
+		err := streamCommand(cmd)
+
+		if err != nil {
+			ast.ErrorScope.NewCompileTimeError("LLIR copy", "Error copying LLVM IR "+err.Error(), lexer.Position{})
+		}
+	}
+
 	llcArgs := []string{"-filetype=obj"}
 
 	if ast.Config.Arch == "arm64" && ast.Config.Platform == "darwin" {

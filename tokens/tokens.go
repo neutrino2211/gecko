@@ -39,7 +39,7 @@ type Import struct {
 type Entry struct {
 	baseToken
 	Return         *Expression     `parser:"'return' @@"`
-	VoidReturn     string          `parser:"| @'return'"`
+	VoidReturn     *bool           `parser:"| @'return'"`
 	Assignment     *Assignment     `parser:"| @@"`
 	ElseIf         *ElseIf         `parser:"| @@"`
 	Else           *Else           `parser:"| @@"`
@@ -90,12 +90,16 @@ type If struct {
 	baseToken
 	Expression *Expression `parser:"'if' '(' @@ ')'"`
 	Value      []*Entry    `parser:"'{' { @@ } '}'"`
+	ElseIf     *ElseIf     `parser:"[ @@ "`
+	Else       *Else       `parser:"| @@ ]"`
 }
 
 type ElseIf struct {
 	baseToken
-	Expression *Expression `parser:"'elif' '(' @@ ')'"`
+	Expression *Expression `parser:"'else' 'if' '(' @@ ')'"`
 	Value      []*Entry    `parser:"'{' { @@ } '}'"`
+	ElseIf     *ElseIf     `parser:"[ @@ "`
+	Else       *Else       `parser:"| @@ ]"`
 }
 
 type Else struct {
@@ -127,7 +131,7 @@ type Comparison struct {
 type Addition struct {
 	baseToken
 	Multiplication *Multiplication `parser:"@@"`
-	Op             string          `parser:"[ @( '-' | '+' )"`
+	Op             string          `parser:"[ @( '-' | '+' | '|' | '&' | '>' '>' '>' | '<' '<' '<')"`
 	Next           *Addition       `parser:"  @@ ]"`
 }
 
@@ -244,12 +248,12 @@ type SizeDef struct {
 
 type TypeRef struct {
 	baseToken
-	Array       *TypeRef `parser:"( '[' @@ ']'"`
-	Size        *SizeDef `parser:" | @@"`
-	Type        string   `parser:" | @Ident)"`
-	Trait       string   `parser:"[ 'is' @Ident ]"`
-	NonNullable bool     `parser:"[ @'!' ]"`
-	Pointer     bool     `parser:"[ @'*']"`
+	Array   *TypeRef `parser:"( '[' @@ ']'"`
+	Size    *SizeDef `parser:" | @@"`
+	Type    string   `parser:" | @Ident)"`
+	Trait   string   `parser:"[ 'is' @Ident ]"`
+	Const   bool     `parser:"[ @'!' ]"`
+	Pointer bool     `parser:"[ @'*']"`
 }
 
 type Literal struct {

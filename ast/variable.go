@@ -3,12 +3,15 @@ package ast
 import (
 	"strings"
 
+	"github.com/alecthomas/participle/lexer"
+	"github.com/alecthomas/repr"
 	"github.com/llir/llvm/ir/types"
+	"github.com/llir/llvm/ir/value"
 )
 
 type Variable struct {
 	Name       string
-	Value      string
+	Value      value.Value
 	Type       string
 	IsPointer  bool
 	IsConst    bool
@@ -29,7 +32,11 @@ func (v *Variable) GetFullName() string {
 }
 
 func (v *Variable) GetLLIRType(scope *Ast) *types.Type {
-	return scope.ResolveLLIRType(v.Type).Unwrap()
+	repr.Println(scope.LocalContext.Types)
+	return scope.ResolveLLIRType(v.Type).UnwrapOrElse(func(err error) *types.Type {
+		scope.ErrorScope.NewCompileTimeError("Type Resolution Error", "unable to resolve the type '"+v.Type+"'", lexer.Position{})
+		return &types.NewPointer(UnknownType.Type).ElemType
+	})
 }
 
 func (v *Variable) ToCDeclaration() string {
@@ -46,10 +53,6 @@ func (v *Variable) ToCDeclaration() string {
 	}
 
 	cString += " " + v.Name
-
-	if v.Value != "" {
-		cString += " = " + v.Value
-	}
 
 	return cString
 }

@@ -1,0 +1,12 @@
+package main
+
+declare external variardic func printf(format: string): int
+
+func main() {
+
+  if (30 == 30) {
+    printf(&"The number is 30\n")
+  }
+
+  printf(&"Done!\n")
+}

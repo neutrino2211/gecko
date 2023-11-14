@@ -1,6 +1,7 @@
 package tokens
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/llir/llvm/ir/constant"
@@ -10,6 +11,11 @@ import (
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/go-option"
 )
+
+var equalityOps map[string]enum.IPred = map[string]enum.IPred{
+	"!=": enum.IPredNE,
+	"==": enum.IPredEQ,
+}
 
 func (e *Expression) ToLLIRValue(scope *ast.Ast) value.Value {
 	var base value.Value
@@ -25,6 +31,8 @@ func (eq *Equality) ToLLIRValue(scope *ast.Ast) value.Value {
 	var base value.Value
 
 	if eq.Next != nil {
+		v := eq.Next.ToLLIRValue(scope)
+		base = scope.LocalContext.MainBlock.NewICmp(equalityOps[eq.Op], eq.Comparison.ToLLIRValue(scope), v)
 		// base += eq.Op
 		// base += eq.Next.ToLLIRValue(scope)
 	} else {
@@ -77,6 +85,10 @@ func (u *Unary) ToLLIRValue(scope *ast.Ast) value.Value {
 	var base value.Value
 
 	if u.Unary != nil {
+		if u.Op != "!" {
+			scope.ErrorScope.NewCompileTimeError("Unknown unary operator", "unknown unary operator '"+u.Op+"'", u.Unary.Pos)
+		}
+
 		// base += u.Op
 		// base += u.Unary.ToLLIRValue(scope)
 	} else if u.Primary != nil {
@@ -123,11 +135,16 @@ func (p *Primary) ToLLIRValue(scope *ast.Ast) value.Value {
 			base = str
 		}
 	} else if p.Literal.Symbol != "" {
-		// symbolVariable := scope.ResolveSymbolAsVariable(p.Symbol)
+		symbolVariable := scope.ResolveSymbolAsVariable(p.Literal.Symbol)
 
-		// if !symbolVariable.IsNil() {
-		// 	base = symbolVariable.Unwrap().GetFullName()
-		// }
+		fmt.Println(scope.ToFMTString())
+
+		if !symbolVariable.IsNil() {
+			variable := symbolVariable.Unwrap()
+
+			base = variable.Value
+			// repr.Println(symbolVariable.Unwrap().GetLLIRType(scope))
+		}
 	} else if p.Literal.FuncCall != nil {
 		// base = p.FuncCall.(scope)
 	}

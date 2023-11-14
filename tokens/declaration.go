@@ -12,7 +12,7 @@ func (d *Declaration) ToAstVariable(scope *ast.Ast) *option.Optional[*ast.Variab
 
 	declaredVariable := d.Field.ToAstVariable(scope)
 
-	if declaredVariable.Value != "" {
+	if declaredVariable.Value != nil {
 		// Push an error, declared variables must not have a value
 		scope.ErrorScope.NewCompileTimeError("Declaration Error", "A variable declaration must not have a value", d.Field.Value.Pos)
 	}

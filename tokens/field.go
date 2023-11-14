@@ -15,12 +15,14 @@ func (f *Field) ToAstVariable(scope *ast.Ast) *ast.Variable {
 		f.Value = &Expression{}
 	}
 
+	val := f.Value.ToLLIRValue(scope)
+
 	fieldVariable := ast.Variable{
 		Name:       f.Name,
 		IsConst:    f.Mutability == "const",
 		IsPointer:  f.Type.Pointer,
-		Type:       f.Type.ToCString(scope),
-		Value:      f.Value.ToCString(scope),
+		Type:       "",
+		Value:      val,
 		IsExternal: false,
 		Parent:     scope,
 	}

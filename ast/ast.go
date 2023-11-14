@@ -1,6 +1,7 @@
 package ast
 
 import (
+	"github.com/alecthomas/repr"
 	"github.com/llir/llvm/ir/types"
 	"github.com/neutrino2211/gecko/codegen"
 	"github.com/neutrino2211/gecko/config"
@@ -48,6 +49,10 @@ func (a *Ast) Init(errorScope *errors.ErrorScope, executionContext *codegen.Exec
 	a.LocalContext = nil
 	a.ChildContexts = make(map[string]*codegen.LocalContext)
 
+	loadPrimitives(a)
+}
+
+func (a *Ast) LoadPrimitives() {
 	loadPrimitives(a)
 }
 
@@ -144,13 +149,78 @@ func (a *Ast) ResolveFuncContext(funcName string) *option.Optional[*codegen.Loca
 }
 
 func (a *Ast) ResolveLLIRType(typ string) *option.Optional[*types.Type] {
-	t, ok := a.LocalContext.Types[typ]
+	scope := *a
+	t, ok := scope.LocalContext.Types[typ]
+	repr.Println(t, ok, scope.LocalContext.Types)
 
-	if !ok {
-		return option.None[*types.Type]()
+	for !ok {
+		if scope.Parent == nil {
+			return option.None[*types.Type]()
+		}
+
+		scope = *scope.Parent
+
+		if scope.LocalContext == nil {
+			return option.None[*types.Type]()
+		}
+
+		t, ok = scope.LocalContext.Types[typ]
+		repr.Println(scope.FullScopeName(), scope.LocalContext.Types)
 	}
 
 	return option.Some(t)
+}
+
+func (a *Ast) ToFMTString() string {
+	r := a.FullScopeName() + "\n"
+
+	r += "\tTraits\n"
+
+	for n, t := range a.Traits {
+		r += "\t\t" + n + "\n"
+		for _, tn := range *t {
+			r += "\t\t\t" + tn.Visibility + " " + tn.Name + "("
+
+			for _, a := range tn.Arguments {
+				r += a.Type + " " + a.Name + "[" + a.Value.String() + "], "
+			}
+
+			r += ")\n"
+		}
+	}
+
+	r += "\tMethods\n"
+
+	for _, m := range a.Methods {
+		r += "\t\t" + m.Visibility + " " + m.Name + "("
+
+		for _, a := range m.Arguments {
+			r += a.Type + " " + a.Name + "[" + a.Value.String() + "], "
+		}
+
+		r += ")\n"
+	}
+
+	r += "\tVariables\n"
+
+	for _, v := range a.Variables {
+		r += "\t\t" + v.Type + " " + v.Name + "[" + v.Value.String() + "], \n"
+	}
+
+	r += "\tTypes\n"
+
+	for n, _ := range a.Classes {
+		r += "\t\t" + n + "\n"
+	}
+
+	r += "\tIR Types\n"
+
+	for n, t := range a.LocalContext.Types {
+		r += "\t\t" + n + "\n"
+		r += "\t\t\t" + repr.String(t) + "\n"
+	}
+
+	return r
 }
 
 func (a *Ast) ToCString() string {

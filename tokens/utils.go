@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/llir/llvm/ir"
+	"github.com/llir/llvm/ir/value"
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/codegen"
 	"github.com/neutrino2211/gecko/config"
@@ -53,18 +54,22 @@ func assignEntriesToAst(entries []*Entry, scope *ast.Ast) {
 			}
 		} else if entry.FuncCall != nil {
 			entry.FuncCall.AddToLLIR(scope)
+		} else if entry.If != nil {
+			entry.If.ToLLIRBlock(scope)
 		} else if entry.Return != nil {
 			returnLiteral(scope, entry.Return)
+		} else if entry.VoidReturn != nil {
+			returnVoid(scope)
 		}
 	}
 }
 
 func assignArgumentsToMethodArguments(args []*Value, mth *ast.Method) {
 	for _, v := range args {
-		def := ""
+		var def value.Value = nil
 
 		if v.Default != nil {
-			def = v.Default.ToCString(mth.Parent)
+			def = v.Default.ToLLIRValue(mth.Parent)
 		}
 
 		if mth.Scope != nil {
@@ -127,6 +132,7 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 
 	methodScope.Config = scope.Config
 	methodScope.LocalContext = codegen.NewLocalContext(irFunc)
+	methodScope.LoadPrimitives()
 
 	if len(m.Value) > 0 {
 		methodScope.LocalContext.MainBlock = methodScope.LocalContext.Func.NewBlock(irFunc.Name() + "$main")
@@ -150,6 +156,12 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 	assignEntriesToAst(m.Value, &methodScope)
 
 	assignArgumentsToMethodArguments(m.Arguments, astMth)
+
+	// If no return is specified, inject a void return
+	if methodScope.LocalContext.MainBlock != nil && methodScope.LocalContext.MainBlock.Term == nil {
+		t := true
+		m.Value = append(m.Value, &Entry{VoidReturn: &t})
+	}
 
 	// if len(m.Value) > 0 {
 	// 	methodScope.LocalContext.MainBlock.NewRet(constant.NewInt(types.I1, 0))

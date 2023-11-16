@@ -144,6 +144,8 @@ func (p *Primary) ToLLIRValue(scope *ast.Ast) value.Value {
 
 			base = variable.Value
 			// repr.Println(symbolVariable.Unwrap().GetLLIRType(scope))
+		} else {
+			scope.ErrorScope.NewCompileTimeError("Variable Resolution Error", "Unable to resolve the variable '"+p.Literal.Symbol+"'", p.Pos)
 		}
 	} else if p.Literal.FuncCall != nil {
 		// base = p.FuncCall.(scope)

@@ -1,7 +1,17 @@
 package main
 
-declare external func get_greeting(name: string): string
+declare external variardic func sprintf(buf: string, format: string)
 declare external variardic func printf(format: string)
+
+func get_greeting(name: string): string {
+  const greeting: string = &"                                            "
+
+  sprintf(greeting, &"Hello, %s", name)
+
+  printf(&"%s", greeting)
+
+  return greeting
+}
 
 func main(): int {
   const greeting: string = get_greeting(&"Mainasara")

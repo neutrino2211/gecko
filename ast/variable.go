@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/alecthomas/participle/lexer"
-	"github.com/alecthomas/repr"
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
 )
@@ -16,6 +15,7 @@ type Variable struct {
 	IsPointer  bool
 	IsConst    bool
 	IsExternal bool
+	IsArgument bool
 	Parent     *Ast
 }
 
@@ -32,7 +32,6 @@ func (v *Variable) GetFullName() string {
 }
 
 func (v *Variable) GetLLIRType(scope *Ast) *types.Type {
-	repr.Println(scope.LocalContext.Types)
 	return scope.ResolveLLIRType(v.Type).UnwrapOrElse(func(err error) *types.Type {
 		scope.ErrorScope.NewCompileTimeError("Type Resolution Error", "unable to resolve the type '"+v.Type+"'", lexer.Position{})
 		return &types.NewPointer(UnknownType.Type).ElemType

@@ -21,7 +21,7 @@ func (f *Field) ToAstVariable(scope *ast.Ast) *ast.Variable {
 		Name:       f.Name,
 		IsConst:    f.Mutability == "const",
 		IsPointer:  f.Type.Pointer,
-		Type:       "",
+		Type:       f.Type.Type,
 		Value:      val,
 		IsExternal: false,
 		Parent:     scope,

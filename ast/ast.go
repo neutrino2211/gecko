@@ -204,7 +204,14 @@ func (a *Ast) ToFMTString() string {
 	r += "\tVariables\n"
 
 	for _, v := range a.Variables {
-		r += "\t\t" + v.Type + " " + v.Name + "[" + v.Value.String() + "], \n"
+		typ := *v.GetLLIRType(a)
+		r += "\t\t" + typ.LLString() + " " + v.Name
+
+		if v.Value != nil {
+			r += "[" + v.Value.String() + "]"
+		}
+
+		r += "\n"
 	}
 
 	r += "\tTypes\n"

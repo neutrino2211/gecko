@@ -153,6 +153,21 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 	scope.ChildContexts[astMth.GetFullName()] = methodScope.LocalContext
 	scope.ProgramContext.Module.Funcs = append(scope.ProgramContext.Module.Funcs, methodScope.LocalContext.Func)
 
+	// Add arguments as variables
+
+	for _, v := range m.Arguments {
+		methodScope.Variables[v.Name] = ast.Variable{
+			IsPointer:  v.Type.Pointer,
+			IsConst:    v.Type.Const,
+			IsExternal: false,
+			IsArgument: true,
+			Name:       v.Name,
+			Type:       v.Type.Type,
+			Parent:     &methodScope,
+			Value:      ir.NewParam(v.Name, v.Type.GetLLIRType(&methodScope)),
+		}
+	}
+
 	assignEntriesToAst(m.Value, &methodScope)
 
 	assignArgumentsToMethodArguments(m.Arguments, astMth)

@@ -147,6 +147,7 @@ func (p *Primary) ToLLIRValue(scope *ast.Ast) value.Value {
 		}
 	} else if p.Literal.FuncCall != nil {
 		// base = p.FuncCall.(scope)
+		base = p.Literal.FuncCall.AddToLLIR(scope).Unwrap()
 	}
 
 	return base

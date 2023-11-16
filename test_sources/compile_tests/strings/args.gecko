@@ -1,0 +1,8 @@
+package main
+
+declare external variardic func printf(format: string)
+
+func main(argc: int): int {
+  printf(&"Got %d arguments\n", argc)
+  return 0
+}

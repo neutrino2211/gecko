@@ -69,7 +69,7 @@ func assignArgumentsToMethodArguments(args []*Value, mth *ast.Method) {
 		var def value.Value = nil
 
 		if v.Default != nil {
-			def = v.Default.ToLLIRValue(mth.Parent)
+			def = v.Default.ToLLIRValue(mth.Parent, v.Type)
 		}
 
 		if mth.Scope != nil {

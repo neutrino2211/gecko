@@ -189,7 +189,7 @@ type Implementation struct {
 type Field struct {
 	baseToken
 	Visibility string      `parser:"[ @'private' | @'public' | @'protected' | @'external' ]"`
-	Mutability string      `parser:"@( 'const' | 'let' )"`
+	Mutability string      `parser:"@'let'"`
 	Name       string      `parser:"@Ident"`
 	Type       *TypeRef    `parser:"[ ':' @@ ]"`
 	Value      *Expression `parser:"[ '=' @@ ]"`

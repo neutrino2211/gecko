@@ -26,7 +26,9 @@ func (i *If) ToLLIRBlock(scope *ast.Ast) {
 
 	assignEntriesToAst(i.Value, ifBlockScope)
 
-	condVal := i.Expression.ToLLIRValue(scope)
+	condVal := i.Expression.ToLLIRValue(scope, &TypeRef{
+		Type: "bool",
+	})
 
 	if i.Else != nil {
 		elseBlock = i.Else.ToLLIRBlock(scope)
@@ -59,7 +61,9 @@ func (ei *ElseIf) ToLLIRBlock(scope *ast.Ast) *ir.Block {
 
 	assignEntriesToAst(ei.Value, elseIfBlockScope)
 
-	condVal := ei.Expression.ToLLIRValue(scope)
+	condVal := ei.Expression.ToLLIRValue(scope, &TypeRef{
+		Type: "bool",
+	})
 
 	if ei.Else != nil {
 		elseBlock = ei.Else.ToLLIRBlock(scope)

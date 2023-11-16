@@ -68,8 +68,16 @@ func (f *FuncCall) AddToLLIR(scope *ast.Ast) *option.Optional[*ir.InstCall] {
 
 	args := make([]value.Value, 0)
 
-	for _, a := range f.Arguments {
-		args = append(args, a.Value.ToLLIRValue(scope))
+	for i, a := range f.Arguments {
+		tr := &TypeRef{}
+
+		if i < len(mthUnwrapped.Arguments) {
+			tr = &TypeRef{
+				Type: mthUnwrapped.Arguments[i].Type,
+			}
+		}
+
+		args = append(args, a.Value.ToLLIRValue(scope, tr))
 	}
 
 	call := scope.LocalContext.MainBlock.NewCall(fn, args...)

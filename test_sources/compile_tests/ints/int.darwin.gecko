@@ -2,10 +2,10 @@ package main
 
 declare external variardic func printf(format: string)
 
-const GLOBAL_INT: int = 30
+let GLOBAL_INT: int = 30
 
 func main (): int {
-  const hello: string = &"A string %d\n"
+  let hello: string = &"A string %d\n"
 
   printf(&"A CONST %d\n", 90)
   

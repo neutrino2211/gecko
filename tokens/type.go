@@ -64,6 +64,13 @@ func (t *TypeRef) GetLLIRType(scope *ast.Ast) types.Type {
 	}
 
 	// TODO: Make LLIR type from compound types
+	if t.Array != nil {
+		return &types.PointerType{
+			TypeName:  "",
+			ElemType:  t.Array.GetLLIRType(scope),
+			AddrSpace: 0,
+		}
+	}
 
 	return nil
 }

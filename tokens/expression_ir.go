@@ -17,71 +17,71 @@ var equalityOps map[string]enum.IPred = map[string]enum.IPred{
 	"==": enum.IPredEQ,
 }
 
-func (e *Expression) ToLLIRValue(scope *ast.Ast) value.Value {
+func (e *Expression) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
 	var base value.Value
 
 	eq := e.Equality
 
-	base = eq.ToLLIRValue(scope)
+	base = eq.ToLLIRValue(scope, expressionType)
 
 	return base
 }
 
-func (eq *Equality) ToLLIRValue(scope *ast.Ast) value.Value {
+func (eq *Equality) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
 	var base value.Value
 
 	if eq.Next != nil {
-		v := eq.Next.ToLLIRValue(scope)
-		base = scope.LocalContext.MainBlock.NewICmp(equalityOps[eq.Op], eq.Comparison.ToLLIRValue(scope), v)
+		v := eq.Next.ToLLIRValue(scope, expressionType)
+		base = scope.LocalContext.MainBlock.NewICmp(equalityOps[eq.Op], eq.Comparison.ToLLIRValue(scope, expressionType), v)
 		// base += eq.Op
 		// base += eq.Next.ToLLIRValue(scope)
 	} else {
-		base = eq.Comparison.ToLLIRValue(scope)
+		base = eq.Comparison.ToLLIRValue(scope, expressionType)
 	}
 
 	return base
 }
 
-func (c *Comparison) ToLLIRValue(scope *ast.Ast) value.Value {
+func (c *Comparison) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
 	var base value.Value
 
 	if c.Next != nil {
 		// base += c.Op
 		// base += c.Next.ToLLIRValue(scope)
 	} else {
-		base = c.Addition.ToLLIRValue(scope)
+		base = c.Addition.ToLLIRValue(scope, expressionType)
 	}
 
 	return base
 }
 
-func (a *Addition) ToLLIRValue(scope *ast.Ast) value.Value {
+func (a *Addition) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
 	var base value.Value
 
 	if a.Next != nil {
 		// base += a.Op
 		// base += a.Next.ToLLIRValue(scope)
 	} else {
-		base = a.Multiplication.ToLLIRValue(scope)
+		base = a.Multiplication.ToLLIRValue(scope, expressionType)
 	}
 
 	return base
 }
 
-func (m *Multiplication) ToLLIRValue(scope *ast.Ast) value.Value {
+func (m *Multiplication) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
 	var base value.Value
 
 	if m.Next != nil {
 		// base += m.Op
 		// base += m.Next.ToLLIRValue(scope)
 	} else {
-		base = m.Unary.ToLLIRValue(scope)
+		base = m.Unary.ToLLIRValue(scope, expressionType)
 	}
 
 	return base
 }
 
-func (u *Unary) ToLLIRValue(scope *ast.Ast) value.Value {
+func (u *Unary) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
 	var base value.Value
 
 	if u.Unary != nil {
@@ -92,17 +92,17 @@ func (u *Unary) ToLLIRValue(scope *ast.Ast) value.Value {
 		// base += u.Op
 		// base += u.Unary.ToLLIRValue(scope)
 	} else if u.Primary != nil {
-		base = u.Primary.ToLLIRValue(scope)
+		base = u.Primary.ToLLIRValue(scope, expressionType)
 	}
 
 	return base
 }
 
-func (p *Primary) ToLLIRValue(scope *ast.Ast) value.Value {
+func (p *Primary) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
 	var base value.Value
 
 	if p.SubExpression != nil {
-		base = p.SubExpression.ToLLIRValue(scope)
+		base = p.SubExpression.ToLLIRValue(scope, expressionType)
 	} else if p.Literal.Bool != "" {
 		i := map[string]int64{"true": 1, "false": 0}[p.Literal.Bool]
 		base = constant.NewInt(types.I1, i)
@@ -128,12 +128,27 @@ func (p *Primary) ToLLIRValue(scope *ast.Ast) value.Value {
 		if p.Literal.IsPointer {
 			def := scope.ProgramContext.Module.NewGlobalDef(".str."+p.GetID(), str)
 			def.Linkage = enum.LinkagePrivate
-			def.UnnamedAddr = enum.UnnamedAddrUnnamedAddr
-			def.Immutable = true
+
+			if expressionType.Const {
+				def.UnnamedAddr = enum.UnnamedAddrUnnamedAddr
+				def.Immutable = true
+			}
 			base = scope.LocalContext.MainBlock.NewGetElementPtr(str.Typ, def, constant.NewInt(types.I8, 0))
 		} else {
 			base = str
 		}
+	} else if p.Literal.Array != nil {
+		var r []value.Value = make([]value.Value, 0)
+
+		for _, e := range p.Literal.Array {
+			r = append(r, e.ToLLIRValue(scope))
+		}
+
+		// t := expressionType.GetLLIRType(scope)
+
+		// a := constant.NewArray(&types.ArrayType{ElemType: t}, r...)
+	} else if p.Literal.ArrayIndex != nil {
+
 	} else if p.Literal.Symbol != "" {
 		symbolVariable := scope.ResolveSymbolAsVariable(p.Literal.Symbol)
 
@@ -149,7 +164,11 @@ func (p *Primary) ToLLIRValue(scope *ast.Ast) value.Value {
 		}
 	} else if p.Literal.FuncCall != nil {
 		// base = p.FuncCall.(scope)
-		base = p.Literal.FuncCall.AddToLLIR(scope).Unwrap()
+		call := p.Literal.FuncCall.AddToLLIR(scope)
+
+		if !call.IsNil() {
+			base = call.Unwrap()
+		}
 	}
 
 	return base

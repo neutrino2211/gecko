@@ -1,20 +1,18 @@
 package main
 
-declare external variardic func sprintf(buf: string, format: string)
+declare external func get_greeting(name: string): string
 declare external variardic func printf(format: string)
 
-func get_greeting(name: string): string {
-  const greeting: string = &"                                            "
+// func get_greeting(name: string): string {
+//  let greeting: string = &"                                            "
 
-  sprintf(greeting, &"Hello, %s", name)
+//  sprintf(greeting, &"Hello, %s", name)
 
-  printf(&"%s", greeting)
-
-  return greeting
-}
+//  return greeting
+// }
 
 func main(): int {
-  const greeting: string = get_greeting(&"Mainasara")
+  let greeting: string = get_greeting(&"Mainasara")
 
   printf(&"Address of string in Gecko is 0x%x\n", greeting)
   printf(&"The greeting is\n=> \"%s\"", greeting)

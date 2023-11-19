@@ -5,11 +5,11 @@ declare external variardic func printf(format: string)
 let GLOBAL_INT: int = 30
 
 func main (): int {
-  let hello: string = &"A string %d\n"
+  let hello: string = &"Another number %d\n"
 
-  printf(&"A CONST %d\n", 90)
+  printf(&"A number %d\n", 90)
   
-  printf(&"A let %s\n", &"HH")
+  printf(&"A string %s\n", &"HH")
 
   printf(hello, GLOBAL_INT)
 

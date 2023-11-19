@@ -3,6 +3,7 @@ package tokens
 
 import (
 	"github.com/alecthomas/participle/lexer"
+	"github.com/llir/llvm/ir/types"
 	"github.com/neutrino2211/gecko/config"
 )
 
@@ -248,12 +249,13 @@ type SizeDef struct {
 
 type TypeRef struct {
 	baseToken
-	Array   *TypeRef `parser:"( '[' @@ ']'"`
-	Size    *SizeDef `parser:" | @@"`
-	Type    string   `parser:" | @Ident)"`
-	Trait   string   `parser:"[ 'is' @Ident ]"`
-	Const   bool     `parser:"[ @'!' ]"`
-	Pointer bool     `parser:"[ @'*']"`
+	Array    *TypeRef `parser:"( '[' @@ ']'"`
+	Size     *SizeDef `parser:" | @@"`
+	Type     string   `parser:" | @Ident)"`
+	Trait    string   `parser:"[ 'is' @Ident ]"`
+	Const    bool     `parser:"[ @'!' ]"`
+	Pointer  bool     `parser:"[ @'*']"`
+	LLIRType types.Type
 }
 
 type Literal struct {

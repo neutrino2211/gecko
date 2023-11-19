@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/alecthomas/repr"
 	"github.com/llir/llvm/ir/constant"
 	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/types"
@@ -11,6 +12,12 @@ import (
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/go-option"
 )
+
+type ValueAsContant struct {
+	value.Value
+}
+
+func (v ValueAsContant) IsConstant() {}
 
 var equalityOps map[string]enum.IPred = map[string]enum.IPred{
 	"!=": enum.IPredNE,
@@ -138,16 +145,56 @@ func (p *Primary) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Val
 			base = str
 		}
 	} else if p.Literal.Array != nil {
-		var r []value.Value = make([]value.Value, 0)
+		memType := &types.ArrayType{
+			Len:      uint64(len(p.Literal.Array)),
+			ElemType: expressionType.Array.GetLLIRType(scope),
+		}
+		mem := scope.LocalContext.MainBlock.NewAlloca(memType)
+		memDirect := scope.LocalContext.MainBlock.NewExtractValue(mem, 0)
 
-		for _, e := range p.Literal.Array {
-			r = append(r, e.ToLLIRValue(scope))
+		for i, e := range p.Literal.Array {
+			p := &Primary{
+				Literal: e,
+			}
+			v := p.ToLLIRValue(scope, expressionType)
+			repr.Println(v.Type().LLString(), memDirect.Typ.LLString())
+			// scope.LocalContext.MainBlock.NewStore(v, mem)
+			scope.LocalContext.MainBlock.NewInsertValue(memDirect, v, uint64(i))
 		}
 
-		// t := expressionType.GetLLIRType(scope)
-
-		// a := constant.NewArray(&types.ArrayType{ElemType: t}, r...)
+		base = mem
 	} else if p.Literal.ArrayIndex != nil {
+		index := *p.Literal.ArrayIndex
+		p.Literal.ArrayIndex = nil
+		val := p.ToLLIRValue(scope, expressionType)
+
+		arrayType := val.Type()
+		arrayIndexVal := &Primary{Literal: &index}
+		arrayIndex := arrayIndexVal.ToLLIRValue(scope, expressionType)
+
+		if arrayType == nil {
+			scope.ErrorScope.NewCompileTimeWarning("Invalid Expression Type", "the type for the following expression ended up being invalid, weird", p.Pos)
+		}
+
+		repr.Println(arrayType, arrayIndex, val)
+
+		if val == nil {
+			scope.ErrorScope.NewCompileTimeError("Parse Error", "unable to parse the expression", p.Literal.Pos)
+		} else {
+			elType := val.Type()
+			pointerType := &types.PointerType{
+				ElemType: &types.IntType{
+					BitSize: 8,
+				},
+			}
+			arrayPtr := scope.LocalContext.MainBlock.NewPtrToInt(val, pointerType)
+			ptrOffset := scope.LocalContext.MainBlock.NewMul(arrayPtr, arrayIndex)
+			offset := scope.LocalContext.MainBlock.NewAdd(arrayPtr, ptrOffset)
+			elPtr := scope.LocalContext.MainBlock.NewIntToPtr(offset, elType)
+			base = scope.LocalContext.MainBlock.NewLoad(elType, elPtr)
+
+			// base = scope.LocalContext.MainBlock.NewExtractValue(val, 0)
+		}
 
 	} else if p.Literal.Symbol != "" {
 		symbolVariable := scope.ResolveSymbolAsVariable(p.Literal.Symbol)

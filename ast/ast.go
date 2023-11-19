@@ -182,7 +182,7 @@ func (a *Ast) ToFMTString() string {
 			r += "\t\t\t" + tn.Visibility + " " + tn.Name + "("
 
 			for _, a := range tn.Arguments {
-				r += a.Type + " " + a.Name + "[" + a.Value.String() + "], "
+				r += a.Type.Name() + " " + a.Name + "[" + a.Value.String() + "], "
 			}
 
 			r += ")\n"
@@ -195,7 +195,7 @@ func (a *Ast) ToFMTString() string {
 		r += "\t\t" + m.Visibility + " " + m.Name + "("
 
 		for _, a := range m.Arguments {
-			r += a.Type + " " + a.Name + "[" + a.Value.String() + "], "
+			r += a.Type.Name() + " " + a.Name + "[" + a.Value.String() + "], "
 		}
 
 		r += ")\n"

@@ -21,7 +21,7 @@ func (f *Field) ToAstVariable(scope *ast.Ast) *ast.Variable {
 		Name:       f.Name,
 		IsConst:    f.Type.Const,
 		IsPointer:  f.Type.Pointer,
-		Type:       f.Type.Type,
+		Type:       f.Type.GetLLIRType(scope),
 		Value:      val,
 		IsExternal: false,
 		Parent:     scope,

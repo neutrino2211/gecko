@@ -73,7 +73,7 @@ func (f *FuncCall) AddToLLIR(scope *ast.Ast) *option.Optional[*ir.InstCall] {
 
 		if i < len(mthUnwrapped.Arguments) {
 			tr = &TypeRef{
-				Type: mthUnwrapped.Arguments[i].Type,
+				LLIRType: mthUnwrapped.Arguments[i].Type,
 			}
 		}
 

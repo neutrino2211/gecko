@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/alecthomas/repr"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/value"
 	"github.com/neutrino2211/gecko/ast"
@@ -78,7 +79,7 @@ func assignArgumentsToMethodArguments(args []*Value, mth *ast.Method) {
 
 		mth.Arguments = append(mth.Arguments, ast.Variable{
 			Name:      v.Name,
-			Type:      v.Type.ToCString(mth.Parent),
+			Type:      v.Type.GetLLIRType(mth.Scope),
 			IsPointer: v.Type.Pointer,
 			Value:     def,
 		})
@@ -156,13 +157,14 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 	// Add arguments as variables
 
 	for _, v := range m.Arguments {
+		repr.Println(v.Type, v.Name)
 		methodScope.Variables[v.Name] = ast.Variable{
 			IsPointer:  v.Type.Pointer,
 			IsConst:    v.Type.Const,
 			IsExternal: false,
 			IsArgument: true,
 			Name:       v.Name,
-			Type:       v.Type.Type,
+			Type:       v.Type.GetLLIRType(scope),
 			Parent:     &methodScope,
 			Value:      ir.NewParam(v.Name, v.Type.GetLLIRType(&methodScope)),
 		}

@@ -5,7 +5,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/alecthomas/repr"
 	"github.com/llir/llvm/ir"
+	"github.com/llir/llvm/ir/value"
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/codegen"
 	"github.com/neutrino2211/gecko/config"
@@ -53,18 +55,22 @@ func assignEntriesToAst(entries []*Entry, scope *ast.Ast) {
 			}
 		} else if entry.FuncCall != nil {
 			entry.FuncCall.AddToLLIR(scope)
+		} else if entry.If != nil {
+			entry.If.ToLLIRBlock(scope)
 		} else if entry.Return != nil {
 			returnLiteral(scope, entry.Return)
+		} else if entry.VoidReturn != nil {
+			returnVoid(scope)
 		}
 	}
 }
 
 func assignArgumentsToMethodArguments(args []*Value, mth *ast.Method) {
 	for _, v := range args {
-		def := ""
+		var def value.Value = nil
 
 		if v.Default != nil {
-			def = v.Default.ToCString(mth.Parent)
+			def = v.Default.ToLLIRValue(mth.Parent, v.Type)
 		}
 
 		if mth.Scope != nil {
@@ -73,7 +79,7 @@ func assignArgumentsToMethodArguments(args []*Value, mth *ast.Method) {
 
 		mth.Arguments = append(mth.Arguments, ast.Variable{
 			Name:      v.Name,
-			Type:      v.Type.ToCString(mth.Parent),
+			Type:      v.Type.GetLLIRType(mth.Scope),
 			IsPointer: v.Type.Pointer,
 			Value:     def,
 		})
@@ -127,6 +133,7 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 
 	methodScope.Config = scope.Config
 	methodScope.LocalContext = codegen.NewLocalContext(irFunc)
+	methodScope.LoadPrimitives()
 
 	if len(m.Value) > 0 {
 		methodScope.LocalContext.MainBlock = methodScope.LocalContext.Func.NewBlock(irFunc.Name() + "$main")
@@ -147,9 +154,31 @@ func (m *Method) ToAstMethod(scope *ast.Ast) *ast.Method {
 	scope.ChildContexts[astMth.GetFullName()] = methodScope.LocalContext
 	scope.ProgramContext.Module.Funcs = append(scope.ProgramContext.Module.Funcs, methodScope.LocalContext.Func)
 
+	// Add arguments as variables
+
+	for _, v := range m.Arguments {
+		repr.Println(v.Type, v.Name)
+		methodScope.Variables[v.Name] = ast.Variable{
+			IsPointer:  v.Type.Pointer,
+			IsConst:    v.Type.Const,
+			IsExternal: false,
+			IsArgument: true,
+			Name:       v.Name,
+			Type:       v.Type.GetLLIRType(scope),
+			Parent:     &methodScope,
+			Value:      ir.NewParam(v.Name, v.Type.GetLLIRType(&methodScope)),
+		}
+	}
+
 	assignEntriesToAst(m.Value, &methodScope)
 
 	assignArgumentsToMethodArguments(m.Arguments, astMth)
+
+	// If no return is specified, inject a void return
+	if methodScope.LocalContext.MainBlock != nil && methodScope.LocalContext.MainBlock.Term == nil {
+		t := true
+		m.Value = append(m.Value, &Entry{VoidReturn: &t})
+	}
 
 	// if len(m.Value) > 0 {
 	// 	methodScope.LocalContext.MainBlock.NewRet(constant.NewInt(types.I1, 0))

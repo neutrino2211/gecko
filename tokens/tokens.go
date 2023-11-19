@@ -3,6 +3,7 @@ package tokens
 
 import (
 	"github.com/alecthomas/participle/lexer"
+	"github.com/llir/llvm/ir/types"
 	"github.com/neutrino2211/gecko/config"
 )
 
@@ -39,7 +40,7 @@ type Import struct {
 type Entry struct {
 	baseToken
 	Return         *Expression     `parser:"'return' @@"`
-	VoidReturn     string          `parser:"| @'return'"`
+	VoidReturn     *bool           `parser:"| @'return'"`
 	Assignment     *Assignment     `parser:"| @@"`
 	ElseIf         *ElseIf         `parser:"| @@"`
 	Else           *Else           `parser:"| @@"`
@@ -90,12 +91,16 @@ type If struct {
 	baseToken
 	Expression *Expression `parser:"'if' '(' @@ ')'"`
 	Value      []*Entry    `parser:"'{' { @@ } '}'"`
+	ElseIf     *ElseIf     `parser:"[ @@ "`
+	Else       *Else       `parser:"| @@ ]"`
 }
 
 type ElseIf struct {
 	baseToken
-	Expression *Expression `parser:"'elif' '(' @@ ')'"`
+	Expression *Expression `parser:"'else' 'if' '(' @@ ')'"`
 	Value      []*Entry    `parser:"'{' { @@ } '}'"`
+	ElseIf     *ElseIf     `parser:"[ @@ "`
+	Else       *Else       `parser:"| @@ ]"`
 }
 
 type Else struct {
@@ -127,7 +132,7 @@ type Comparison struct {
 type Addition struct {
 	baseToken
 	Multiplication *Multiplication `parser:"@@"`
-	Op             string          `parser:"[ @( '-' | '+' )"`
+	Op             string          `parser:"[ @( '-' | '+' | '|' | '&' | '>' '>' '>' | '<' '<' '<')"`
 	Next           *Addition       `parser:"  @@ ]"`
 }
 
@@ -185,7 +190,7 @@ type Implementation struct {
 type Field struct {
 	baseToken
 	Visibility string      `parser:"[ @'private' | @'public' | @'protected' | @'external' ]"`
-	Mutability string      `parser:"@( 'const' | 'let' )"`
+	Mutability string      `parser:"@'let'"`
 	Name       string      `parser:"@Ident"`
 	Type       *TypeRef    `parser:"[ ':' @@ ]"`
 	Value      *Expression `parser:"[ '=' @@ ]"`
@@ -244,12 +249,13 @@ type SizeDef struct {
 
 type TypeRef struct {
 	baseToken
-	Array       *TypeRef `parser:"( '[' @@ ']'"`
-	Size        *SizeDef `parser:" | @@"`
-	Type        string   `parser:" | @Ident)"`
-	Trait       string   `parser:"[ 'is' @Ident ]"`
-	NonNullable bool     `parser:"[ @'!' ]"`
-	Pointer     bool     `parser:"[ @'*']"`
+	Array    *TypeRef `parser:"( '[' @@ ']'"`
+	Size     *SizeDef `parser:" | @@"`
+	Type     string   `parser:" | @Ident)"`
+	Trait    string   `parser:"[ 'is' @Ident ]"`
+	Const    bool     `parser:"[ @'!' ]"`
+	Pointer  bool     `parser:"[ @'*']"`
+	LLIRType types.Type
 }
 
 type Literal struct {

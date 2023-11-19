@@ -1,0 +1,10 @@
+package main
+
+declare external func get_greeting(name: string): string
+declare external variardic func printf(format: string)
+
+func main(argc: int, argv: [string]): int {
+  let array: [int!] = [1, 2, 3]
+  printf(&"Got %d arguments, arg[0]: , array[0]: %s\n", argc, array[0])
+  return 0
+}

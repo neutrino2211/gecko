@@ -1,0 +1,20 @@
+package main
+
+declare external func get_greeting(name: string): string
+declare external variardic func printf(format: string)
+
+// func get_greeting(name: string): string {
+//  let greeting: string = &"                                            "
+
+//  sprintf(greeting, &"Hello, %s", name)
+
+//  return greeting
+// }
+
+func main(): int {
+  let greeting: string = get_greeting(&"Mainasara")
+
+  printf(&"Address of string in Gecko is 0x%x\n", greeting)
+  printf(&"The greeting is\n=> \"%s\"", greeting)
+  return 0
+}

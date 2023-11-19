@@ -10,17 +10,19 @@ func (f *Field) ToAstVariable(scope *ast.Ast) *ast.Variable {
 		f.Type = &TypeRef{}
 	}
 
-	if f.Value == nil && f.Mutability == "const" {
+	if f.Value == nil && f.Type.Const {
 		scope.ErrorScope.NewCompileTimeError("Uninitialesed constant", "constant must be initialised with a value", f.Pos)
 		f.Value = &Expression{}
 	}
 
+	val := f.Value.ToLLIRValue(scope, f.Type)
+
 	fieldVariable := ast.Variable{
 		Name:       f.Name,
-		IsConst:    f.Mutability == "const",
+		IsConst:    f.Type.Const,
 		IsPointer:  f.Type.Pointer,
-		Type:       f.Type.ToCString(scope),
-		Value:      f.Value.ToCString(scope),
+		Type:       f.Type.GetLLIRType(scope),
+		Value:      val,
 		IsExternal: false,
 		Parent:     scope,
 	}

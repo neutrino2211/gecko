@@ -25,6 +25,13 @@ var UnknownType = &PrimitiveType{
 	Type: types.Void,
 }
 
+var BoolType = &PrimitiveType{
+	Class: &Ast{
+		Scope: "bool",
+	},
+	Type: types.I1,
+}
+
 // String
 
 var RawStringType = &PrimitiveType{
@@ -112,4 +119,5 @@ var Primitives = []*PrimitiveType{
 	VoidType,
 	IntType,
 	RawStringType,
+	BoolType,
 }

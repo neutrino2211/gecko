@@ -32,9 +32,15 @@ func (m *ModuleContext) Init() {
 }
 
 func (l *LocalContext) Init(fn *ir.Func) {
-	l.Func = fn
-	l.Branches = make(map[string]*ir.Block)
-	l.Types = make(map[string]*types.Type)
+	if l.Func == nil {
+		l.Func = fn
+	}
+	if l.Branches == nil {
+		l.Branches = make(map[string]*ir.Block)
+	}
+	if l.Types == nil {
+		l.Types = make(map[string]*types.Type)
+	}
 }
 
 func (e *ExecutionContext) Init() {

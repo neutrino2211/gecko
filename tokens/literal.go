@@ -52,8 +52,8 @@ func (l *Literal) ToLLIRValue(scope *ast.Ast) value.Value {
 	} else if l.String != "" {
 		val = constant.NewCharArrayFromString(l.String)
 	} else if l.Number != "" {
-		conv := option.SomePair(strconv.Atoi(l.Number))
-		val = constant.NewInt(types.I64, int64(conv.Unwrap()))
+		conv := option.SomePair(strconv.Atoi(l.Number)).Unwrap()
+		val = constant.NewInt(types.I64, int64(conv))
 	}
 
 	return val

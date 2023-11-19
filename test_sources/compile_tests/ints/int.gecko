@@ -3,7 +3,7 @@ package main
 declare external func printf(format: string, a1: int)
 
 func main (): int {
-  printf(&"A CONST %s\n", "HH")
+  printf(&"A CONST %s\n", "H")
   
   printf(&"A let %d\n", 40)
 

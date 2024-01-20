@@ -1,7 +1,6 @@
-package tokens
+package llvmbackend
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/alecthomas/repr"
@@ -10,6 +9,7 @@ import (
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/tokens"
 	"github.com/neutrino2211/go-option"
 )
 
@@ -24,71 +24,73 @@ var equalityOps map[string]enum.IPred = map[string]enum.IPred{
 	"==": enum.IPredEQ,
 }
 
-func (e *Expression) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
+func ExpressionToLLIRValue(e *tokens.Expression, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
 	eq := e.Equality
 
-	base = eq.ToLLIRValue(scope, expressionType)
+	base = EqualityToLLIRValue(eq, scope, expressionType)
 
 	return base
 }
 
-func (eq *Equality) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
+func EqualityToLLIRValue(eq *tokens.Equality, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
 	if eq.Next != nil {
-		v := eq.Next.ToLLIRValue(scope, expressionType)
-		base = scope.LocalContext.MainBlock.NewICmp(equalityOps[eq.Op], eq.Comparison.ToLLIRValue(scope, expressionType), v)
+		v := EqualityToLLIRValue(eq.Next, scope, expressionType)
+		info := LLVMGetScopeInformation(scope)
+
+		base = info.LocalContext.MainBlock.NewICmp(equalityOps[eq.Op], ComparisonToLLIRValue(eq.Comparison, scope, expressionType), v)
 		// base += eq.Op
 		// base += eq.Next.ToLLIRValue(scope)
 	} else {
-		base = eq.Comparison.ToLLIRValue(scope, expressionType)
+		base = ComparisonToLLIRValue(eq.Comparison, scope, expressionType)
 	}
 
 	return base
 }
 
-func (c *Comparison) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
+func ComparisonToLLIRValue(c *tokens.Comparison, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
 	if c.Next != nil {
 		// base += c.Op
 		// base += c.Next.ToLLIRValue(scope)
 	} else {
-		base = c.Addition.ToLLIRValue(scope, expressionType)
+		base = AdditionToLLIRValue(c.Addition, scope, expressionType)
 	}
 
 	return base
 }
 
-func (a *Addition) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
+func AdditionToLLIRValue(a *tokens.Addition, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
 	if a.Next != nil {
 		// base += a.Op
 		// base += a.Next.ToLLIRValue(scope)
 	} else {
-		base = a.Multiplication.ToLLIRValue(scope, expressionType)
+		base = MultiplicationToLLIRValue(a.Multiplication, scope, expressionType)
 	}
 
 	return base
 }
 
-func (m *Multiplication) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
+func MultiplicationToLLIRValue(m *tokens.Multiplication, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
 	if m.Next != nil {
 		// base += m.Op
 		// base += m.Next.ToLLIRValue(scope)
 	} else {
-		base = m.Unary.ToLLIRValue(scope, expressionType)
+		base = UnaryToLLIRValue(m.Unary, scope, expressionType)
 	}
 
 	return base
 }
 
-func (u *Unary) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
+func UnaryToLLIRValue(u *tokens.Unary, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
 	if u.Unary != nil {
@@ -99,17 +101,17 @@ func (u *Unary) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value
 		// base += u.Op
 		// base += u.Unary.ToLLIRValue(scope)
 	} else if u.Primary != nil {
-		base = u.Primary.ToLLIRValue(scope, expressionType)
+		base = PrimaryToLLIRValue(u.Primary, scope, expressionType)
 	}
 
 	return base
 }
 
-func (p *Primary) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Value {
+func PrimaryToLLIRValue(p *tokens.Primary, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
 	if p.SubExpression != nil {
-		base = p.SubExpression.ToLLIRValue(scope, expressionType)
+		base = ExpressionToLLIRValue(p.SubExpression, scope, expressionType)
 	} else if p.Literal.Bool != "" {
 		i := map[string]int64{"true": 1, "false": 0}[p.Literal.Bool]
 		base = constant.NewInt(types.I1, i)
@@ -132,45 +134,53 @@ func (p *Primary) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Val
 
 		str := constant.NewCharArrayFromString(actual + string('\x00'))
 		println(actual, p.Literal.IsPointer)
+		info := LLVMGetScopeInformation(scope)
 		if p.Literal.IsPointer {
-			def := scope.ProgramContext.Module.NewGlobalDef(".str."+p.GetID(), str)
+			def := info.ProgramContext.Module.NewGlobalDef(".str."+p.GetID(), str)
 			def.Linkage = enum.LinkagePrivate
 
 			if expressionType.Const {
 				def.UnnamedAddr = enum.UnnamedAddrUnnamedAddr
 				def.Immutable = true
 			}
-			base = scope.LocalContext.MainBlock.NewGetElementPtr(str.Typ, def, constant.NewInt(types.I8, 0))
+
+			base = info.LocalContext.MainBlock.NewGetElementPtr(str.Typ, def, constant.NewInt(types.I8, 0))
 		} else {
 			base = str
 		}
 	} else if p.Literal.Array != nil {
 		memType := &types.ArrayType{
 			Len:      uint64(len(p.Literal.Array)),
-			ElemType: expressionType.Array.GetLLIRType(scope),
+			ElemType: TypeRefGetLLIRType(expressionType.Array, scope),
 		}
-		mem := scope.LocalContext.MainBlock.NewAlloca(memType)
-		memDirect := scope.LocalContext.MainBlock.NewExtractValue(mem, 0)
+		info := LLVMGetScopeInformation(scope)
+
+		mem := info.LocalContext.MainBlock.NewAlloca(memType)
+
+		memDirect := info.LocalContext.MainBlock.NewExtractValue(mem, 0)
 
 		for i, e := range p.Literal.Array {
-			p := &Primary{
+			p := &tokens.Primary{
 				Literal: e,
 			}
-			v := p.ToLLIRValue(scope, expressionType)
+			v := PrimaryToLLIRValue(p, scope, expressionType)
 			repr.Println(v.Type().LLString(), memDirect.Typ.LLString())
-			// scope.LocalContext.MainBlock.NewStore(v, mem)
-			scope.LocalContext.MainBlock.NewInsertValue(memDirect, v, uint64(i))
+			info := LLVMGetScopeInformation(scope)
+
+			// info.LocalContext.MainBlock.NewStore(v, mem)
+
+			info.LocalContext.MainBlock.NewInsertValue(memDirect, v, uint64(i))
 		}
 
 		base = mem
 	} else if p.Literal.ArrayIndex != nil {
 		index := *p.Literal.ArrayIndex
 		p.Literal.ArrayIndex = nil
-		val := p.ToLLIRValue(scope, expressionType)
+		val := PrimaryToLLIRValue(p, scope, expressionType)
 
 		arrayType := val.Type()
-		arrayIndexVal := &Primary{Literal: &index}
-		arrayIndex := arrayIndexVal.ToLLIRValue(scope, expressionType)
+		arrayIndexVal := &tokens.Primary{Literal: &index}
+		arrayIndex := PrimaryToLLIRValue(arrayIndexVal, scope, expressionType)
 
 		if arrayType == nil {
 			scope.ErrorScope.NewCompileTimeWarning("Invalid Expression Type", "the type for the following expression ended up being invalid, weird", p.Pos)
@@ -187,24 +197,24 @@ func (p *Primary) ToLLIRValue(scope *ast.Ast, expressionType *TypeRef) value.Val
 					BitSize: 8,
 				},
 			}
-			arrayPtr := scope.LocalContext.MainBlock.NewPtrToInt(val, pointerType)
-			ptrOffset := scope.LocalContext.MainBlock.NewMul(arrayPtr, arrayIndex)
-			offset := scope.LocalContext.MainBlock.NewAdd(arrayPtr, ptrOffset)
-			elPtr := scope.LocalContext.MainBlock.NewIntToPtr(offset, elType)
-			base = scope.LocalContext.MainBlock.NewLoad(elType, elPtr)
+			info := LLVMGetScopeInformation(scope)
 
-			// base = scope.LocalContext.MainBlock.NewExtractValue(val, 0)
+			arrayPtr := info.LocalContext.MainBlock.NewPtrToInt(val, pointerType)
+			ptrOffset := info.LocalContext.MainBlock.NewMul(arrayPtr, arrayIndex)
+			offset := info.LocalContext.MainBlock.NewAdd(arrayPtr, ptrOffset)
+			elPtr := info.LocalContext.MainBlock.NewIntToPtr(offset, elType)
+			base = info.LocalContext.MainBlock.NewLoad(elType, elPtr)
+
+			// base = info.LocalContext.MainBlock.NewExtractValue(val, 0)
 		}
 
 	} else if p.Literal.Symbol != "" {
 		symbolVariable := scope.ResolveSymbolAsVariable(p.Literal.Symbol)
 
-		fmt.Println(scope.ToFMTString())
-
 		if !symbolVariable.IsNil() {
 			variable := symbolVariable.Unwrap()
 
-			base = variable.Value
+			base = LLVMGetValueInformation(variable).Value
 			// repr.Println(symbolVariable.Unwrap().GetLLIRType(scope))
 		} else {
 			scope.ErrorScope.NewCompileTimeError("Variable Resolution Error", "Unable to resolve the variable '"+p.Literal.Symbol+"'", p.Pos)

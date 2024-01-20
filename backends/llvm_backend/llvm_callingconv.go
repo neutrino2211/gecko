@@ -1,4 +1,4 @@
-package codegen
+package llvmbackend
 
 import "github.com/llir/llvm/ir/enum"
 

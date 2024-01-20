@@ -7,11 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/alecthomas/participle/lexer"
 	"github.com/fatih/color"
+	"github.com/neutrino2211/gecko/backends"
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/errors"
 	"github.com/neutrino2211/gecko/parser"
@@ -75,6 +75,7 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	outName := buildDir + "/" + file + ".ll"
 	compiledName := buildDir + "/" + file + ".o"
+	backend := config.Ctx.String("backend")
 
 	if tokenError != nil {
 		var line, column int
@@ -103,44 +104,31 @@ func Compile(file string, config *config.CompileCfg) string {
 		}
 	}
 
+	compilationBackend, ok := backends.Backends[backend]
+
+	if !ok {
+		println(color.RedString("Backend '" + backend + "' not found."))
+		os.Exit(0)
+	}
+
 	if haveErrors() {
 		return ""
 	}
 
-	llir := ast.ProgramContext.Module.String()
-
-	if config.Ctx.Bool("print-ir") {
-		println(file + "\n" + strings.Repeat("_", len(file)) + "\n\n" + llir)
-	}
-
 	os.MkdirAll(buildDir, 0o755)
 
-	os.WriteFile(outName, []byte(llir), 0o755)
+	compilationBackend.Ast = ast
+	cmd := compilationBackend.Run(&backends.BackendConfig{
+		OutName: outName,
+		File:    file,
+		Ctx:     config.Ctx,
+	})
 
-	if config.Ctx.Bool("ir-only") {
-		cmd := exec.Command("cp", outName, ".")
-		err := streamCommand(cmd)
+	var err error = nil
 
-		if err != nil {
-			ast.ErrorScope.NewCompileTimeError("LLIR copy", "Error copying LLVM IR "+err.Error(), lexer.Position{})
-		}
-
-		return outName
+	if cmd != nil {
+		err = streamCommand(cmd)
 	}
-
-	llcArgs := []string{"-filetype=obj"}
-
-	if ast.Config.Arch == "arm64" && ast.Config.Platform == "darwin" {
-		llcArgs = append(llcArgs, "--mtriple", "arm64-apple-darwin21.4.0")
-	} else if ast.Config.Vendor != "" {
-		llcArgs = append(llcArgs, "--mtriple", ast.Config.Arch+"-"+ast.Config.Vendor+"-"+ast.Config.Platform)
-	}
-
-	llcArgs = append(llcArgs, ast.Config.Ctx.String("output")+"/"+outName)
-
-	cmd := exec.Command("llc", llcArgs...)
-
-	err := streamCommand(cmd)
 
 	if err != nil {
 		ast.ErrorScope.NewCompileTimeError("LLVM compilation", "Error compiling LLVM IR "+err.Error(), lexer.Position{})
@@ -182,11 +170,11 @@ func PrintErrorSummary() {
 		warnings += len(e.CompileTimeWarnings)
 	}
 
-	fmt.Printf(
-		bold.Sprint("\nTotal of ")+
-			boldYellow.Sprint("%d warnings")+
-			bold.Sprint(" and ")+
-			boldRed.Sprint("%d errors")+
+	fmt.Print(
+		bold.Sprint("\nTotal of ") +
+			boldYellow.Sprintf("%d warnings", warnings) +
+			bold.Sprint(" and ") +
+			boldRed.Sprintf("%d errors", errors) +
 			bold.Sprint(" generated\n"),
-		warnings, errors)
+	)
 }

@@ -8,25 +8,42 @@ import (
 	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/value"
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/interfaces"
 	"github.com/neutrino2211/gecko/tokens"
 )
 
+var CurrentBackend interfaces.BackendInteface = nil
+var FuncCalls map[string]*ir.InstCall
+var Methods map[string]*ast.Method
+var LLVMExecutionContext *ExecutionContext = nil
+
 func (info *LLVMScopeInformation) Init(a *ast.Ast) {
-	executionContext := NewExecutionContext()
+	var executionContext = LLVMExecutionContext
+	if LLVMExecutionContext == nil {
+		executionContext = NewExecutionContext()
+		LLVMExecutionContext = executionContext
+	}
+
 	info.ExecutionContext = executionContext
 	info.ProgramContext = executionContext.Context
 	info.LocalContext = nil
 	info.ChildContexts = make(map[string]*LocalContext)
 
-	loadPrimitives(a)
+	loadPrimitives(a, info.LocalContext)
 }
 
-func (*LLVMBackendImplementation) NewReturn(scope *ast.Ast) {
+func (impl *LLVMBackendImplementation) NewReturn(scope *ast.Ast) {
+	info := LLVMGetScopeInformation(scope)
 
+	info.LocalContext.MainBlock.NewRet(nil)
 }
 
-func (*LLVMBackendImplementation) NewReturnLiteral(scope *ast.Ast, literal *tokens.Expression) {
+func (impl *LLVMBackendImplementation) NewReturnLiteral(scope *ast.Ast, literal *tokens.Expression) {
+	info := LLVMGetScopeInformation(scope)
 
+	val := impl.ExpressionToLLIRValue(literal, scope, &tokens.TypeRef{})
+
+	info.LocalContext.MainBlock.NewRet(val)
 }
 
 func (*LLVMBackendImplementation) Declaration(scope *ast.Ast, decl *tokens.Declaration) {
@@ -37,7 +54,39 @@ func (*LLVMBackendImplementation) ParseExpression(scope *ast.Ast, exp *tokens.Ex
 
 }
 
-func (*LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncCall) {
+func (impls *LLVMBackendImplementation) ProcessEntries(scope *ast.Ast, entries []*tokens.Entry) {
+	impls.Backend.ProcessEntries(entries, scope)
+}
+
+func (impls *LLVMBackendImplementation) NewDeclaration(scope *ast.Ast, decl *tokens.Declaration) {
+	if decl.Field != nil {
+		impls.NewVariable(scope, decl.Field)
+	} else if decl.Method != nil {
+		impls.NewMethod(scope, decl.Method)
+	}
+}
+
+func (impls *LLVMBackendImplementation) NewClass(scope *ast.Ast, c *tokens.Class) {
+	classAst := &ast.Ast{
+		Scope:  c.Name,
+		Parent: scope,
+	}
+
+	classAst.Init(scope.ErrorScope)
+	scope.Classes[c.Name] = classAst
+
+	for _, f := range c.Fields {
+		if f.Method != nil {
+			impls.NewMethod(classAst, f.Method)
+		}
+
+		if f.Field != nil {
+			impls.NewVariable(classAst, f.Field)
+		}
+	}
+}
+
+func (impls *LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncCall) {
 	mth := scope.ResolveMethod(f.Function)
 
 	if mth.IsNil() {
@@ -47,14 +96,15 @@ func (*LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncCall) {
 
 	mthUnwrapped := mth.Unwrap()
 
-	info := LLVMGetScopeInformation(mthUnwrapped.Scope)
-
+	var info *LLVMScopeInformation = nil
 	var fn *ir.Func
 
 	if mthUnwrapped.Scope != nil {
+		info = LLVMGetScopeInformation(mthUnwrapped.Scope)
 		fn = info.LocalContext.Func
 	} else {
-		fn = info.LocalContext.Func
+		info = LLVMGetScopeInformation(scope)
+		fn = ir.NewFunc(f.Function, impls.TypeRefGetLLIRType(&tokens.TypeRef{Type: mthUnwrapped.Type}, scope))
 		fn.Linkage = enum.LinkageExternal
 	}
 
@@ -65,13 +115,27 @@ func (*LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncCall) {
 	for _, a := range f.Arguments {
 		tr := &tokens.TypeRef{}
 
-		args = append(args, ExpressionToLLIRValue(a.Value, scope, tr))
+		args = append(args, impls.ExpressionToLLIRValue(a.Value, scope, tr))
 	}
 
-	info.LocalContext.MainBlock.NewCall(fn, args...)
+	call := info.LocalContext.MainBlock.NewCall(fn, args...)
+
+	FuncCalls[scope.FullScopeName()+"#"+f.Function] = call
 }
 
-func (*LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
+func (impl *LLVMBackendImplementation) NewImplementation(scope *ast.Ast, i *tokens.Implementation) {
+	if i.For != "" {
+		impl.LLVMImplementationForClass(scope, i)
+	} else {
+		impl.LLVMImplementationForArch(scope, i)
+	}
+}
+
+func (impl *LLVMBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait) {
+
+}
+
+func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
 	methodScope := ast.Ast{
 		Scope:  m.Name,
 		Parent: scope,
@@ -82,7 +146,7 @@ func (*LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
 	fnParams := make([]*ir.Param, 0)
 
 	for _, a := range m.Arguments {
-		ty := TypeRefGetLLIRType(a.Type, scope)
+		ty := impl.TypeRefGetLLIRType(a.Type, scope)
 
 		fnParams = append(fnParams, ir.NewParam(a.Name, ty))
 	}
@@ -96,7 +160,7 @@ func (*LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
 		m.Type.Check(scope)
 
 		returnType = m.Type.ToCString(scope)
-		irType = TypeRefGetLLIRType(m.Type, scope)
+		irType = impl.TypeRefGetLLIRType(m.Type, scope)
 	}
 
 	irFunc := ir.NewFunc(m.Name, irType, fnParams...)
@@ -106,11 +170,12 @@ func (*LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
 	}
 
 	mthInfo := &LLVMScopeInformation{}
+	mthInfo.Init(&methodScope)
 
 	methodScope.Config = scope.Config
 	mthInfo.LocalContext = NewLocalContext(irFunc)
 
-	loadPrimitives(&methodScope)
+	loadPrimitives(&methodScope, info.LocalContext)
 
 	if len(m.Value) > 0 {
 		mthInfo.LocalContext.MainBlock = mthInfo.LocalContext.Func.NewBlock(irFunc.Name() + "$main")
@@ -125,6 +190,9 @@ func (*LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
 		Type:       returnType,
 	}
 	scope.Methods[m.Name] = astMth
+
+	(*LLVMScopeDataMap)[astMth.GetFullName()] = mthInfo
+	repr.Println(*LLVMScopeDataMap, mthInfo)
 
 	info.ChildContexts[astMth.GetFullName()] = mthInfo.LocalContext
 	info.ProgramContext.Module.Funcs = append(info.ProgramContext.Module.Funcs, mthInfo.LocalContext.Func)
@@ -144,7 +212,7 @@ func (*LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
 
 		methodScope.Variables[v.Name] = mVariable
 
-		vIrType := TypeRefGetLLIRType(v.Type, scope)
+		vIrType := impl.TypeRefGetLLIRType(v.Type, scope)
 
 		(*LLVMProgramValues)[mVariable.GetFullName()] = &LLVMValueInformation{
 			Type:      vIrType,
@@ -153,12 +221,12 @@ func (*LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
 		}
 	}
 
-	assignEntriesToAst(m.Value, &methodScope)
+	impl.Backend.ProcessEntries(m.Value, &methodScope)
 
-	assignArgumentsToMethodArguments(m.Arguments, astMth)
+	impl.LLVMAssignArgumentsToMethodArguments(m.Arguments, astMth)
 
 	// If no return is specified, inject a void return
-	if info.LocalContext.MainBlock != nil && info.LocalContext.MainBlock.Term == nil {
+	if mthInfo.LocalContext.MainBlock != nil && mthInfo.LocalContext.MainBlock.Term == nil {
 		t := true
 		m.Value = append(m.Value, &tokens.Entry{VoidReturn: &t})
 	}
@@ -166,9 +234,10 @@ func (*LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
 	// if len(m.Value) > 0 {
 	// 	methodScope.LocalContext.MainBlock.NewRet(constant.NewInt(types.I1, 0))
 	// }
+	Methods[scope.FullScopeName()+"#"+m.Name] = astMth
 }
 
-func (*LLVMBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field) {
+func (impl *LLVMBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field) {
 	if f.Type == nil {
 		scope.ErrorScope.NewCompileTimeError("TODO: Infer variable type", "variable type inference not implemented", f.Pos)
 		f.Type = &tokens.TypeRef{}
@@ -179,7 +248,9 @@ func (*LLVMBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field) {
 		f.Value = &tokens.Expression{}
 	}
 
-	val := ExpressionToLLIRValue(f.Value, scope, f.Type)
+	repr.Println(scope.GetFullName())
+
+	val := impl.ExpressionToLLIRValue(f.Value, scope, f.Type)
 
 	fieldVariable := ast.Variable{
 		Name:       f.Name,
@@ -194,7 +265,7 @@ func (*LLVMBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field) {
 	}
 
 	(*LLVMProgramValues)[fieldVariable.GetFullName()] = &LLVMValueInformation{
-		Type:      TypeRefGetLLIRType(f.Type, scope),
+		Type:      impl.TypeRefGetLLIRType(f.Type, scope),
 		Value:     val,
 		GeckoType: f.Type,
 	}
@@ -203,12 +274,14 @@ func (*LLVMBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field) {
 }
 
 func LLVMGetScopeInformation(scope *ast.Ast) *LLVMScopeInformation {
-	name := scope.FullScopeName()
+	name := scope.GetFullName()
 
 	info, ok := (*LLVMScopeDataMap)[name]
 
 	if !ok {
-		(*LLVMScopeDataMap)[name] = &LLVMScopeInformation{}
+		info := &LLVMScopeInformation{}
+		info.Init(scope)
+		(*LLVMScopeDataMap)[name] = info
 		return (*LLVMScopeDataMap)[name]
 	}
 

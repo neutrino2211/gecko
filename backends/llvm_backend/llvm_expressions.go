@@ -24,73 +24,73 @@ var equalityOps map[string]enum.IPred = map[string]enum.IPred{
 	"==": enum.IPredEQ,
 }
 
-func ExpressionToLLIRValue(e *tokens.Expression, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
+func (impl *LLVMBackendImplementation) ExpressionToLLIRValue(e *tokens.Expression, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
 	eq := e.Equality
 
-	base = EqualityToLLIRValue(eq, scope, expressionType)
+	base = impl.EqualityToLLIRValue(eq, scope, expressionType)
 
 	return base
 }
 
-func EqualityToLLIRValue(eq *tokens.Equality, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
+func (impl *LLVMBackendImplementation) EqualityToLLIRValue(eq *tokens.Equality, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
 	if eq.Next != nil {
-		v := EqualityToLLIRValue(eq.Next, scope, expressionType)
+		v := impl.EqualityToLLIRValue(eq.Next, scope, expressionType)
 		info := LLVMGetScopeInformation(scope)
 
-		base = info.LocalContext.MainBlock.NewICmp(equalityOps[eq.Op], ComparisonToLLIRValue(eq.Comparison, scope, expressionType), v)
+		base = info.LocalContext.MainBlock.NewICmp(equalityOps[eq.Op], impl.ComparisonToLLIRValue(eq.Comparison, scope, expressionType), v)
 		// base += eq.Op
 		// base += eq.Next.ToLLIRValue(scope)
 	} else {
-		base = ComparisonToLLIRValue(eq.Comparison, scope, expressionType)
+		base = impl.ComparisonToLLIRValue(eq.Comparison, scope, expressionType)
 	}
 
 	return base
 }
 
-func ComparisonToLLIRValue(c *tokens.Comparison, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
+func (impl *LLVMBackendImplementation) ComparisonToLLIRValue(c *tokens.Comparison, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
 	if c.Next != nil {
 		// base += c.Op
 		// base += c.Next.ToLLIRValue(scope)
 	} else {
-		base = AdditionToLLIRValue(c.Addition, scope, expressionType)
+		base = impl.AdditionToLLIRValue(c.Addition, scope, expressionType)
 	}
 
 	return base
 }
 
-func AdditionToLLIRValue(a *tokens.Addition, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
+func (impl *LLVMBackendImplementation) AdditionToLLIRValue(a *tokens.Addition, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
 	if a.Next != nil {
 		// base += a.Op
 		// base += a.Next.ToLLIRValue(scope)
 	} else {
-		base = MultiplicationToLLIRValue(a.Multiplication, scope, expressionType)
+		base = impl.MultiplicationToLLIRValue(a.Multiplication, scope, expressionType)
 	}
 
 	return base
 }
 
-func MultiplicationToLLIRValue(m *tokens.Multiplication, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
+func (impl *LLVMBackendImplementation) MultiplicationToLLIRValue(m *tokens.Multiplication, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
 	if m.Next != nil {
 		// base += m.Op
 		// base += m.Next.ToLLIRValue(scope)
 	} else {
-		base = UnaryToLLIRValue(m.Unary, scope, expressionType)
+		base = impl.UnaryToLLIRValue(m.Unary, scope, expressionType)
 	}
 
 	return base
 }
 
-func UnaryToLLIRValue(u *tokens.Unary, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
+func (impl *LLVMBackendImplementation) UnaryToLLIRValue(u *tokens.Unary, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
 	if u.Unary != nil {
@@ -101,17 +101,19 @@ func UnaryToLLIRValue(u *tokens.Unary, scope *ast.Ast, expressionType *tokens.Ty
 		// base += u.Op
 		// base += u.Unary.ToLLIRValue(scope)
 	} else if u.Primary != nil {
-		base = PrimaryToLLIRValue(u.Primary, scope, expressionType)
+		base = impl.PrimaryToLLIRValue(u.Primary, scope, expressionType)
 	}
 
 	return base
 }
 
-func PrimaryToLLIRValue(p *tokens.Primary, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
+func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	var base value.Value
 
+	info := LLVMGetScopeInformation(scope)
+
 	if p.SubExpression != nil {
-		base = ExpressionToLLIRValue(p.SubExpression, scope, expressionType)
+		base = impl.ExpressionToLLIRValue(p.SubExpression, scope, expressionType)
 	} else if p.Literal.Bool != "" {
 		i := map[string]int64{"true": 1, "false": 0}[p.Literal.Bool]
 		base = constant.NewInt(types.I1, i)
@@ -134,7 +136,6 @@ func PrimaryToLLIRValue(p *tokens.Primary, scope *ast.Ast, expressionType *token
 
 		str := constant.NewCharArrayFromString(actual + string('\x00'))
 		println(actual, p.Literal.IsPointer)
-		info := LLVMGetScopeInformation(scope)
 		if p.Literal.IsPointer {
 			def := info.ProgramContext.Module.NewGlobalDef(".str."+p.GetID(), str)
 			def.Linkage = enum.LinkagePrivate
@@ -151,9 +152,8 @@ func PrimaryToLLIRValue(p *tokens.Primary, scope *ast.Ast, expressionType *token
 	} else if p.Literal.Array != nil {
 		memType := &types.ArrayType{
 			Len:      uint64(len(p.Literal.Array)),
-			ElemType: TypeRefGetLLIRType(expressionType.Array, scope),
+			ElemType: impl.TypeRefGetLLIRType(expressionType.Array, scope),
 		}
-		info := LLVMGetScopeInformation(scope)
 
 		mem := info.LocalContext.MainBlock.NewAlloca(memType)
 
@@ -163,9 +163,8 @@ func PrimaryToLLIRValue(p *tokens.Primary, scope *ast.Ast, expressionType *token
 			p := &tokens.Primary{
 				Literal: e,
 			}
-			v := PrimaryToLLIRValue(p, scope, expressionType)
+			v := impl.PrimaryToLLIRValue(p, scope, expressionType)
 			repr.Println(v.Type().LLString(), memDirect.Typ.LLString())
-			info := LLVMGetScopeInformation(scope)
 
 			// info.LocalContext.MainBlock.NewStore(v, mem)
 
@@ -176,11 +175,11 @@ func PrimaryToLLIRValue(p *tokens.Primary, scope *ast.Ast, expressionType *token
 	} else if p.Literal.ArrayIndex != nil {
 		index := *p.Literal.ArrayIndex
 		p.Literal.ArrayIndex = nil
-		val := PrimaryToLLIRValue(p, scope, expressionType)
+		val := impl.PrimaryToLLIRValue(p, scope, expressionType)
 
 		arrayType := val.Type()
 		arrayIndexVal := &tokens.Primary{Literal: &index}
-		arrayIndex := PrimaryToLLIRValue(arrayIndexVal, scope, expressionType)
+		arrayIndex := impl.PrimaryToLLIRValue(arrayIndexVal, scope, expressionType)
 
 		if arrayType == nil {
 			scope.ErrorScope.NewCompileTimeWarning("Invalid Expression Type", "the type for the following expression ended up being invalid, weird", p.Pos)
@@ -197,7 +196,6 @@ func PrimaryToLLIRValue(p *tokens.Primary, scope *ast.Ast, expressionType *token
 					BitSize: 8,
 				},
 			}
-			info := LLVMGetScopeInformation(scope)
 
 			arrayPtr := info.LocalContext.MainBlock.NewPtrToInt(val, pointerType)
 			ptrOffset := info.LocalContext.MainBlock.NewMul(arrayPtr, arrayIndex)
@@ -215,16 +213,19 @@ func PrimaryToLLIRValue(p *tokens.Primary, scope *ast.Ast, expressionType *token
 			variable := symbolVariable.Unwrap()
 
 			base = LLVMGetValueInformation(variable).Value
+			repr.Println(variable.GetFullName(), base)
 			// repr.Println(symbolVariable.Unwrap().GetLLIRType(scope))
 		} else {
 			scope.ErrorScope.NewCompileTimeError("Variable Resolution Error", "Unable to resolve the variable '"+p.Literal.Symbol+"'", p.Pos)
 		}
 	} else if p.Literal.FuncCall != nil {
 		// base = p.FuncCall.(scope)
-		call := p.Literal.FuncCall.AddToLLIR(scope)
+		CurrentBackend.GetImpls().FuncCall(scope, p.Literal.FuncCall)
 
-		if !call.IsNil() {
-			base = call.Unwrap()
+		call := FuncCalls[scope.FullScopeName()+"#"+p.Literal.FuncCall.Function]
+
+		if call != nil {
+			base = call
 		}
 	}
 

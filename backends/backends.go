@@ -7,8 +7,8 @@ import (
 	"os/exec"
 
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/interfaces"
 	"github.com/neutrino2211/gecko/tokens"
-	"github.com/urfave/cli/v2"
 )
 
 func streamPipe(std io.ReadCloser) {
@@ -42,35 +42,57 @@ func streamCommand(cmd *exec.Cmd) error {
 	return nil
 }
 
-type Backend struct {
-	Ast       *ast.Ast
-	CompileFn func(*Backend, *BackendConfig) *exec.Cmd
-	Impls     BackendCodegenImplementations
+func BackendRun(b interfaces.BackendInteface, c *interfaces.BackendConfig) *exec.Cmd {
+	return b.Compile(c)
 }
 
-type BackendConfig struct {
-	File    string
-	OutName string
-	Ctx     *cli.Context
+func BackendProcessEntries(b interfaces.BackendInteface, scope *ast.Ast, entries []*tokens.Entry) {
+	for _, entry := range entries {
+		if entry.Method != nil {
+			println(entry.Method.Name)
+			b.GetImpls().NewMethod(scope, entry.Method)
+		} else if entry.Field != nil {
+			b.GetImpls().NewVariable(scope, entry.Field)
+		} else if entry.Class != nil {
+			b.GetImpls().NewClass(scope, entry.Class)
+		} else if entry.Implementation != nil {
+			b.GetImpls().NewImplementation(scope, entry.Implementation)
+		} else if entry.Trait != nil {
+			b.GetImpls().NewTrait(scope, entry.Trait)
+		} else if entry.Declaration != nil {
+			// if entry.Declaration.Field != nil {
+			// 	variableOpt := entry.Declaration.ToAstVariable(scope)
+			// 	scope.Variables[entry.Declaration.Field.Name] = *variableOpt.UnwrapOrElse(func(err error) *ast.Variable {
+			// 		scope.ErrorScope.NewCompileTimeError(
+			// 			"Parse Error",
+			// 			"Unable to parse the variable named '"+entry.Declaration.Field.Name+"'",
+			// 			entry.Pos,
+			// 		)
+			// 		return &ast.Variable{}
+			// 	})
+			// } else if entry.Declaration.Method != nil {
+			// 	methodOpt := entry.Declaration.ToAstMethod(scope)
+			// 	scope.Methods[entry.Declaration.Method.Name] = methodOpt.UnwrapOrElse(func(err error) *ast.Method {
+			// 		scope.ErrorScope.NewCompileTimeError(
+			// 			"Parse Error",
+			// 			"Unable to parse the method named '"+entry.Declaration.Method.Name+"'",
+			// 			entry.Pos,
+			// 		)
+
+			// 		return &ast.Method{}
+			// 	})
+			// }
+			b.GetImpls().NewDeclaration(scope, entry.Declaration)
+		} else if entry.FuncCall != nil {
+			b.GetImpls().FuncCall(scope, entry.FuncCall)
+		} else if entry.Return != nil {
+			b.GetImpls().NewReturnLiteral(scope, entry.Return)
+		} else if entry.VoidReturn != nil {
+			b.GetImpls().NewReturn(scope)
+		}
+	}
 }
 
-type BackendCodegenImplementations interface {
-	NewReturn(*ast.Ast)
-	NewReturnLiteral(*ast.Ast, *tokens.Expression)
-
-	FuncCall(*ast.Ast, *tokens.FuncCall)
-	Declaration(*ast.Ast, *tokens.Declaration)
-
-	NewVariable(*ast.Ast, *tokens.Field)
-	NewMethod(*ast.Ast, *tokens.Method)
-
-	ParseExpression(*ast.Ast, *tokens.Expression)
-}
-
-func (b *Backend) Run(c *BackendConfig) *exec.Cmd {
-	return b.CompileFn(b, c)
-}
-
-var Backends = map[string]*Backend{
-	"llvm": &LLVMBackend,
+var Backends = map[string]interfaces.BackendInteface{
+	"llvm": &LLVMBackend{},
 }

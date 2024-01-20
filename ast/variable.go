@@ -16,7 +16,7 @@ type Variable struct {
 func (v *Variable) GetFullName() string {
 	cString := ""
 
-	if v.IsExternal {
+	if v.IsExternal || v.Parent == nil {
 		cString = v.Name
 	} else {
 		cString = strings.ReplaceAll(v.Parent.FullScopeName()+"."+v.Name, ".", "__")

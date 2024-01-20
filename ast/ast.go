@@ -1,6 +1,8 @@
 package ast
 
 import (
+	"strings"
+
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/errors"
 	"github.com/neutrino2211/go-option"
@@ -38,6 +40,18 @@ func (a *Ast) FullScopeName() string {
 	}
 
 	return r
+}
+
+func (a *Ast) GetFullName() string {
+	cString := ""
+
+	if a.Parent == nil {
+		cString = a.Scope
+	} else {
+		cString = strings.ReplaceAll(a.FullScopeName(), ".", "__")
+	}
+
+	return cString
 }
 
 func (a *Ast) ResolveSymbolAsVariable(symbol string) *option.Optional[*Variable] {

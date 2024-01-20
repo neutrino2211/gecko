@@ -3,9 +3,7 @@ package tokens
 import (
 	"fmt"
 
-	"github.com/llir/llvm/ir"
 	"github.com/neutrino2211/gecko/ast"
-	"github.com/neutrino2211/go-option"
 )
 
 func getTypeRefFromString(name string) *TypeRef {
@@ -40,9 +38,4 @@ func (f *FuncCall) ToCString(scope *ast.Ast) string {
 	base += ")"
 
 	return base
-}
-
-func (f *FuncCall) AddToLLIR(scope *ast.Ast) *option.Optional[*ir.InstCall] {
-
-	return option.Some(call)
 }

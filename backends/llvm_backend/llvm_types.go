@@ -2,6 +2,7 @@ package llvmbackend
 
 import (
 	"github.com/llir/llvm/ir/types"
+	"github.com/neutrino2211/gecko/interfaces"
 	"github.com/neutrino2211/gecko/tokens"
 
 	"github.com/llir/llvm/ir/value"
@@ -22,6 +23,8 @@ type LLVMValueInformation struct {
 
 type LLVMScopeData map[string]*LLVMScopeInformation
 
-type LLVMBackendImplementation struct{}
+type LLVMBackendImplementation struct {
+	Backend interfaces.BackendInteface
+}
 
 type LLVMValuesMap map[string]*LLVMValueInformation

@@ -14,6 +14,7 @@ import (
 	"github.com/neutrino2211/gecko/backends"
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/errors"
+	"github.com/neutrino2211/gecko/interfaces"
 	"github.com/neutrino2211/gecko/parser"
 	"github.com/neutrino2211/gecko/tokens"
 	"github.com/neutrino2211/go-option"
@@ -65,9 +66,11 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	sourceFile.Content = string(fileContents)
 	sourceFile.Path = file
+	sourceFile.Config = config
 
-	ast := sourceFile.ToAst(config)
-	allErrorScopes = append(allErrorScopes, ast.ErrorScope)
+	compileErrorScope := errors.NewErrorScope("compile", sourceFile.Name, string(fileContents))
+
+	allErrorScopes = append(allErrorScopes, compileErrorScope)
 
 	ts := strconv.Itoa(int(time.Now().UnixNano()))
 
@@ -84,7 +87,7 @@ func Compile(file string, config *config.CompileCfg) string {
 		res, e := fmt.Sscanf(r, "%d:%d: unexpected token \"%s\" (expected \"%s\")", &line, &column, &unexpectedToken, &expectedToken)
 
 		if res < 2 {
-			ast.ErrorScope.NewCompileTimeError(
+			compileErrorScope.NewCompileTimeError(
 				"Horrible syntax error",
 				"There is a horrible syntax error in the file that even the lexer can't recover from\n\n"+e.Error(),
 				lexer.Position{
@@ -93,7 +96,7 @@ func Compile(file string, config *config.CompileCfg) string {
 				},
 			)
 		} else {
-			ast.ErrorScope.NewCompileTimeError(
+			compileErrorScope.NewCompileTimeError(
 				"Syntax error",
 				tokenError.Error(),
 				lexer.Position{
@@ -117,11 +120,13 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	os.MkdirAll(buildDir, 0o755)
 
-	compilationBackend.Ast = ast
-	cmd := compilationBackend.Run(&backends.BackendConfig{
-		OutName: outName,
-		File:    file,
-		Ctx:     config.Ctx,
+	compilationBackend.Init()
+
+	cmd := compilationBackend.Compile(&interfaces.BackendConfig{
+		OutName:    outName,
+		File:       file,
+		Ctx:        config.Ctx,
+		SourceFile: sourceFile,
 	})
 
 	var err error = nil
@@ -131,7 +136,7 @@ func Compile(file string, config *config.CompileCfg) string {
 	}
 
 	if err != nil {
-		ast.ErrorScope.NewCompileTimeError("LLVM compilation", "Error compiling LLVM IR "+err.Error(), lexer.Position{})
+		compileErrorScope.NewCompileTimeError("Compilation Backend Error", "Error compiling for backend '"+backend+"' "+err.Error(), lexer.Position{})
 	}
 
 	return compiledName

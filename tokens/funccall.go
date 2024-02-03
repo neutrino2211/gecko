@@ -3,12 +3,7 @@ package tokens
 import (
 	"fmt"
 
-	"github.com/llir/llvm/ir"
-	"github.com/llir/llvm/ir/enum"
-	"github.com/llir/llvm/ir/value"
 	"github.com/neutrino2211/gecko/ast"
-	"github.com/neutrino2211/gecko/codegen"
-	"github.com/neutrino2211/go-option"
 )
 
 func getTypeRefFromString(name string) *TypeRef {
@@ -43,44 +38,4 @@ func (f *FuncCall) ToCString(scope *ast.Ast) string {
 	base += ")"
 
 	return base
-}
-
-func (f *FuncCall) AddToLLIR(scope *ast.Ast) *option.Optional[*ir.InstCall] {
-	mth := scope.ResolveMethod(f.Function)
-
-	if mth.IsNil() {
-		scope.ErrorScope.NewCompileTimeError("Function resolution error", fmt.Sprintf("Unable to resolve the function \"%s\"", f.Function), f.Pos)
-		return option.None[*ir.InstCall]()
-	}
-
-	mthUnwrapped := mth.Unwrap()
-
-	var fn *ir.Func
-
-	if mthUnwrapped.Scope != nil {
-		fn = mthUnwrapped.Scope.LocalContext.Func
-	} else {
-		fn = mthUnwrapped.Context.Func
-		fn.Linkage = enum.LinkageExternal
-	}
-
-	fn.CallingConv = codegen.CallingConventions[scope.Config.Arch][scope.Config.Platform]
-
-	args := make([]value.Value, 0)
-
-	for i, a := range f.Arguments {
-		tr := &TypeRef{}
-
-		if i < len(mthUnwrapped.Arguments) {
-			tr = &TypeRef{
-				LLIRType: mthUnwrapped.Arguments[i].Type,
-			}
-		}
-
-		args = append(args, a.Value.ToLLIRValue(scope, tr))
-	}
-
-	call := scope.LocalContext.MainBlock.NewCall(fn, args...)
-
-	return option.Some(call)
 }

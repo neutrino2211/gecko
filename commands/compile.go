@@ -116,6 +116,11 @@ var CompileCommand = &cli.Command{
 			Usage: "Output type for program. (executable | library)",
 		},
 		&cli.StringFlag{
+			Name:  "backend",
+			Value: "llvm",
+			Usage: "The compilation backend to use (llvm | c)",
+		},
+		&cli.StringFlag{
 			Name:  "target-arch",
 			Value: runtime.GOARCH,
 			Usage: "The compilation target architecture",

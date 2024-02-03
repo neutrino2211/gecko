@@ -7,13 +7,14 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/alecthomas/participle/lexer"
 	"github.com/fatih/color"
+	"github.com/neutrino2211/gecko/backends"
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/errors"
+	"github.com/neutrino2211/gecko/interfaces"
 	"github.com/neutrino2211/gecko/parser"
 	"github.com/neutrino2211/gecko/tokens"
 	"github.com/neutrino2211/go-option"
@@ -65,9 +66,11 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	sourceFile.Content = string(fileContents)
 	sourceFile.Path = file
+	sourceFile.Config = config
 
-	ast := sourceFile.ToAst(config)
-	allErrorScopes = append(allErrorScopes, ast.ErrorScope)
+	compileErrorScope := errors.NewErrorScope("compile", sourceFile.Name, string(fileContents))
+
+	allErrorScopes = append(allErrorScopes, compileErrorScope)
 
 	ts := strconv.Itoa(int(time.Now().UnixNano()))
 
@@ -75,6 +78,7 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	outName := buildDir + "/" + file + ".ll"
 	compiledName := buildDir + "/" + file + ".o"
+	backend := config.Ctx.String("backend")
 
 	if tokenError != nil {
 		var line, column int
@@ -83,7 +87,7 @@ func Compile(file string, config *config.CompileCfg) string {
 		res, e := fmt.Sscanf(r, "%d:%d: unexpected token \"%s\" (expected \"%s\")", &line, &column, &unexpectedToken, &expectedToken)
 
 		if res < 2 {
-			ast.ErrorScope.NewCompileTimeError(
+			compileErrorScope.NewCompileTimeError(
 				"Horrible syntax error",
 				"There is a horrible syntax error in the file that even the lexer can't recover from\n\n"+e.Error(),
 				lexer.Position{
@@ -92,7 +96,7 @@ func Compile(file string, config *config.CompileCfg) string {
 				},
 			)
 		} else {
-			ast.ErrorScope.NewCompileTimeError(
+			compileErrorScope.NewCompileTimeError(
 				"Syntax error",
 				tokenError.Error(),
 				lexer.Position{
@@ -103,47 +107,36 @@ func Compile(file string, config *config.CompileCfg) string {
 		}
 	}
 
+	compilationBackend, ok := backends.Backends[backend]
+
+	if !ok {
+		println(color.RedString("Backend '" + backend + "' not found."))
+		os.Exit(0)
+	}
+
 	if haveErrors() {
 		return ""
 	}
 
-	llir := ast.ProgramContext.Module.String()
-
-	if config.Ctx.Bool("print-ir") {
-		println(file + "\n" + strings.Repeat("_", len(file)) + "\n\n" + llir)
-	}
-
 	os.MkdirAll(buildDir, 0o755)
 
-	os.WriteFile(outName, []byte(llir), 0o755)
+	compilationBackend.Init()
 
-	if config.Ctx.Bool("ir-only") {
-		cmd := exec.Command("cp", outName, ".")
-		err := streamCommand(cmd)
+	cmd := compilationBackend.Compile(&interfaces.BackendConfig{
+		OutName:    outName,
+		File:       file,
+		Ctx:        config.Ctx,
+		SourceFile: sourceFile,
+	})
 
-		if err != nil {
-			ast.ErrorScope.NewCompileTimeError("LLIR copy", "Error copying LLVM IR "+err.Error(), lexer.Position{})
-		}
+	var err error = nil
 
-		return outName
+	if cmd != nil {
+		err = streamCommand(cmd)
 	}
-
-	llcArgs := []string{"-filetype=obj"}
-
-	if ast.Config.Arch == "arm64" && ast.Config.Platform == "darwin" {
-		llcArgs = append(llcArgs, "--mtriple", "arm64-apple-darwin21.4.0")
-	} else if ast.Config.Vendor != "" {
-		llcArgs = append(llcArgs, "--mtriple", ast.Config.Arch+"-"+ast.Config.Vendor+"-"+ast.Config.Platform)
-	}
-
-	llcArgs = append(llcArgs, ast.Config.Ctx.String("output")+"/"+outName)
-
-	cmd := exec.Command("llc", llcArgs...)
-
-	err := streamCommand(cmd)
 
 	if err != nil {
-		ast.ErrorScope.NewCompileTimeError("LLVM compilation", "Error compiling LLVM IR "+err.Error(), lexer.Position{})
+		compileErrorScope.NewCompileTimeError("Compilation Backend Error", "Error compiling for backend '"+backend+"' "+err.Error(), lexer.Position{})
 	}
 
 	return compiledName
@@ -182,11 +175,11 @@ func PrintErrorSummary() {
 		warnings += len(e.CompileTimeWarnings)
 	}
 
-	fmt.Printf(
-		bold.Sprint("\nTotal of ")+
-			boldYellow.Sprint("%d warnings")+
-			bold.Sprint(" and ")+
-			boldRed.Sprint("%d errors")+
+	fmt.Print(
+		bold.Sprint("\nTotal of ") +
+			boldYellow.Sprintf("%d warnings", warnings) +
+			bold.Sprint(" and ") +
+			boldRed.Sprintf("%d errors", errors) +
 			bold.Sprint(" generated\n"),
-		warnings, errors)
+	)
 }

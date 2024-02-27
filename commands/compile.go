@@ -150,6 +150,21 @@ var CompileCommand = &cli.Command{
 			Value: &cli.StringSlice{},
 			Usage: "Pass arguments to underlying llc command",
 		},
+		&cli.BoolFlag{
+			Name:  "print-c",
+			Value: false,
+			Usage: "Print the file's C source",
+		},
+		&cli.BoolFlag{
+			Name:  "c-only",
+			Value: false,
+			Usage: "Only compile to C",
+		},
+		&cli.StringSliceFlag{
+			Name:  "clang-args",
+			Value: &cli.StringSlice{},
+			Usage: "Pass arguments to underlying clang command",
+		},
 	},
 }
 

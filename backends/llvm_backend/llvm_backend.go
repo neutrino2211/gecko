@@ -12,7 +12,7 @@ import (
 	"github.com/neutrino2211/gecko/tokens"
 )
 
-var CurrentBackend interfaces.BackendInteface = nil
+var CurrentBackend interfaces.BackendInterface = nil
 var FuncCalls map[string]*ir.InstCall
 var Methods map[string]*ast.Method
 var LLVMExecutionContext *ExecutionContext = nil

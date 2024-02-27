@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"log"
 	"os"
 
@@ -10,8 +11,13 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+//go:embed root
+
+//go:embed root/*
+var ROOT embed.FS
+
 func main() {
-	config.Init()
+	config.Init(ROOT)
 	logger.SetDefaultChannel("Gecko")
 
 	cmd := &cli.App{

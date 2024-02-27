@@ -8,7 +8,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-type BackendInteface interface {
+type BackendInterface interface {
 	Init()
 	Compile(*BackendConfig) *exec.Cmd
 	GetImpls() BackendCodegenImplementations

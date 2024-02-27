@@ -24,7 +24,7 @@ type LLVMValueInformation struct {
 type LLVMScopeData map[string]*LLVMScopeInformation
 
 type LLVMBackendImplementation struct {
-	Backend interfaces.BackendInteface
+	Backend interfaces.BackendInterface
 }
 
 type LLVMValuesMap map[string]*LLVMValueInformation

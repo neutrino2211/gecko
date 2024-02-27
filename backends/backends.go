@@ -42,11 +42,11 @@ func streamCommand(cmd *exec.Cmd) error {
 	return nil
 }
 
-func BackendRun(b interfaces.BackendInteface, c *interfaces.BackendConfig) *exec.Cmd {
+func BackendRun(b interfaces.BackendInterface, c *interfaces.BackendConfig) *exec.Cmd {
 	return b.Compile(c)
 }
 
-func BackendProcessEntries(b interfaces.BackendInteface, scope *ast.Ast, entries []*tokens.Entry) {
+func BackendProcessEntries(b interfaces.BackendInterface, scope *ast.Ast, entries []*tokens.Entry) {
 	for _, entry := range entries {
 		if entry.Method != nil {
 			println(entry.Method.Name)
@@ -93,6 +93,7 @@ func BackendProcessEntries(b interfaces.BackendInteface, scope *ast.Ast, entries
 	}
 }
 
-var Backends = map[string]interfaces.BackendInteface{
-	"llvm": &LLVMBackend{},
+var Backends = map[string]interfaces.BackendInterface{
+	"llvm":  &LLVMBackend{},
+	"clang": &CBackend{},
 }

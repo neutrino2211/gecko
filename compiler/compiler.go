@@ -20,6 +20,11 @@ import (
 	"github.com/neutrino2211/go-option"
 )
 
+var backendExtensions = map[string]string{
+	"clang": "c",
+	"llvm":  "ll",
+}
+
 func streamPipe(std io.ReadCloser) {
 	buf := bufio.NewReader(std) // Notice that this is not in a loop
 	for {
@@ -76,9 +81,10 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	buildDir := os.TempDir() + "/gecko/build/" + ts
 
-	outName := buildDir + "/" + file + ".ll"
-	compiledName := buildDir + "/" + file + ".o"
 	backend := config.Ctx.String("backend")
+
+	outName := buildDir + "/" + file + "." + backendExtensions[backend]
+	compiledName := buildDir + "/" + file + ".o"
 
 	if tokenError != nil {
 		var line, column int

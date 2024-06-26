@@ -133,6 +133,7 @@ func Compile(file string, config *config.CompileCfg) string {
 		File:       file,
 		Ctx:        config.Ctx,
 		SourceFile: sourceFile,
+		LibMode:    config.Ctx.Bool("lib"),
 	})
 
 	var err error = nil

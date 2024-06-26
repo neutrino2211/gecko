@@ -92,8 +92,12 @@ func (impl *CBackendImplementation) UnaryToCString(u *tokens.Unary, scope *ast.A
 func (impl *CBackendImplementation) PrimaryToCString(p *tokens.Primary, scope *ast.Ast, expressionType *tokens.TypeRef) string {
 	var base string = ""
 
-	if p.Literal != nil && p.Literal.IsPointer {
-		base += "&"
+	if p.Literal != nil {
+		if p.Literal.IsPointer {
+			base += "&"
+		} else if p.Literal.IsDereference {
+			base += "*"
+		}
 	}
 
 	if p.SubExpression != nil {
@@ -122,20 +126,34 @@ func (impl *CBackendImplementation) PrimaryToCString(p *tokens.Primary, scope *a
 
 		base += "}"
 	} else if p.Literal.ArrayIndex != nil {
+		idx := *p.Literal.ArrayIndex
 		index := &tokens.Primary{
-			Literal: p.Literal.ArrayIndex,
+			Literal: &idx,
 		}
+		arrayVariable := &tokens.Primary{
+			Literal: p.Literal,
+		}
+
+		p.Literal.ArrayIndex = nil
+
+		arrayVal := impl.PrimaryToCString(arrayVariable, scope, expressionType)
+
+		base += arrayVal
 
 		val := impl.PrimaryToCString(index, scope, expressionType)
 
-		base = "[" + val + "]"
+		base += "[" + val + "]"
 	} else if p.Literal.Symbol != "" {
 		symbolVariable := scope.ResolveSymbolAsVariable(p.Literal.Symbol)
 
 		if !symbolVariable.IsNil() {
 			variable := symbolVariable.Unwrap()
 
-			base = variable.GetFullName()
+			if variable.IsArgument {
+				base += variable.Name
+			} else {
+				base += variable.GetFullName()
+			}
 		} else {
 			scope.ErrorScope.NewCompileTimeError("Variable Resolution Error", "Unable to resolve the variable '"+p.Literal.Symbol+"'", p.Pos)
 		}

@@ -48,6 +48,29 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 		println(c.File + "\n" + strings.Repeat("_", len(c.File)) + "\n\n" + info.GetSource())
 	}
 
+	if c.SourceFile.Config.LibMode {
+		oldOutName := c.OutName
+		c.OutName = c.OutName[:len(c.OutName)-2] + ".h"
+
+		os.WriteFile(c.OutName, []byte(info.GetSource()), 0o755)
+		cmd := exec.Command("cp", c.OutName, ".")
+
+		err := streamCommand(cmd)
+
+		if err != nil {
+			file.ErrorScope.NewCompileTimeError("C copy", "Error copying C source "+err.Error(), lexer.Position{})
+		}
+
+		cbackend.ClearCScope(file)
+
+		file.Config.LibMode = false
+		b.ProcessEntries(c.SourceFile.Entries, file)
+
+		c.OutName = oldOutName
+
+		info = cbackend.GetCScope(file)
+	}
+
 	os.WriteFile(c.OutName, []byte(info.GetSource()), 0o755)
 
 	if c.Ctx.Bool("c-only") {
@@ -72,7 +95,8 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	clangArgs = append(clangArgs, "-c")
 	clangArgs = append(clangArgs, file.Config.Ctx.String("output")+"/"+c.OutName)
 
-	cmd := exec.Command("clang", clangArgs...)
+	println("clang " + strings.Join(clangArgs, " "))
 
+	cmd := exec.Command("clang", clangArgs...)
 	return cmd
 }

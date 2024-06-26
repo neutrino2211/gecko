@@ -1,0 +1,29 @@
+package std.types
+
+declare external variardic func printf(format: string!): int
+
+class String {
+  private let _str: string = &""
+
+  public func init(str: string): String* {
+    let self: String
+    self._str = str
+    printf("Init string '%s'\n", str)
+
+    return &self
+  }
+
+  public func size(self: String*): int {
+    return sizeof(*self)
+  }
+
+  func printSelf(self: String*): void
+}
+
+external func main(): int {
+  let str: String
+
+  printf("Size of string: %d\n", str.size())
+
+  return 0
+}

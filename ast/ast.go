@@ -27,7 +27,7 @@ func (a *Ast) Init(errorScope *errors.ErrorScope) {
 	a.Traits = make(map[string]*[]*Method)
 	a.Imports = []string{}
 	a.ErrorScope = errorScope
-	a.Config = &config.CompileCfg{}
+	a.Config = nil
 }
 
 func (a *Ast) FullScopeName() string {
@@ -52,6 +52,22 @@ func (a *Ast) GetFullName() string {
 	}
 
 	return cString
+}
+
+func (a *Ast) GetConfig() *option.Optional[*config.CompileCfg] {
+	scope := a
+	cfg := scope.Config
+
+	for cfg == nil {
+		if scope.Parent == nil {
+			return option.None[*config.CompileCfg]()
+		}
+
+		scope = scope.Parent
+		cfg = scope.Config
+	}
+
+	return option.Some(cfg)
 }
 
 func (a *Ast) ResolveSymbolAsVariable(symbol string) *option.Optional[*Variable] {

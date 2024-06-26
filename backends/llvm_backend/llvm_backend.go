@@ -131,9 +131,7 @@ func (impl *LLVMBackendImplementation) NewImplementation(scope *ast.Ast, i *toke
 	}
 }
 
-func (impl *LLVMBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait) {
-
-}
+func (impl *LLVMBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait) {}
 
 func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
 	methodScope := ast.Ast{
@@ -272,6 +270,9 @@ func (impl *LLVMBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Fie
 
 	scope.Variables[f.Name] = fieldVariable
 }
+
+func (impl *LLVMBackendImplementation) NewLoop(scope *ast.Ast, l *tokens.Loop) {}
+func (impl *LLVMBackendImplementation) NewIf(scope *ast.Ast, i *tokens.If)     {}
 
 func LLVMGetScopeInformation(scope *ast.Ast) *LLVMScopeInformation {
 	name := scope.GetFullName()

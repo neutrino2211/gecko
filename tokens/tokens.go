@@ -217,7 +217,7 @@ type ImplementationField struct {
 
 type Method struct {
 	baseToken
-	Visibility string   `parser:"[ @'private' | @'public' | @'protected' | @'external' ]"`
+	Visibility string   `parser:"[ @'private' | @'public' | @'protected' | @'external' | @'foreign' ]"`
 	Variardic  bool     `parser:"[ @'variardic' ]"`
 	Name       string   `parser:"'func' @Ident"`
 	Arguments  []*Value `parser:"'(' [ @@ { ',' @@ } ] ')'"`
@@ -258,15 +258,16 @@ type TypeRef struct {
 
 type Literal struct {
 	baseToken
-	IsPointer  bool              `parser:"[ @'&' ]"`
-	FuncCall   *FuncCall         `parser:"( @@"`
-	Bool       string            `parser:" | @( 'true' | 'false' )"`
-	String     string            `parser:" | @String"`
-	Symbol     string            `parser:" | @Ident"`
-	Number     string            `parser:" | @Number"`
-	Object     []*ObjectKeyValue `parser:" | '{' [ @@ { ',' @@ } ] '}'"`
-	Array      []*Literal        `parser:" | '[' [ @@ { ',' @@ } ] ']' )"`
-	ArrayIndex *Literal          `parser:"[ '[' @@ ']' ]"`
+	IsPointer     bool              `parser:"[ @'&' ]"`
+	IsDereference bool              `parser:"[ @'*' ]"`
+	FuncCall      *FuncCall         `parser:"( @@"`
+	Bool          string            `parser:" | @( 'true' | 'false' )"`
+	String        string            `parser:" | @String"`
+	Symbol        string            `parser:" | @Ident"`
+	Number        string            `parser:" | @Number"`
+	Object        []*ObjectKeyValue `parser:" | '{' [ @@ { ',' @@ } ] '}'"`
+	Array         []*Literal        `parser:" | '[' [ @@ { ',' @@ } ] ']' )"`
+	ArrayIndex    *Literal          `parser:"[ '[' @@ ']' ]"`
 }
 
 type FuncCall struct {

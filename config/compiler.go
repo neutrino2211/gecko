@@ -10,5 +10,7 @@ type CompileCfg struct {
 	CLFlags  []string
 	CObjects []string
 
+	LibMode bool
+
 	Ctx *cli.Context
 }

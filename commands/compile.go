@@ -93,6 +93,7 @@ var CompileCommand = &cli.Command{
 				CLFlags:  []string{},
 				CObjects: []string{},
 				Ctx:      ctx,
+				LibMode:  ctx.Bool("lib"),
 			})
 
 			if outFile != "" {
@@ -114,6 +115,10 @@ var CompileCommand = &cli.Command{
 			Name:  "type",
 			Value: "executable",
 			Usage: "Output type for program. (executable | library)",
+		},
+		&cli.BoolFlag{
+			Name:  "lib",
+			Usage: "Compile as a library and generate header files",
 		},
 		&cli.StringFlag{
 			Name:  "backend",

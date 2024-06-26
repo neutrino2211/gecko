@@ -7,14 +7,24 @@ import (
 func (t *TypeRef) ToCString(scope *ast.Ast) string {
 	base := ""
 
+	if t.Const {
+		base += "const "
+	}
+
 	if t.Array != nil {
 		base += t.Array.ToCString(scope) + "*"
 	} else {
-		base += t.Type
+		classAstOpt := scope.ResolveClass(t.Type)
+
+		if classAstOpt.IsNil() {
+			base += t.Type
+		} else {
+			base += classAstOpt.Unwrap().GetFullName()
+		}
 	}
 
 	if t.Size != nil {
-		base += t.Size.Type.ToCString(scope) + "[" + t.Size.Size + "]"
+		base += t.Size.Type.ToCString(scope)
 	}
 
 	if t.Pointer {
@@ -22,4 +32,8 @@ func (t *TypeRef) ToCString(scope *ast.Ast) string {
 	}
 
 	return base
+}
+
+func (s *SizeDef) ToCString() string {
+	return "[" + s.Size + "]"
 }

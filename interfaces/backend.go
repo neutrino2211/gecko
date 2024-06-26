@@ -20,6 +20,7 @@ type BackendConfig struct {
 	OutName    string
 	Ctx        *cli.Context
 	SourceFile *tokens.File
+	LibMode    bool
 }
 
 type BackendCodegenImplementations interface {
@@ -40,4 +41,7 @@ type BackendCodegenImplementations interface {
 	NewDeclaration(*ast.Ast, *tokens.Declaration)
 	NewImplementation(*ast.Ast, *tokens.Implementation)
 	NewTrait(*ast.Ast, *tokens.Trait)
+
+	NewIf(*ast.Ast, *tokens.If)
+	NewLoop(*ast.Ast, *tokens.Loop)
 }

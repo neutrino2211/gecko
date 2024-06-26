@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/tokens"
 )
 
@@ -51,15 +52,36 @@ func (impls *CBackendImplementation) NewClass(scope *ast.Ast, c *tokens.Class) {
 	classAst.Init(scope.ErrorScope)
 	scope.Classes[c.Name] = classAst
 
+	info := GetCScope(scope)
+	classInfo := GetCScope(classAst)
+
+	(*ScopeData)[classAst.FullScopeName()] = classInfo
+
+	structText := "typedef struct {\n"
+
 	for _, f := range c.Fields {
 		if f.Method != nil {
 			impls.NewMethod(classAst, f.Method)
+			println(f.Method.Name)
 		}
 
 		if f.Field != nil {
-			impls.NewVariable(classAst, f.Field)
+			structText += f.Field.Type.ToCString(classAst) + " "
+
+			if f.Field.Type.Size != nil {
+				structText += f.Field.Name + f.Field.Type.Size.ToCString()
+			} else {
+				structText += f.Field.Name
+			}
+
+			structText += ";\n"
 		}
 	}
+
+	structText += "} " + classAst.GetFullName() + ";\n"
+
+	info.text += structText
+	info.text += classInfo.text
 }
 
 func (impl *CBackendImplementation) NewImplementation(scope *ast.Ast, i *tokens.Implementation) {
@@ -72,9 +94,9 @@ func (impl *CBackendImplementation) NewImplementation(scope *ast.Ast, i *tokens.
 	}
 }
 
-func (impl *CBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait) {
-
-}
+func (impl *CBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait) {}
+func (impl *CBackendImplementation) NewLoop(scope *ast.Ast, l *tokens.Loop)   {}
+func (impl *CBackendImplementation) NewIf(scope *ast.Ast, i *tokens.If)       {}
 
 func (impls *CBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncCall) {
 	mth := scope.ResolveMethod(f.Function)
@@ -156,6 +178,11 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 
 	info.text += ")"
 
+	if scope.GetConfig().Or(&config.CompileCfg{LibMode: false}).LibMode {
+		info.text += ";\n"
+		return
+	} // We don't generate method bodies in lib mode
+
 	mthInfo := GetCScope(&methodScope)
 
 	astMth := &ast.Method{
@@ -226,6 +253,10 @@ func (impl *CBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field)
 		f.Value = &tokens.Expression{}
 	}
 
+	if scope.GetConfig().Or(&config.CompileCfg{LibMode: false}).LibMode {
+		return
+	} // We don't generate variables in lib mode
+
 	info := GetCScope(scope)
 
 	if f.Type.Const {
@@ -246,11 +277,21 @@ func (impl *CBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field)
 		fieldVariable.IsExternal = true
 	}
 
-	info.text += " " + fieldVariable.GetFullName()
+	if f.Type.Size != nil {
+		info.text += " " + fieldVariable.GetFullName() + f.Type.Size.ToCString()
+	} else {
+		info.text += " " + fieldVariable.GetFullName()
+	}
 
-	val := impl.ExpressionToCString(f.Value, scope, f.Type)
+	var val string = ""
 
-	info.text += " = " + val + ";\n"
+	if f.Value != nil {
+		val = impl.ExpressionToCString(f.Value, scope, f.Type)
+
+		info.text += " = " + val + ";\n"
+	} else {
+		info.text += ";\n"
+	}
 
 	(*ProgramValues)[fieldVariable.GetFullName()] = &CValueInformation{
 		IsConst:   f.Type.Const,
@@ -259,6 +300,10 @@ func (impl *CBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field)
 	}
 
 	scope.Variables[f.Name] = fieldVariable
+}
+
+func ClearCScope(scope *ast.Ast) {
+	delete(*ScopeData, scope.GetFullName())
 }
 
 func GetCScope(scope *ast.Ast) *CFileScope {

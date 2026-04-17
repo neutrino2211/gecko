@@ -1,0 +1,121 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What is Gecko
+
+Gecko is a compiled general-purpose systems programming language written in Go. It has both LLVM IR and C backends, providing TypeScript-like ergonomics for low-level programming with C ABI interoperability.
+
+## Build and Run Commands
+
+```bash
+# Install dependencies
+go get
+
+# Run the compiler (shows help)
+go run .
+
+# Compile to C (default backend)
+gecko compile examples/traits/shapes.gecko
+
+# Build executable
+gecko build examples/traits/shapes.gecko -o shapes
+
+# Compile and run
+gecko run examples/traits/shapes.gecko
+
+# View generated C code
+gecko compile --print-ir --ir-only examples/traits/shapes.gecko
+
+# Cross-compile for specific target
+gecko compile --target-arch=amd64 --target-platform=linux <file>
+
+# Enable debug logging
+gecko compile --log-level debug <file>
+# Or via environment variable
+GECKO_DEBUG=1 gecko compile <file>
+```
+
+## Examples
+
+The `examples/` directory contains complete, buildable examples:
+
+- **`examples/hello_kernel/`** - A minimal x86 kernel (requires QEMU)
+- **`examples/traits/`** - Demonstrates traits, trait constraints, and generics
+
+## Testing
+
+```bash
+# Run all tests
+go test ./tests/... -v
+
+# Run specific test
+go test ./tests/... -v -run TestCompileAndRun/traits_basic
+```
+
+Test files:
+- `test_sources/compile_tests/` - Integration tests that should compile and run
+- `test_sources/kitchen_sink/` - Conceptual syntax examples (may not compile)
+- `tests/` - Go test files for the compiler
+
+## Architecture
+
+### Compilation Pipeline
+
+```
+Source (.gecko) -> Lexer/Parser (Participle) -> tokens.File -> Backend -> C/LLVM IR -> gcc/llc -> .o
+```
+
+### Key Packages
+
+- **`tokens/`** - Grammar definitions using Participle parser combinator. `tokens.go` defines all AST node types.
+- **`parser/`** - EBNF lexer definition and Participle parser configuration.
+- **`ast/`** - Semantic AST with scope hierarchy for symbol resolution.
+- **`backends/`** - Backend abstraction. `BackendProcessEntries()` dispatches token types to implementations.
+- **`backends/c_backend/`** - C code generation (recommended for kernel development).
+- **`backends/llvm_backend/`** - LLVM IR generation using `github.com/llir/llvm`.
+- **`compiler/`** - Orchestrates parsing and backend invocation.
+- **`interfaces/`** - `BackendInterface` and `BackendCodegenImplementations` define the backend contract.
+
+### Adding New Syntax
+
+1. Define the token struct in `tokens/tokens.go` with Participle struct tags
+2. Add it to the `Entry` struct (top-level dispatch point)
+3. Handle it in `backends/backends.go` `BackendProcessEntries()`
+4. Implement codegen in both `c_backend/` and `llvm_backend/`
+
+## Language Features
+
+### Working Features
+
+- Functions with parameters and return types
+- Variables (`let`/`const`) with optional type annotations
+- Type inference for literals, expressions, and variable references: `let x = 42`
+- Primitive types: `int`, `int8-64`, `uint`, `uint8-64`, `bool`, `string`, `void`
+- Control flow: `if`/`else if`/`else`, `while`, `for`
+- All operators: arithmetic, comparison, bitwise (`&`, `|`, `^`, `<<`, `>>`)
+- C interop via `declare external`
+- Classes/structs with `@packed` attribute
+- Volatile pointers: `uint16 volatile*`
+- Pointer/integer casts: `0xB8000 as uint16*`
+- Array indexing: `arr[i]` for read and write
+- Fixed-size arrays: `[4096]uint8`
+- Inline assembly: `asm { "hlt" }`
+- Function attributes: `@naked`, `@noreturn`, `@section(".text")`
+- Global variables with `@section` placement
+- Struct literals: `Type { field: value }`
+- Module imports: `import modulename`
+- Generics with monomorphization: `func identity<T>(x: T): T`
+- Traits: `trait Name { func method(self): Type }`
+- Trait implementations: `impl Trait for Class { ... }`
+- Trait constraints: `func process<T is Trait>(x: T)`
+- Struct field access and assignment: `obj.field`, `obj.field = value`
+- Address-of operator: `&variable`
+- Function pointers: `func(T, T): T`
+- Break/continue in loops
+
+### Not Yet Implemented
+
+- String iteration
+- Default trait implementations
+- Trait inheritance

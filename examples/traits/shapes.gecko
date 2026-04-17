@@ -1,0 +1,93 @@
+package shapes
+
+trait Area {
+    func area(self): int
+}
+
+trait Perimeter {
+    func perimeter(self): int
+}
+
+class Rectangle {
+    let width: int
+    let height: int
+}
+
+class Square {
+    let side: int
+}
+
+class Circle {
+    let radius: int
+}
+
+impl Area for Rectangle {
+    func area(self): int {
+        return self.width * self.height
+    }
+}
+
+impl Perimeter for Rectangle {
+    func perimeter(self): int {
+        return 2 * (self.width + self.height)
+    }
+}
+
+impl Area for Square {
+    func area(self): int {
+        return self.side * self.side
+    }
+}
+
+impl Perimeter for Square {
+    func perimeter(self): int {
+        return 4 * self.side
+    }
+}
+
+impl Area for Circle {
+    func area(self): int {
+        return 3 * self.radius * self.radius
+    }
+}
+
+impl Perimeter for Circle {
+    func perimeter(self): int {
+        return 6 * self.radius
+    }
+}
+
+func double_area<T is Area>(shape: T): int {
+    return shape.area() * 2
+}
+
+func sum_dimensions<T is Area>(a: T, b: T): int {
+    return a.area() + b.area()
+}
+
+external func main(): int32 {
+    let rect: Rectangle
+    rect.width = 10
+    rect.height = 5
+
+    let sq: Square
+    sq.side = 4
+
+    let circ: Circle
+    circ.radius = 3
+
+    let rect_area: int = rect.area()
+    let rect_perim: int = rect.perimeter()
+
+    let sq_area: int = sq.area()
+    let sq_perim: int = sq.perimeter()
+
+    let circ_area: int = circ.area()
+    let circ_perim: int = circ.perimeter()
+
+    let doubled: int = double_area<Rectangle>(rect)
+
+    let total: int = rect_area + sq_area + circ_area
+
+    return total
+}

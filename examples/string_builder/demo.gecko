@@ -1,0 +1,126 @@
+package demo
+
+import string use { StringBuilder }
+
+declare external variardic func printf(fmt: string): int
+declare external func putchar(c: int): int
+
+func print_builder(sb: StringBuilder*): void {
+    let i: uint64 = 0
+    while i < sb.len() {
+        let c: uint8 = sb.get(i)
+        putchar(c as int)
+        i = i + 1
+    }
+}
+
+func build_greeting(sb: StringBuilder*, name: string): void {
+    let hello: string = "Hello, "
+    let ptr: uint8* = hello as uint8*
+
+    while @deref(ptr) != 0 {
+        sb.push_byte(@deref(ptr))
+        ptr = ptr.offset(1)
+    }
+
+    let name_ptr: uint8* = name as uint8*
+    while @deref(name_ptr) != 0 {
+        sb.push_byte(@deref(name_ptr))
+        name_ptr = name_ptr.offset(1)
+    }
+
+    sb.push_byte(33)
+    sb.push_byte(10)
+}
+
+func build_countdown(sb: StringBuilder*): void {
+    let i: int = 5
+    while i >= 0 {
+        let digit: uint8 = (48 + i) as uint8
+        sb.push_byte(digit)
+        sb.push_byte(46)
+        sb.push_byte(46)
+        sb.push_byte(46)
+        i = i - 1
+    }
+
+    let liftoff: string = " Liftoff!\n"
+    let ptr: uint8* = liftoff as uint8*
+    while @deref(ptr) != 0 {
+        sb.push_byte(@deref(ptr))
+        ptr = ptr.offset(1)
+    }
+}
+
+func build_box(sb: StringBuilder*, width: int): void {
+    let i: int = 0
+    while i < width {
+        sb.push_byte(42)
+        i = i + 1
+    }
+    sb.push_byte(10)
+
+    sb.push_byte(42)
+    i = 0
+    while i < width - 2 {
+        sb.push_byte(32)
+        i = i + 1
+    }
+    sb.push_byte(42)
+    sb.push_byte(10)
+
+    i = 0
+    while i < width {
+        sb.push_byte(42)
+        i = i + 1
+    }
+    sb.push_byte(10)
+}
+
+external func main(): int32 {
+    let sb: StringBuilder = StringBuilder {
+        buffer: 0 as uint8*,
+        length: 0,
+        capacity: 0
+    }
+
+    printf("=== StringBuilder Demo ===\n\n")
+
+    printf("1. Building a greeting:\n")
+    sb.init()
+    build_greeting(&sb, "Gecko")
+    print_builder(&sb)
+    printf("   Length: %lu bytes\n\n", sb.len())
+    sb.destroy()
+
+    printf("2. Building a countdown:\n")
+    sb.init()
+    build_countdown(&sb)
+    print_builder(&sb)
+    printf("   Length: %lu bytes\n\n", sb.len())
+    sb.destroy()
+
+    printf("3. Drawing a box:\n")
+    sb.init()
+    build_box(&sb, 10)
+    print_builder(&sb)
+    printf("   Length: %lu bytes\n\n", sb.len())
+    sb.destroy()
+
+    printf("4. String utilities:\n")
+    let s1: string = "Hello"
+    let s2: string = "Hello"
+    let s3: string = "World"
+
+    printf("   strlen(\"Hello\") = %lu\n", string.strlen(s1))
+    if (string.streq(s1, s2)) {
+        printf("   \"Hello\" == \"Hello\": true\n")
+    }
+    if (!string.streq(s1, s3)) {
+        printf("   \"Hello\" == \"World\": false\n")
+    }
+
+    printf("\n=== Demo Complete ===\n")
+
+    return 0
+}

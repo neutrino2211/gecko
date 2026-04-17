@@ -1,0 +1,53 @@
+package kernel
+
+import vga
+import cpu
+
+func write_hello(x: int, y: int, color: uint8): void {
+    vga.putchar(72, color, x, y)
+    vga.putchar(101, color, x + 1, y)
+    vga.putchar(108, color, x + 2, y)
+    vga.putchar(108, color, x + 3, y)
+    vga.putchar(111, color, x + 4, y)
+    vga.putchar(44, color, x + 5, y)
+    vga.putchar(32, color, x + 6, y)
+    vga.putchar(71, color, x + 7, y)
+    vga.putchar(101, color, x + 8, y)
+    vga.putchar(99, color, x + 9, y)
+    vga.putchar(107, color, x + 10, y)
+    vga.putchar(111, color, x + 11, y)
+    vga.putchar(33, color, x + 12, y)
+}
+
+func delay(): void {
+    let i: int = 0
+    while i < 5000000 {
+        i = i + 1
+    }
+}
+
+func spinner(x: int, y: int, color: uint8): void {
+    while 1 == 1 {
+        vga.putchar(124, color, x, y)
+        delay()
+        vga.putchar(47, color, x, y)
+        delay()
+        vga.putchar(45, color, x, y)
+        delay()
+        vga.putchar(92, color, x, y)
+        delay()
+    }
+}
+
+external func kmain(): void {
+    cpu.disable_interrupts()
+
+    let bg: uint8 = vga.color(vga.WHITE, vga.BLACK)
+    vga.clear(bg)
+
+    let text_color: uint8 = vga.color(vga.LIGHT_GREEN, vga.BLACK)
+    write_hello(33, 12, text_color)
+
+    let spinner_color: uint8 = vga.color(vga.LIGHT_CYAN, vga.BLACK)
+    spinner(47, 12, spinner_color)
+}

@@ -1,0 +1,18 @@
+package demo
+
+import math
+
+external func main(): int32 {
+    let a: int = 0 - 15
+    let abs_a: int = math.abs(a)
+
+    let x: int = 5
+    let y: int = 10
+    let min_xy: int = math.min(x, y)
+    let max_xy: int = math.max(x, y)
+
+    let clamped: int = math.clamp(100, 0, 50)
+
+    let result: int = abs_a + min_xy + max_xy + clamped
+    return result
+}

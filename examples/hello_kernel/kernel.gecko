@@ -1,0 +1,118 @@
+package kernel
+
+// =============================================================================
+// VGA Text Mode - 80x25 character display at 0xB8000
+// =============================================================================
+
+const VGA_WIDTH: int = 80
+const VGA_HEIGHT: int = 25
+const VGA_ADDRESS: uint64 = 0xB8000
+
+// VGA Colors
+const COLOR_BLACK: uint8 = 0
+const COLOR_BLUE: uint8 = 1
+const COLOR_GREEN: uint8 = 2
+const COLOR_CYAN: uint8 = 3
+const COLOR_RED: uint8 = 4
+const COLOR_MAGENTA: uint8 = 5
+const COLOR_BROWN: uint8 = 6
+const COLOR_LIGHT_GRAY: uint8 = 7
+const COLOR_DARK_GRAY: uint8 = 8
+const COLOR_LIGHT_BLUE: uint8 = 9
+const COLOR_LIGHT_GREEN: uint8 = 10
+const COLOR_LIGHT_CYAN: uint8 = 11
+const COLOR_LIGHT_RED: uint8 = 12
+const COLOR_LIGHT_MAGENTA: uint8 = 13
+const COLOR_YELLOW: uint8 = 14
+const COLOR_WHITE: uint8 = 15
+
+// Create a VGA color byte from foreground and background
+func vga_color(fg: uint8, bg: uint8): uint8 {
+    return fg | (bg << 4)
+}
+
+// Create a VGA entry (character + color attribute)
+func vga_entry(c: uint8, color: uint8): uint16 {
+    return c as uint16 | (color as uint16 << 8)
+}
+
+// Write a character at a specific position
+func vga_putchar_at(c: uint8, color: uint8, x: int, y: int): void {
+    let vga: uint16 volatile* = VGA_ADDRESS as uint16 volatile*
+    let index: int = y * VGA_WIDTH + x
+    vga[index] = vga_entry(c, color)
+}
+
+// Clear the entire screen with a color
+func vga_clear(color: uint8): void {
+    let vga: uint16 volatile* = VGA_ADDRESS as uint16 volatile*
+    let space: uint16 = vga_entry(32, color)
+
+    // Clear all 2000 cells (80 * 25)
+    let i: int = 0
+    for i < 2000 {
+        vga[i] = space
+        i = i + 1
+    }
+}
+
+// Write "Hello, Gecko!" at position
+func vga_write_hello(x: int, y: int, color: uint8): void {
+    vga_putchar_at(72, color, x, y)       // H
+    vga_putchar_at(101, color, x + 1, y)  // e
+    vga_putchar_at(108, color, x + 2, y)  // l
+    vga_putchar_at(108, color, x + 3, y)  // l
+    vga_putchar_at(111, color, x + 4, y)  // o
+    vga_putchar_at(44, color, x + 5, y)   // ,
+    vga_putchar_at(32, color, x + 6, y)   // (space)
+    vga_putchar_at(71, color, x + 7, y)   // G
+    vga_putchar_at(101, color, x + 8, y)  // e
+    vga_putchar_at(99, color, x + 9, y)   // c
+    vga_putchar_at(107, color, x + 10, y) // k
+    vga_putchar_at(111, color, x + 11, y) // o
+    vga_putchar_at(33, color, x + 12, y)  // !
+}
+
+// =============================================================================
+// CPU Control
+// =============================================================================
+
+func halt(): void {
+    asm { "hlt" }
+}
+
+func cli(): void {
+    asm { "cli" }
+}
+
+func sti(): void {
+    asm { "sti" }
+}
+
+@noreturn
+func hang(): void {
+    cli()
+    halt()
+    halt()
+}
+
+// =============================================================================
+// Kernel Entry Point - called from boot.S
+// =============================================================================
+
+// External so boot.S can call it without namespace prefix
+external func kmain(): void {
+    // Disable interrupts
+    cli()
+
+    // Clear screen with black background
+    let bg_color: uint8 = vga_color(COLOR_WHITE, COLOR_BLACK)
+    vga_clear(bg_color)
+
+    // Write "Hello, Gecko!" in green on black at center of screen
+    let text_color: uint8 = vga_color(COLOR_LIGHT_GREEN, COLOR_BLACK)
+    vga_write_hello(33, 12, text_color)
+
+    // Hang forever
+    hang()
+}

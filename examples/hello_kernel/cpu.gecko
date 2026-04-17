@@ -1,0 +1,20 @@
+package cpu
+
+func halt(): void {
+    asm { "hlt" }
+}
+
+func disable_interrupts(): void {
+    asm { "cli" }
+}
+
+func enable_interrupts(): void {
+    asm { "sti" }
+}
+
+@noreturn
+func hang(): void {
+    disable_interrupts()
+    halt()
+    halt()
+}

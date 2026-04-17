@@ -1,0 +1,54 @@
+package vga
+
+const WIDTH: int = 80
+const HEIGHT: int = 25
+const ADDRESS: uint64 = 0xB8000
+
+const BLACK: uint8 = 0
+const BLUE: uint8 = 1
+const GREEN: uint8 = 2
+const CYAN: uint8 = 3
+const RED: uint8 = 4
+const MAGENTA: uint8 = 5
+const BROWN: uint8 = 6
+const LIGHT_GRAY: uint8 = 7
+const DARK_GRAY: uint8 = 8
+const LIGHT_BLUE: uint8 = 9
+const LIGHT_GREEN: uint8 = 10
+const LIGHT_CYAN: uint8 = 11
+const LIGHT_RED: uint8 = 12
+const LIGHT_MAGENTA: uint8 = 13
+const YELLOW: uint8 = 14
+const WHITE: uint8 = 15
+
+func color(fg: uint8, bg: uint8): uint8 {
+    return fg | (bg << 4)
+}
+
+func entry(c: uint8, color: uint8): uint16 {
+    return c as uint16 | (color as uint16 << 8)
+}
+
+func putchar(c: uint8, color: uint8, x: int, y: int): void {
+    let buffer: uint16 volatile* = ADDRESS as uint16 volatile*
+    let index: int = y * WIDTH + x
+    buffer[index] = entry(c, color)
+}
+
+func clear(color: uint8): void {
+    let buffer: uint16 volatile* = ADDRESS as uint16 volatile*
+    let space: uint16 = entry(32, color)
+    let i: int = 0
+    while i < 2000 {
+        buffer[i] = space
+        i = i + 1
+    }
+}
+
+func print(text: uint8*, len: int, x: int, y: int, color: uint8): void {
+    let i: int = 0
+    while i < len {
+        putchar(text[i], color, x + i, y)
+        i = i + 1
+    }
+}

@@ -1,0 +1,71 @@
+package kernel
+
+// Packed struct for multiboot header
+@packed
+class MultibootHeader {
+    let magic: uint32
+    let flags: uint32
+    let checksum: uint32
+}
+
+// VGA text mode constants
+func vga_entry(c: uint8, color: uint8): uint16 {
+    return c | (color << 8) as uint16
+}
+
+// Write a character to VGA buffer using volatile pointer with array indexing
+func vga_write(pos: int, c: uint8, color: uint8): void {
+    let vga: uint16 volatile* = 753664 as uint16 volatile*
+    let entry: uint16 = vga_entry(c, color)
+    // Write to VGA buffer at the specified position using array indexing
+    vga[pos] = entry
+}
+
+// Read a character from VGA buffer using volatile pointer with array indexing
+func vga_read(pos: int): uint16 {
+    let vga: uint16 volatile* = 753664 as uint16 volatile*
+    // Read from VGA buffer at the specified position using array indexing
+    return vga[pos]
+}
+
+// Halt the CPU
+func halt(): void {
+    asm { "hlt" }
+}
+
+// Enable interrupts
+func sti(): void {
+    asm { "sti" }
+}
+
+// Disable interrupts
+func cli(): void {
+    asm { "cli" }
+}
+
+// Kernel entry point
+func kmain(): void {
+    // Write 'A' to VGA buffer at position 0
+    vga_write(0, 65, 15)
+
+    // Halt forever
+    halt()
+}
+
+// Naked function - no prologue/epilogue
+// Useful for low-level entry points and interrupt handlers
+@naked
+@noreturn
+func _start(): void {
+    asm { "call kmain" }
+    asm { "hlt" }
+}
+
+// Function placed in specific section for linker control
+@section(".text.boot")
+@noreturn
+func boot_entry(): void {
+    asm { "cli" }
+    asm { "call kmain" }
+    asm { "hlt" }
+}

@@ -1,0 +1,187 @@
+package main
+
+declare external func malloc(size: uint64): void*
+declare external func realloc(ptr: void*, size: uint64): void*
+declare external func free(ptr: void*): void
+declare external func memcpy(dest: void*, src: void*, n: uint64): void*
+declare external func puts(s: string): int32
+
+class Vec<T> {
+    let data: uint64
+    let len: uint64
+    let cap: uint64
+
+    func new(): Vec<T> {
+        let initial_cap: uint64 = 4
+        let elem_size: uint64 = @size_of<T>()
+        let mem: void* = malloc(initial_cap * elem_size)
+
+        let v: Vec<T>
+        v.data = mem as uint64
+        v.len = 0
+        v.cap = initial_cap
+        return v
+    }
+
+    func is_empty(self): bool {
+        return self.len == 0
+    }
+
+    func length(self): uint64 {
+        return self.len
+    }
+
+    func get(self, index: uint64): T {
+        let elem_size: uint64 = @size_of<T>()
+        let ptr: T* = (self.data + index * elem_size) as T*
+        return @deref(ptr)
+    }
+
+    func set(self, index: uint64, value: T) {
+        let elem_size: uint64 = @size_of<T>()
+        let ptr: T* = (self.data + index * elem_size) as T*
+        @write_volatile(ptr, value)
+    }
+
+    func reserve(self, additional: uint64) {
+        let required: uint64 = self.len + additional
+        if (required <= self.cap) {
+            return
+        }
+        let new_cap: uint64 = self.cap * 2
+        if (new_cap < required) {
+            new_cap = required
+        }
+        let elem_size: uint64 = @size_of<T>()
+        let new_mem: void* = realloc(self.data as void*, new_cap * elem_size)
+        self.data = new_mem as uint64
+        self.cap = new_cap
+    }
+
+    func push(self, value: T) {
+        self.reserve(1)
+        let elem_size: uint64 = @size_of<T>()
+        let ptr: T* = (self.data + self.len * elem_size) as T*
+        @write_volatile(ptr, value)
+        self.len = self.len + 1
+    }
+
+    func pop(self): T {
+        if (self.len == 0) {
+            return 0 as T
+        }
+        self.len = self.len - 1
+        let elem_size: uint64 = @size_of<T>()
+        let ptr: T* = (self.data + self.len * elem_size) as T*
+        return @deref(ptr)
+    }
+
+    func first(self): T {
+        if (self.len == 0) {
+            return 0 as T
+        }
+        return self.get(0)
+    }
+
+    func last(self): T {
+        if (self.len == 0) {
+            return 0 as T
+        }
+        return self.get(self.len - 1)
+    }
+
+    func clear(self) {
+        self.len = 0
+    }
+
+    func drop(self) {
+        if (self.data != 0) {
+            free(self.data as void*)
+            self.data = 0
+            self.len = 0
+            self.cap = 0
+        }
+    }
+}
+
+external func main(): int32 {
+    // Test Vec::new and push
+    let v: Vec<int32> = Vec<int32>::new()
+
+    if (!v.is_empty()) {
+        return 1
+    }
+
+    v.push(10)
+    v.push(20)
+    v.push(30)
+
+    if (v.length() != 3) {
+        return 2
+    }
+
+    // Test get
+    if (v.get(0) != 10) {
+        return 3
+    }
+    if (v.get(1) != 20) {
+        return 4
+    }
+    if (v.get(2) != 30) {
+        return 5
+    }
+
+    // Test first and last
+    if (v.first() != 10) {
+        return 6
+    }
+    if (v.last() != 30) {
+        return 7
+    }
+
+    // Test set
+    v.set(1, 25)
+    if (v.get(1) != 25) {
+        return 8
+    }
+
+    // Test pop
+    let popped: int32 = v.pop()
+    if (popped != 30) {
+        return 9
+    }
+    if (v.length() != 2) {
+        return 10
+    }
+
+    // Test clear
+    v.clear()
+    if (!v.is_empty()) {
+        return 11
+    }
+
+    // Test with more elements (triggers resize)
+    let v2: Vec<int32> = Vec<int32>::new()
+    v2.push(1)
+    v2.push(2)
+    v2.push(3)
+    v2.push(4)
+    v2.push(5)
+    v2.push(6)
+
+    if (v2.length() != 6) {
+        return 12
+    }
+
+    let sum: int32 = 0
+    sum = v2.get(0) + v2.get(1) + v2.get(2) + v2.get(3) + v2.get(4) + v2.get(5)
+    if (sum != 21) {
+        return 13
+    }
+
+    v.drop()
+    v2.drop()
+
+    puts("All vec tests passed!")
+    return 0
+}

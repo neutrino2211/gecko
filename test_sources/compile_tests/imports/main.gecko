@@ -1,0 +1,9 @@
+package main
+
+import math
+
+func test(): int {
+    let x: int = math.PI
+    let result: int = math.add(5, x)
+    return math.mul(result, 2)
+}

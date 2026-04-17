@@ -1,0 +1,12 @@
+package main
+
+@packed
+class MultibootHeader {
+    let magic: uint32
+    let flags: uint32
+    let checksum: uint32
+}
+
+func main(): int {
+    return 0
+}

@@ -1,0 +1,33 @@
+package main
+
+declare external func puts(s: string): int32
+
+external func main(): int32 {
+    let a: bool = true
+    let b: bool = false
+
+    // Test logical AND
+    if (a && b) {
+        return 1
+    }
+
+    // Test logical OR
+    if (!(a || b)) {
+        return 2
+    }
+
+    // Test combined
+    let c: bool = true
+    if (!(a && c)) {
+        return 3
+    }
+
+    if (b || c) {
+        // This should execute
+    } else {
+        return 4
+    }
+
+    puts("Logical operators work!")
+    return 0
+}

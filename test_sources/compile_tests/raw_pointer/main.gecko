@@ -1,0 +1,100 @@
+package main
+
+declare external func malloc(size: uint64): void*
+declare external func free(ptr: void*): void
+declare external func printf(fmt: string): int
+
+// Raw<T> inline for testing
+class Raw<T> {
+    let addr: uint64
+
+    func init(self, address: uint64) {
+        self.addr = address
+    }
+
+    func init_null(self) {
+        self.addr = 0
+    }
+
+    func to_address(self): uint64 {
+        return self.addr
+    }
+
+    func is_null(self): bool {
+        return self.addr == 0
+    }
+
+    func is_valid(self): bool {
+        return self.addr != 0
+    }
+
+    func read(self): T {
+        let ptr: T* = self.addr as T*
+        return @deref(ptr)
+    }
+
+    func write(self, value: T) {
+        let ptr: T* = self.addr as T*
+        @write_volatile(ptr, value)
+    }
+
+    func add(self, n: uint64): Raw<T> {
+        let element_size: uint64 = @size_of<T>()
+        let new_addr: uint64 = self.addr + n * element_size
+        let result: Raw<T>
+        result.init(new_addr)
+        return result
+    }
+
+    func zero(self, count: uint64) {
+        let size: uint64 = count * @size_of<T>()
+        @zero(self.addr as void*, size)
+    }
+}
+
+external func main(): int32 {
+    let mem: void* = malloc(16)
+    if (@is_null(mem)) {
+        printf("malloc failed\n")
+        return 1
+    }
+
+    let ptr: Raw<uint32>
+    ptr.init(mem as uint64)
+
+    printf("Testing Raw<T>...\n")
+
+    if (ptr.is_valid()) {
+        printf("  is_valid = true\n")
+    }
+
+    ptr.write(42)
+    let val: uint32 = ptr.read()
+    if (val == 42) {
+        printf("  read/write works: 42\n")
+    } else {
+        printf("  read/write FAILED\n")
+        return 1
+    }
+
+    let ptr2: Raw<uint32> = ptr.add(1)
+    ptr2.write(100)
+
+    if (ptr2.read() == 100) {
+        printf("  pointer arithmetic works\n")
+    } else {
+        printf("  pointer arithmetic FAILED\n")
+        return 1
+    }
+
+    let null_ptr: Raw<uint32>
+    null_ptr.init_null()
+    if (null_ptr.is_null()) {
+        printf("  null pointer works\n")
+    }
+
+    free(mem)
+    printf("All tests passed!\n")
+
+    return 0
+}

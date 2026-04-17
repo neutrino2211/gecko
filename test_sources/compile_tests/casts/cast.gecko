@@ -1,0 +1,14 @@
+package main
+
+declare external variardic func printf(format: string): int
+
+func test_cast(x: int): int {
+    let small: int = x as int
+    return small
+}
+
+func main(): int {
+    let result: int = test_cast(42)
+    printf(&"Result: %d\n", result)
+    return 0
+}

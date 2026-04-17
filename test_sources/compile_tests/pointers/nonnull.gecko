@@ -1,0 +1,30 @@
+package pointers
+
+class Data {
+    let value: int
+}
+
+func process_nonnull(d: Data*!): int {
+    return d.value
+}
+
+func maybe_process(d: Data*): int {
+    if (d != 0 as Data*) {
+        let safe: Data*! = d
+        return process_nonnull(safe)
+    }
+    return 0
+}
+
+external func main(): int32 {
+    let data: Data
+    data.value = 42
+
+    let ptr: Data* = &data
+    let result: int = maybe_process(ptr)
+
+    let null_ptr: Data* = 0 as Data*
+    let null_result: int = maybe_process(null_ptr)
+
+    return result + null_result
+}

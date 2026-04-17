@@ -1,0 +1,95 @@
+package raw
+
+// Raw<T> - Unsafe pointer wrapper
+// This is the escape hatch for low-level memory operations.
+// Functions using Raw<T> signal potential unsafety in their signature.
+
+class Raw<T> {
+    let addr: uint64
+
+    // Initialize from address
+    func init(self, address: uint64) {
+        self.addr = address
+    }
+
+    // Initialize as null
+    func init_null(self) {
+        self.addr = 0
+    }
+
+    // Get the raw address
+    func to_address(self): uint64 {
+        return self.addr
+    }
+
+    // Check if null
+    func is_null(self): bool {
+        return self.addr == 0
+    }
+
+    // Check if not null
+    func is_valid(self): bool {
+        return self.addr != 0
+    }
+
+    // Read value at pointer (unchecked)
+    func read(self): T {
+        let ptr: T* = self.addr as T*
+        return @deref(ptr)
+    }
+
+    // Write value at pointer (unchecked)
+    func write(self, value: T) {
+        let ptr: T* = self.addr as T*
+        @write_volatile(ptr, value)
+    }
+
+    // Pointer arithmetic - offset by n elements
+    func add(self, n: uint64): Raw<T> {
+        let element_size: uint64 = @size_of<T>()
+        let new_addr: uint64 = self.addr + n * element_size
+        let result: Raw<T>
+        result.init(new_addr)
+        return result
+    }
+
+    // Pointer arithmetic - subtract
+    func sub(self, n: uint64): Raw<T> {
+        let element_size: uint64 = @size_of<T>()
+        let new_addr: uint64 = self.addr - n * element_size
+        let result: Raw<T>
+        result.init(new_addr)
+        return result
+    }
+
+    // Copy bytes from another location
+    func copy_from(self, src: Raw<T>, count: uint64) {
+        let size: uint64 = count * @size_of<T>()
+        @copy(self.addr as void*, src.addr as void*, size)
+    }
+
+    // Zero out memory
+    func zero(self, count: uint64) {
+        let size: uint64 = count * @size_of<T>()
+        @zero(self.addr as void*, size)
+    }
+}
+
+// Static constructors as free functions
+func raw_from_address<T>(address: uint64): Raw<T> {
+    let r: Raw<T>
+    r.init(address)
+    return r
+}
+
+func raw_null<T>(): Raw<T> {
+    let r: Raw<T>
+    r.init_null()
+    return r
+}
+
+func raw_cast<T, U>(from: Raw<T>): Raw<U> {
+    let r: Raw<U>
+    r.init(from.to_address())
+    return r
+}

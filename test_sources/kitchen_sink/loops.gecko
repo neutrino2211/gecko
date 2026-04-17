@@ -1,0 +1,15 @@
+package main
+
+declare external variardic func printf(format: string): int
+
+func main() {
+  let counter: int = 0
+
+  // Simple while-style loop
+  for counter != 3 {
+    printf(&"Loop iteration\n")
+    counter = counter
+  }
+
+  printf(&"Done!\n")
+}

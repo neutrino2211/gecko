@@ -1,0 +1,27 @@
+package fixed_arrays
+
+// Global fixed-size array (uninitialized, zeroed)
+let buffer: [4096]uint8
+
+// Global fixed-size array with volatile
+let vga_buffer: [2000]uint16 volatile
+
+// Global const array
+let lookup_table: [256]uint8!
+
+// Function that uses local fixed-size arrays
+func test_local_arrays(): void {
+    // Local fixed-size array
+    let stack: [8192]uint8
+
+    // Another local fixed-size array with different type
+    let data: [100]uint32
+}
+
+// Function that uses a fixed-size array parameter is not yet supported
+// but we can work with pointers to arrays
+
+func main(): int {
+    test_local_arrays()
+    return 0
+}

@@ -1,0 +1,25 @@
+package builtin_traits
+
+class Data {
+    let value: int
+}
+
+external func main(): int32 {
+    let d: Data
+    d.value = 42
+
+    let ptr: Data* = &d
+    let null_ptr: Data* = 0 as Data*
+
+    let is_null_result: int = 0
+    if (ptr.is_null()) {
+        is_null_result = 100
+    }
+
+    let null_check: int = 0
+    if (null_ptr.is_null()) {
+        null_check = 1
+    }
+
+    return d.value + null_check + is_null_result
+}

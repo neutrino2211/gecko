@@ -1,0 +1,10 @@
+package main
+
+func halt(): void {
+    asm { "hlt" }
+}
+
+func main(): int {
+    halt()
+    return 0
+}

@@ -1,0 +1,72 @@
+package main
+
+declare external func puts(s: string): int32
+
+trait Add<T> {
+    func add(self, other: T): T
+}
+
+trait Eq<T> {
+    func eq(self, other: T): bool
+}
+
+class Point {
+    let x: int32
+    let y: int32
+
+    func new(x: int32, y: int32): Point {
+        let p: Point
+        p.x = x
+        p.y = y
+        return p
+    }
+}
+
+impl Add<Point> for Point {
+    func add(self, other: Point): Point {
+        let result: Point
+        result.x = self.x + other.x
+        result.y = self.y + other.y
+        return result
+    }
+}
+
+impl Eq<Point> for Point {
+    func eq(self, other: Point): bool {
+        return self.x == other.x && self.y == other.y
+    }
+}
+
+external func main(): int32 {
+    let p1: Point = Point::new(1, 2)
+    let p2: Point = Point::new(3, 4)
+
+    // Test operator overloading: p1 + p2 should call Point__Add__add
+    let p3: Point = p1 + p2
+
+    // Verify the result
+    if (p3.x != 4) {
+        return 1
+    }
+    if (p3.y != 6) {
+        return 2
+    }
+
+    // Test equality operator
+    let p4: Point = Point::new(4, 6)
+    if (!(p3 == p4)) {
+        return 3
+    }
+
+    // Test chained addition
+    let p5: Point = p1 + p2 + p1
+    if (p5.x != 5) {
+        return 4
+    }
+    if (p5.y != 8) {
+        return 5
+    }
+
+    puts("All operator overload tests passed!")
+    return 0
+}

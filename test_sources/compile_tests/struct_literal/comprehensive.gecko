@@ -1,0 +1,49 @@
+@packed
+class MultibootHeader {
+    let magic: uint32
+    let flags: uint32
+    let checksum: uint32
+}
+
+class Point {
+    let x: int32
+    let y: int32
+}
+
+class Color {
+    let r: uint8
+    let g: uint8
+    let b: uint8
+    let a: uint8
+}
+
+func main(): int {
+    // Test packed struct literal
+    let header: MultibootHeader = MultibootHeader {
+        magic: 0x1BADB002,
+        flags: 0x00,
+        checksum: 0xE4524FFE
+    }
+
+    // Test regular struct literal
+    let origin: Point = Point {
+        x: 0,
+        y: 0
+    }
+
+    // Test with different field values
+    let position: Point = Point {
+        x: 100,
+        y: 200
+    }
+
+    // Test byte-sized fields
+    let red: Color = Color {
+        r: 255,
+        g: 0,
+        b: 0,
+        a: 255
+    }
+
+    return 0
+}

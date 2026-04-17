@@ -1,0 +1,31 @@
+package intrinsics
+
+class Point {
+    let x: int
+    let y: int
+}
+
+external func main(): int32 {
+    let p: Point
+    p.x = 5
+    p.y = 10
+
+    let ptr: Point* = &p
+    let null_ptr: Point* = 0 as Point*
+
+    let size: int = @size_of<Point>()
+
+    let null_check: int = 0
+    if (@is_null(null_ptr)) {
+        null_check = 1
+    }
+
+    let not_null_check: int = 0
+    if (@is_null(ptr)) {
+        not_null_check = 100
+    }
+
+    let result: int = size + null_check + not_null_check
+
+    return result
+}

@@ -1,0 +1,32 @@
+package constraint_error
+
+trait Addable {
+    func add(self, other: int): int
+}
+
+class Counter {
+    let value: int
+}
+
+class NotAddable {
+    let x: int
+}
+
+impl Addable for Counter {
+    func add(self, other: int): int {
+        return self.value + other
+    }
+}
+
+func double<T is Addable>(item: T): int {
+    return item.add(item.add(0))
+}
+
+external func main(): int32 {
+    let na: NotAddable
+    na.x = 10
+
+    let result: int = double<NotAddable>(na)
+
+    return result
+}

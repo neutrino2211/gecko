@@ -1,0 +1,66 @@
+package main
+
+declare external variardic func printf(format: string): int
+
+func add(a: int, b: int): int {
+    return a + b
+}
+
+func sub(a: int, b: int): int {
+    return a - b
+}
+
+func mul(a: int, b: int): int {
+    return a * b
+}
+
+func div(a: int, b: int): int {
+    return a / b
+}
+
+func bitwise_and(a: int, b: int): int {
+    return a & b
+}
+
+func bitwise_or(a: int, b: int): int {
+    return a | b
+}
+
+func shift_left(a: int, bits: int): int {
+    return a << bits
+}
+
+func shift_right(a: int, bits: int): int {
+    return a >> bits
+}
+
+func main(): int {
+    let x: int = 10
+    let y: int = 3
+
+    printf(&"Addition: %d + %d = %d\n", x, y, add(x, y))
+    printf(&"Subtraction: %d - %d = %d\n", x, y, sub(x, y))
+    printf(&"Multiplication: %d * %d = %d\n", x, y, mul(x, y))
+    printf(&"Division: %d / %d = %d\n", x, y, div(x, y))
+
+    printf(&"Bitwise AND: %d & %d = %d\n", x, y, bitwise_and(x, y))
+    printf(&"Bitwise OR: %d | %d = %d\n", x, y, bitwise_or(x, y))
+    printf(&"Shift left: %d << 2 = %d\n", x, shift_left(x, 2))
+    printf(&"Shift right: %d >> 1 = %d\n", x, shift_right(x, 1))
+
+    if (x > y) {
+        printf(&"x is greater than y\n")
+    } else {
+        printf(&"x is not greater than y\n")
+    }
+
+    if (x == 10) {
+        printf(&"x equals 10\n")
+    } else if (x == 5) {
+        printf(&"x equals 5\n")
+    } else {
+        printf(&"x is something else\n")
+    }
+
+    return 0
+}

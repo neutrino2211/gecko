@@ -1,0 +1,227 @@
+package main
+
+declare external func malloc(size: uint64): void*
+declare external func free(ptr: void*): void
+declare external func printf(fmt: string): int
+
+// Rc<T> inline for testing
+class Rc<T> {
+    let ptr: uint64
+
+    func new(value: T): Rc<T> {
+        let value_size: uint64 = @size_of<T>()
+        let total_size: uint64 = 16 + value_size
+        let mem: void* = malloc(total_size)
+        let addr: uint64 = mem as uint64
+
+        let strong_ptr: uint64* = addr as uint64*
+        @write_volatile(strong_ptr, 1)
+
+        let weak_ptr: uint64* = (addr + 8) as uint64*
+        @write_volatile(weak_ptr, 1)
+
+        let value_ptr: T* = (addr + 16) as T*
+        @write_volatile(value_ptr, value)
+
+        let r: Rc<T>
+        r.ptr = addr
+        return r
+    }
+
+    func strong_count(self): uint64 {
+        if (self.ptr == 0) {
+            return 0
+        }
+        let strong_ptr: uint64* = self.ptr as uint64*
+        return @deref(strong_ptr)
+    }
+
+    func weak_count(self): uint64 {
+        if (self.ptr == 0) {
+            return 0
+        }
+        let weak_ptr: uint64* = (self.ptr + 8) as uint64*
+        return @deref(weak_ptr)
+    }
+
+    func get(self): T {
+        let value_ptr: T* = (self.ptr + 16) as T*
+        return @deref(value_ptr)
+    }
+
+    func inner_ptr(self): uint64 {
+        return self.ptr
+    }
+
+    func drop(self) {
+        if (self.ptr == 0) {
+            return
+        }
+
+        let strong_ptr: uint64* = self.ptr as uint64*
+        let count: uint64 = @deref(strong_ptr)
+
+        if (count <= 1) {
+            // Set strong to 0 but don't free yet if weak refs exist
+            @write_volatile(strong_ptr, 0)
+
+            let weak_ptr: uint64* = (self.ptr + 8) as uint64*
+            let weak_count: uint64 = @deref(weak_ptr)
+
+            if (weak_count <= 1) {
+                free(self.ptr as void*)
+            }
+            self.ptr = 0
+        } else {
+            @write_volatile(strong_ptr, count - 1)
+        }
+    }
+}
+
+// Weak<T> inline for testing
+class Weak<T> {
+    let ptr: uint64
+
+    func from_rc_ptr(rc_ptr: uint64): Weak<T> {
+        if (rc_ptr != 0) {
+            let weak_ptr: uint64* = (rc_ptr + 8) as uint64*
+            let count: uint64 = @deref(weak_ptr)
+            @write_volatile(weak_ptr, count + 1)
+        }
+
+        let w: Weak<T>
+        w.ptr = rc_ptr
+        return w
+    }
+
+    func strong_count(self): uint64 {
+        if (self.ptr == 0) {
+            return 0
+        }
+        let strong_ptr: uint64* = self.ptr as uint64*
+        return @deref(strong_ptr)
+    }
+
+    func weak_count(self): uint64 {
+        if (self.ptr == 0) {
+            return 0
+        }
+        let weak_ptr: uint64* = (self.ptr + 8) as uint64*
+        return @deref(weak_ptr)
+    }
+
+    func is_alive(self): bool {
+        return self.strong_count() > 0
+    }
+
+    func try_get(self): T {
+        if (self.ptr == 0) {
+            return 0 as T
+        }
+
+        if (self.strong_count() == 0) {
+            return 0 as T
+        }
+
+        let value_ptr: T* = (self.ptr + 16) as T*
+        return @deref(value_ptr)
+    }
+
+    func drop(self) {
+        if (self.ptr == 0) {
+            return
+        }
+
+        let weak_ptr: uint64* = (self.ptr + 8) as uint64*
+        let wcount: uint64 = @deref(weak_ptr)
+
+        if (wcount <= 1) {
+            let strong_ptr: uint64* = self.ptr as uint64*
+            let scount: uint64 = @deref(strong_ptr)
+
+            if (scount == 0) {
+                free(self.ptr as void*)
+            } else {
+                @write_volatile(weak_ptr, wcount - 1)
+            }
+        } else {
+            @write_volatile(weak_ptr, wcount - 1)
+        }
+
+        self.ptr = 0
+    }
+}
+
+external func main(): int32 {
+    printf("Testing Weak<T>...\n")
+
+    // Create an Rc
+    let rc: Rc<int32> = Rc<int32>::new(42)
+
+    // Check initial counts
+    if (rc.strong_count() == 1) {
+        printf("  Rc strong_count = 1: OK\n")
+    } else {
+        printf("  Rc strong_count FAILED\n")
+        return 1
+    }
+
+    if (rc.weak_count() == 1) {
+        printf("  Rc weak_count = 1: OK\n")
+    } else {
+        printf("  Rc weak_count FAILED\n")
+        return 1
+    }
+
+    // Create weak reference
+    let weak: Weak<int32> = Weak<int32>::from_rc_ptr(rc.inner_ptr())
+
+    // Check counts after weak ref
+    if (rc.weak_count() == 2) {
+        printf("  After Weak, weak_count = 2: OK\n")
+    } else {
+        printf("  After Weak, weak_count FAILED\n")
+        return 1
+    }
+
+    // Weak should be alive
+    if (weak.is_alive()) {
+        printf("  Weak is_alive = true: OK\n")
+    } else {
+        printf("  Weak is_alive FAILED\n")
+        return 1
+    }
+
+    // Get value through weak
+    if (weak.try_get() == 42) {
+        printf("  Weak try_get = 42: OK\n")
+    } else {
+        printf("  Weak try_get FAILED\n")
+        return 1
+    }
+
+    // Drop the Rc
+    rc.drop()
+
+    // Weak should no longer be alive
+    if (!weak.is_alive()) {
+        printf("  After Rc drop, is_alive = false: OK\n")
+    } else {
+        printf("  After Rc drop, is_alive FAILED\n")
+        return 1
+    }
+
+    // try_get should return 0
+    if (weak.try_get() == 0) {
+        printf("  After Rc drop, try_get = 0: OK\n")
+    } else {
+        printf("  After Rc drop, try_get FAILED\n")
+        return 1
+    }
+
+    // Drop the weak
+    weak.drop()
+
+    printf("All Weak<T> tests passed!\n")
+    return 0
+}

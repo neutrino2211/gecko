@@ -1,0 +1,31 @@
+package loops
+
+func test_break(): int {
+    let i: int = 0
+    let result: int = 0
+
+    for i < 100 {
+        if (i == 10) {
+            break
+        }
+        result = result + i
+        i = i + 1
+    }
+
+    return result
+}
+
+func test_continue(): int {
+    let i: int = 0
+    let result: int = 0
+
+    for i < 10 {
+        i = i + 1
+        if (i == 5) {
+            continue
+        }
+        result = result + i
+    }
+
+    return result
+}

@@ -1,0 +1,48 @@
+package main
+
+declare external variardic func printf(format: string): int
+
+func main() {
+  // Simple if statement
+  if (30 == 30) {
+    printf(&"Test 1: Simple if - PASS\n")
+  }
+
+  // If-else statement
+  if (10 == 20) {
+    printf(&"Test 2: If-else - FAIL\n")
+  } else {
+    printf(&"Test 2: If-else - PASS\n")
+  }
+
+  // If-elseif-else chain
+  if (5 == 10) {
+    printf(&"Test 3: If-elseif-else - FAIL\n")
+  } else if (5 == 5) {
+    printf(&"Test 3: If-elseif-else - PASS\n")
+  } else {
+    printf(&"Test 3: If-elseif-else - SHOULD NOT REACH\n")
+  }
+
+  // Nested if statements
+  if (1 == 1) {
+    if (2 == 2) {
+      printf(&"Test 4: Nested if - PASS\n")
+    }
+  }
+
+  // Multiple else-if chain
+  if (1 == 2) {
+    printf(&"Test 5: Multiple else-if - FAIL A\n")
+  } else if (2 == 3) {
+    printf(&"Test 5: Multiple else-if - FAIL B\n")
+  } else if (3 == 4) {
+    printf(&"Test 5: Multiple else-if - FAIL C\n")
+  } else if (4 == 4) {
+    printf(&"Test 5: Multiple else-if - PASS\n")
+  } else {
+    printf(&"Test 5: Multiple else-if - FAIL D\n")
+  }
+
+  printf(&"All tests completed!\n")
+}

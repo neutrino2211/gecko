@@ -1,0 +1,12 @@
+// Test volatile pointer access for memory-mapped I/O
+// This demonstrates the syntax: type volatile*
+
+func mmio_test() {
+    // Volatile pointer to uint16 for VGA memory-mapped I/O
+    // Using decimal instead of hex due to lexer limitations
+    let vga: uint16 volatile* = 753664
+
+    // Test volatile with different types
+    let status: uint8 volatile* = 1016
+    let data: uint32 volatile* = 4096
+}

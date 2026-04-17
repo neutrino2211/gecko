@@ -1,0 +1,221 @@
+package main
+
+// =============================================================================
+// Freestanding Traits Test
+// =============================================================================
+// This test demonstrates traits that work without any libc dependencies.
+// Suitable for kernels, bootloaders, and embedded systems.
+// =============================================================================
+
+// Core traits (no external dependencies)
+trait Add<T> {
+    func add(self, other: T): T
+}
+
+trait Sub<T> {
+    func sub(self, other: T): T
+}
+
+trait Mul<T> {
+    func mul(self, other: T): T
+}
+
+trait Eq<T> {
+    func eq(self, other: T): bool
+}
+
+trait Clone {
+    func clone(self): Self
+}
+
+trait Default {
+    func default_val(): Self
+}
+
+trait Hash {
+    func hash(self): uint64
+}
+
+// A simple 2D vector - completely freestanding
+class Vec2 {
+    let x: int32
+    let y: int32
+
+    func new(x: int32, y: int32): Vec2 {
+        let v: Vec2
+        v.x = x
+        v.y = y
+        return v
+    }
+}
+
+impl Add<Vec2> for Vec2 {
+    func add(self, other: Vec2): Vec2 {
+        return Vec2::new(self.x + other.x, self.y + other.y)
+    }
+}
+
+impl Sub<Vec2> for Vec2 {
+    func sub(self, other: Vec2): Vec2 {
+        return Vec2::new(self.x - other.x, self.y - other.y)
+    }
+}
+
+impl Mul<int32> for Vec2 {
+    func mul(self, scalar: int32): Vec2 {
+        return Vec2::new(self.x * scalar, self.y * scalar)
+    }
+}
+
+impl Eq<Vec2> for Vec2 {
+    func eq(self, other: Vec2): bool {
+        return self.x == other.x && self.y == other.y
+    }
+}
+
+impl Clone for Vec2 {
+    func clone(self): Vec2 {
+        return Vec2::new(self.x, self.y)
+    }
+}
+
+
+impl Hash for Vec2 {
+    func hash(self): uint64 {
+        // Simple hash: combine x and y
+        let h: uint64 = self.x as uint64
+        h = h * 31 + self.y as uint64
+        return h
+    }
+}
+
+impl Default for Vec2 {
+    func default_val(): Vec2 {
+        return Vec2::new(0, 0)
+    }
+}
+
+// A color type to test more traits
+class Color {
+    let r: uint8
+    let g: uint8
+    let b: uint8
+    let a: uint8
+
+    func new(r: uint8, g: uint8, b: uint8, a: uint8): Color {
+        let c: Color
+        c.r = r
+        c.g = g
+        c.b = b
+        c.a = a
+        return c
+    }
+
+    func rgb(r: uint8, g: uint8, b: uint8): Color {
+        return Color::new(r, g, b, 255)
+    }
+
+    func to_packed(self): uint32 {
+        let packed: uint32 = self.a as uint32
+        packed = packed << 8
+        packed = packed | self.r as uint32
+        packed = packed << 8
+        packed = packed | self.g as uint32
+        packed = packed << 8
+        packed = packed | self.b as uint32
+        return packed
+    }
+}
+
+impl Eq<Color> for Color {
+    func eq(self, other: Color): bool {
+        return self.r == other.r && self.g == other.g && self.b == other.b && self.a == other.a
+    }
+}
+
+impl Add<Color> for Color {
+    func add(self, other: Color): Color {
+        // Saturating add for colors
+        let r: int32 = self.r as int32 + other.r as int32
+        let g: int32 = self.g as int32 + other.g as int32
+        let b: int32 = self.b as int32 + other.b as int32
+
+        if (r > 255) { r = 255 }
+        if (g > 255) { g = 255 }
+        if (b > 255) { b = 255 }
+
+        return Color::new(r as uint8, g as uint8, b as uint8, self.a)
+    }
+}
+
+impl Default for Color {
+    func default_val(): Color {
+        return Color::new(0, 0, 0, 255)
+    }
+}
+
+external func main(): int32 {
+    // Test Vec2 Add trait
+    let v1: Vec2 = Vec2::new(10, 20)
+    let v2: Vec2 = Vec2::new(5, 15)
+    let v3: Vec2 = v1 + v2
+
+    if (v3.x != 15) { return 1 }
+    if (v3.y != 35) { return 2 }
+
+    // Test Vec2 Sub trait
+    let v4: Vec2 = v1 - v2
+    if (v4.x != 5) { return 3 }
+    if (v4.y != 5) { return 4 }
+
+    // Test Vec2 Mul trait (scalar)
+    let v5: Vec2 = v1 * 2
+    if (v5.x != 20) { return 5 }
+    if (v5.y != 40) { return 6 }
+
+    // Test Vec2 Eq trait
+    let v6: Vec2 = Vec2::new(10, 20)
+    if (!(v1 == v6)) { return 7 }
+    if (v1 == v2) { return 8 }
+
+    // Test Vec2 Clone trait
+    let v7: Vec2 = v1.clone()
+    if (!(v7 == v1)) { return 9 }
+
+    // Test Vec2 Default trait
+    let v8: Vec2 = Vec2::default_val()
+    if (v8.x != 0) { return 10 }
+    if (v8.y != 0) { return 11 }
+
+    // Test Vec2 Hash trait
+    let h1: uint64 = v1.hash()
+    let h2: uint64 = v6.hash()
+    if (h1 != h2) { return 12 }
+
+    // Test Color
+    let red: Color = Color::rgb(255, 0, 0)
+    let green: Color = Color::rgb(0, 255, 0)
+    let yellow: Color = red + green
+
+    if (yellow.r != 255) { return 13 }
+    if (yellow.g != 255) { return 14 }
+    if (yellow.b != 0) { return 15 }
+
+    // Test Color Eq
+    let red2: Color = Color::rgb(255, 0, 0)
+    if (!(red == red2)) { return 16 }
+
+    // Test Color packed conversion
+    let black: Color = Color::default_val()
+    let packed: uint32 = black.to_packed()
+    // Alpha=255, R=0, G=0, B=0 -> 0xFF000000
+    if (packed != 4278190080) { return 17 }
+
+    // Test chained operations (using temp variable to avoid rvalue issue)
+    let temp: Vec2 = v1 + v2
+    let result: Vec2 = temp * 2
+    if (result.x != 30) { return 18 }
+    if (result.y != 70) { return 19 }
+
+    return 0
+}

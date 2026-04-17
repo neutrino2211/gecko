@@ -1,0 +1,16 @@
+@packed
+class MultibootHeader {
+    let magic: uint32
+    let flags: uint32
+    let checksum: uint32
+}
+
+func main(): int {
+    let header: MultibootHeader = MultibootHeader {
+        magic: 0x1BADB002,
+        flags: 0x00,
+        checksum: 0xE4524FFE
+    }
+
+    return 0
+}

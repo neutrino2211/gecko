@@ -1,0 +1,283 @@
+package main
+
+declare external func malloc(size: uint64): void*
+declare external func realloc(ptr: void*, size: uint64): void*
+declare external func free(ptr: void*): void
+declare external func memcpy(dest: void*, src: void*, n: uint64): void*
+declare external func strlen(s: string): uint64
+declare external func puts(s: string): int32
+
+trait Add<T> {
+    func add(self, other: T): T
+}
+
+class String {
+    let data: uint64
+    let len: uint64
+    let cap: uint64
+
+    func new(): String {
+        let initial_cap: uint64 = 16
+        let mem: void* = malloc(initial_cap)
+        let addr: uint64 = mem as uint64
+        let ptr: uint8* = addr as uint8*
+        @write_volatile(ptr, 0)
+
+        let s: String
+        s.data = addr
+        s.len = 0
+        s.cap = initial_cap
+        return s
+    }
+
+    func with_capacity(capacity: uint64): String {
+        let actual_cap: uint64 = capacity + 1
+        let mem: void* = malloc(actual_cap)
+        let addr: uint64 = mem as uint64
+        let ptr: uint8* = addr as uint8*
+        @write_volatile(ptr, 0)
+
+        let s: String
+        s.data = addr
+        s.len = 0
+        s.cap = actual_cap
+        return s
+    }
+
+    func from(literal: string): String {
+        let lit_len: uint64 = strlen(literal)
+        let capacity: uint64 = lit_len + 1
+        let mem: void* = malloc(capacity)
+        let addr: uint64 = mem as uint64
+        memcpy(mem, literal as void*, capacity)
+
+        let s: String
+        s.data = addr
+        s.len = lit_len
+        s.cap = capacity
+        return s
+    }
+
+    func is_empty(self): bool {
+        return self.len == 0
+    }
+
+    func length(self): uint64 {
+        return self.len
+    }
+
+    func as_ptr(self): string {
+        return self.data as string
+    }
+
+    func char_at(self, index: uint64): uint8 {
+        if (index >= self.len) {
+            return 0
+        }
+        let ptr: uint8* = (self.data + index) as uint8*
+        return @deref(ptr)
+    }
+
+    func reserve(self, additional: uint64) {
+        let required: uint64 = self.len + additional + 1
+        if (required <= self.cap) {
+            return
+        }
+        let new_cap: uint64 = self.cap * 2
+        if (new_cap < required) {
+            new_cap = required
+        }
+        let new_mem: void* = realloc(self.data as void*, new_cap)
+        self.data = new_mem as uint64
+        self.cap = new_cap
+    }
+
+    func push(self, c: uint8) {
+        self.reserve(1)
+        let ptr: uint8* = (self.data + self.len) as uint8*
+        @write_volatile(ptr, c)
+        self.len = self.len + 1
+        let term_ptr: uint8* = (self.data + self.len) as uint8*
+        @write_volatile(term_ptr, 0)
+    }
+
+    func push_str(self, s: string) {
+        let s_len: uint64 = strlen(s)
+        if (s_len == 0) {
+            return
+        }
+        self.reserve(s_len)
+        let dest: void* = (self.data + self.len) as void*
+        memcpy(dest, s as void*, s_len)
+        self.len = self.len + s_len
+        let term_ptr: uint8* = (self.data + self.len) as uint8*
+        @write_volatile(term_ptr, 0)
+    }
+
+    func clear(self) {
+        self.len = 0
+        let ptr: uint8* = self.data as uint8*
+        @write_volatile(ptr, 0)
+    }
+
+    func clone(self): String {
+        let new_cap: uint64 = self.len + 1
+        let mem: void* = malloc(new_cap)
+        let new_s: String
+        new_s.data = mem as uint64
+        new_s.len = self.len
+        new_s.cap = new_cap
+
+        if (self.len > 0) {
+            memcpy(mem, self.data as void*, self.len + 1)
+        }
+        return new_s
+    }
+
+    func equals_str(self, s: string): bool {
+        let s_len: uint64 = strlen(s)
+        if (self.len != s_len) {
+            return false
+        }
+        let i: uint64 = 0
+        while i < self.len {
+            let a: uint8 = self.char_at(i)
+            let s_ptr: uint8* = (s as uint64 + i) as uint8*
+            let b: uint8 = @deref(s_ptr)
+            if (a != b) {
+                return false
+            }
+            i = i + 1
+        }
+        return true
+    }
+
+    func drop(self) {
+        if (self.data != 0) {
+            free(self.data as void*)
+            self.data = 0
+            self.len = 0
+            self.cap = 0
+        }
+    }
+}
+
+impl Add<String> for String {
+    func add(self, other: String): String {
+        let result: String = String::with_capacity(self.len + other.len)
+
+        if (self.len > 0) {
+            memcpy(result.data as void*, self.data as void*, self.len)
+            result.len = self.len
+        }
+
+        if (other.len > 0) {
+            let dest: void* = (result.data + result.len) as void*
+            memcpy(dest, other.data as void*, other.len)
+            result.len = result.len + other.len
+        }
+
+        let term_ptr: uint8* = (result.data + result.len) as uint8*
+        @write_volatile(term_ptr, 0)
+
+        return result
+    }
+}
+
+external func main(): int32 {
+    // Test String::new and push_str
+    let s: String = String::new()
+    s.push_str("Hello")
+    puts(s.as_ptr())
+
+    if (s.length() != 5) {
+        return 1
+    }
+
+    // Test push_str append
+    s.push_str(", World!")
+    puts(s.as_ptr())
+
+    if (s.length() != 13) {
+        return 2
+    }
+
+    // Test String::from
+    let s2: String = String::from("Test string")
+    puts(s2.as_ptr())
+
+    if (s2.length() != 11) {
+        return 3
+    }
+
+    // Test char_at
+    let c: uint8 = s2.char_at(0)
+    if (c != 84) {
+        return 4
+    }
+
+    // Test equals_str
+    if (!s2.equals_str("Test string")) {
+        return 5
+    }
+
+    // Test clone
+    let s3: String = s2.clone()
+    if (!s3.equals_str("Test string")) {
+        return 6
+    }
+
+    // Test clear
+    s3.clear()
+    if (!s3.is_empty()) {
+        return 7
+    }
+
+    // Test push single char
+    let s4: String = String::new()
+    s4.push(65)
+    s4.push(66)
+    s4.push(67)
+    puts(s4.as_ptr())
+
+    if (s4.length() != 3) {
+        return 8
+    }
+
+    // Test + operator (Add trait)
+    let s5: String = String::from("Hello")
+    let s6: String = String::from(" World")
+    let s7: String = s5 + s6
+
+    puts(s7.as_ptr())
+
+    if (s7.length() != 11) {
+        return 9
+    }
+
+    if (!s7.equals_str("Hello World")) {
+        return 10
+    }
+
+    // Test chained + operator
+    let s8: String = String::from("!")
+    let s9: String = s5 + s6 + s8
+
+    if (!s9.equals_str("Hello World!")) {
+        return 11
+    }
+
+    // Clean up
+    s.drop()
+    s2.drop()
+    s3.drop()
+    s4.drop()
+    s5.drop()
+    s6.drop()
+    s7.drop()
+    s8.drop()
+    s9.drop()
+
+    puts("All string tests passed!")
+    return 0
+}

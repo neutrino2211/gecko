@@ -1,0 +1,115 @@
+package main
+
+declare external func malloc(size: uint64): void*
+declare external func free(ptr: void*): void
+declare external func printf(fmt: string): int
+
+// Box<T> inline for testing
+class Box<T> {
+    let ptr: uint64
+
+    func new(value: T): Box<T> {
+        let size: uint64 = @size_of<T>()
+        let mem: void* = malloc(size)
+        let addr: uint64 = mem as uint64
+        let dest: T* = addr as T*
+        @write_volatile(dest, value)
+        let b: Box<T>
+        b.ptr = addr
+        return b
+    }
+
+    func from_raw(raw_ptr: uint64): Box<T> {
+        let b: Box<T>
+        b.ptr = raw_ptr
+        return b
+    }
+
+    func is_valid(self): bool {
+        return self.ptr != 0
+    }
+
+    func get(self): T {
+        let p: T* = self.ptr as T*
+        return @deref(p)
+    }
+
+    func set(self, value: T) {
+        let p: T* = self.ptr as T*
+        @write_volatile(p, value)
+    }
+
+    func as_raw(self): uint64 {
+        return self.ptr
+    }
+
+    func into_raw(self): uint64 {
+        let addr: uint64 = self.ptr
+        self.ptr = 0
+        return addr
+    }
+
+    func drop(self) {
+        if (self.ptr != 0) {
+            free(self.ptr as void*)
+            self.ptr = 0
+        }
+    }
+}
+
+external func main(): int32 {
+    printf("Testing Box<T>...\n")
+
+    // Create a boxed integer
+    let boxed: Box<int32> = Box<int32>::new(42)
+
+    if (boxed.is_valid()) {
+        printf("  Box created: OK\n")
+    } else {
+        printf("  Box creation FAILED\n")
+        return 1
+    }
+
+    // Read value
+    let val: int32 = boxed.get()
+    if (val == 42) {
+        printf("  Box.get() = 42: OK\n")
+    } else {
+        printf("  Box.get() FAILED\n")
+        return 1
+    }
+
+    // Modify value
+    boxed.set(100)
+    if (boxed.get() == 100) {
+        printf("  Box.set(100): OK\n")
+    } else {
+        printf("  Box.set() FAILED\n")
+        return 1
+    }
+
+    // Test into_raw / from_raw
+    let raw: uint64 = boxed.into_raw()
+    if (!boxed.is_valid()) {
+        printf("  into_raw invalidates box: OK\n")
+    } else {
+        printf("  into_raw FAILED\n")
+        return 1
+    }
+
+    // Reclaim ownership
+    let boxed2: Box<int32> = Box<int32>::from_raw(raw)
+    if (boxed2.get() == 100) {
+        printf("  from_raw reclaims ownership: OK\n")
+    } else {
+        printf("  from_raw FAILED\n")
+        return 1
+    }
+
+    // Clean up
+    boxed2.drop()
+    printf("  Manual drop: OK\n")
+
+    printf("All Box<T> tests passed!\n")
+    return 0
+}

@@ -1,0 +1,47 @@
+package globals
+
+// Test global constant with @section attribute and hex initializer
+@section(".multiboot")
+const MULTIBOOT_MAGIC: uint32 = 0x1BADB002
+
+// Test multiboot flags constant with section
+@section(".multiboot")
+const MULTIBOOT_FLAGS: uint32 = 0x00000003
+
+// Multiboot checksum constant: -(MAGIC + FLAGS)
+@section(".multiboot")
+const MULTIBOOT_CHECKSUM: uint32 = 0xE4524FFB
+
+// Test global mutable variable without section (should still work as global)
+let global_counter: uint32 = 0
+
+// Test global const with @section attribute using const keyword
+@section(".rodata")
+const CONST_VALUE: uint32 = 0xDEADBEEF
+
+// Test global variable marked as @used (prevents linker from removing it)
+@section(".multiboot")
+@used
+let MULTIBOOT_HEADER_END: uint32 = 0
+
+// Test global array with @section attribute (kernel stack - uninitialized)
+@section(".bss")
+let kernel_stack: [16384]uint8
+
+// Test global pointer variable
+let stack_top: uint64 = 0
+
+// Test const without section
+const MAX_BUFFER_SIZE: uint32 = 4096
+
+// Simple function that uses global variables
+func test_globals(): uint32 {
+    let local_var: uint32 = MULTIBOOT_MAGIC
+    return local_var
+}
+
+// Main entry point
+func main(): int {
+    let result: uint32 = test_globals()
+    return 0
+}

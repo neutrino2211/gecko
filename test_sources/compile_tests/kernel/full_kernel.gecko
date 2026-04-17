@@ -1,0 +1,82 @@
+package kernel
+
+// Multiboot header structure - must be packed for correct memory layout
+@packed
+class MultibootHeader {
+    let magic: uint32
+    let flags: uint32
+    let checksum: uint32
+}
+
+// Multiboot constants
+const MULTIBOOT_MAGIC: uint32 = 0x1BADB002
+const MULTIBOOT_FLAGS: uint32 = 0x00000000
+
+// Kernel stack - 16KB in BSS section
+@section(".bss")
+let kernel_stack: [16384]uint8
+
+// VGA text mode buffer address
+const VGA_ADDRESS: uint64 = 753664
+
+// VGA colors
+const VGA_BLACK: uint8 = 0
+const VGA_WHITE: uint8 = 15
+
+// Create a VGA entry (character + color)
+func vga_entry(c: uint8, fg: uint8, bg: uint8): uint16 {
+    let color: uint8 = fg | (bg << 4)
+    return c as uint16 | (color as uint16 << 8)
+}
+
+// Write a character to VGA buffer
+func vga_putchar(pos: int, c: uint8, fg: uint8, bg: uint8): void {
+    let vga: uint16 volatile* = VGA_ADDRESS as uint16 volatile*
+    let entry: uint16 = vga_entry(c, fg, bg)
+    vga[pos] = entry
+}
+
+// Write "Hello" to VGA buffer starting at position
+func vga_hello(pos: int): void {
+    vga_putchar(pos, 72, VGA_WHITE, VGA_BLACK)
+    vga_putchar(pos + 1, 101, VGA_WHITE, VGA_BLACK)
+    vga_putchar(pos + 2, 108, VGA_WHITE, VGA_BLACK)
+    vga_putchar(pos + 3, 108, VGA_WHITE, VGA_BLACK)
+    vga_putchar(pos + 4, 111, VGA_WHITE, VGA_BLACK)
+}
+
+// Halt the CPU
+func halt(): void {
+    asm { "hlt" }
+}
+
+// Disable interrupts
+func cli(): void {
+    asm { "cli" }
+}
+
+// Enable interrupts
+func sti(): void {
+    asm { "sti" }
+}
+
+// Kernel main function
+func kmain(): void {
+    // Disable interrupts during setup
+    cli()
+
+    // Write "Hello" at top-left of screen
+    vga_hello(0)
+
+    // Halt - we're done
+    halt()
+}
+
+// Entry point - naked function with no prologue/epilogue
+@naked
+@noreturn
+@section(".text.boot")
+func _start(): void {
+    asm { "call kmain" }
+    asm { "hlt" }
+}

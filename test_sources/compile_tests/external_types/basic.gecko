@@ -1,0 +1,21 @@
+package external_types
+
+declare external type OpaqueHandle
+
+class Wrapper {
+    let handle: OpaqueHandle*
+    let id: int
+}
+
+func get_id(w: Wrapper*!): int {
+    return w.id
+}
+
+external func main(): int32 {
+    let w: Wrapper
+    w.handle = 0 as OpaqueHandle*
+    w.id = 55
+
+    let result: int = get_id(&w)
+    return result
+}

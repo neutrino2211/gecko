@@ -1,0 +1,94 @@
+package main
+
+declare external func puts(s: string): int32
+
+class Option<T> {
+    let value: T
+    let has_value: bool
+
+    func some(val: T): Option<T> {
+        let opt: Option<T>
+        opt.value = val
+        opt.has_value = true
+        return opt
+    }
+
+    func none(): Option<T> {
+        let opt: Option<T>
+        opt.has_value = false
+        return opt
+    }
+
+    func is_some(self): bool {
+        return self.has_value
+    }
+
+    func is_none(self): bool {
+        return !self.has_value
+    }
+
+    func unwrap(self): T {
+        return self.value
+    }
+
+    func unwrap_or(self, default_val: T): T {
+        if (self.has_value) {
+            return self.value
+        }
+        return default_val
+    }
+}
+
+external func main(): int32 {
+    // Test Option::some
+    let opt1: Option<int32> = Option<int32>::some(42)
+
+    if (opt1.is_none()) {
+        return 1
+    }
+
+    if (!opt1.is_some()) {
+        return 2
+    }
+
+    if (opt1.unwrap() != 42) {
+        return 3
+    }
+
+    // Test Option::none
+    let opt2: Option<int32> = Option<int32>::none()
+
+    if (opt2.is_some()) {
+        return 4
+    }
+
+    if (!opt2.is_none()) {
+        return 5
+    }
+
+    // Test unwrap_or with Some
+    let val1: int32 = opt1.unwrap_or(0)
+    if (val1 != 42) {
+        return 6
+    }
+
+    // Test unwrap_or with None
+    let val2: int32 = opt2.unwrap_or(99)
+    if (val2 != 99) {
+        return 7
+    }
+
+    // Test with different type (uint64)
+    let opt3: Option<uint64> = Option<uint64>::some(100)
+    if (opt3.unwrap() != 100) {
+        return 8
+    }
+
+    let opt4: Option<uint64> = Option<uint64>::none()
+    if (opt4.unwrap_or(200) != 200) {
+        return 9
+    }
+
+    puts("All option tests passed!")
+    return 0
+}

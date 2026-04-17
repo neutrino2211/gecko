@@ -1,0 +1,16 @@
+package main
+
+declare external variardic func printf(format: string): int
+
+func test(): int {
+  if (1 == 1) {
+    printf(&"Returning from if\n")
+    return 42
+  }
+  return 0
+}
+
+func main() {
+  let result: int = test()
+  printf(&"Done!\n")
+}

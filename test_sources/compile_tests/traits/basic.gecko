@@ -1,0 +1,37 @@
+package traits
+
+trait Printable {
+    func print(self): void
+}
+
+trait Describable {
+    func describe(self): int
+}
+
+class Point {
+    let x: int
+    let y: int
+}
+
+impl Printable for Point {
+    func print(self): void {
+        return
+    }
+}
+
+impl Describable for Point {
+    func describe(self): int {
+        return self.x + self.y
+    }
+}
+
+external func main(): int32 {
+    let p: Point
+    p.x = 10
+    p.y = 20
+
+    p.print()
+    let result: int = p.describe()
+
+    return result
+}

@@ -1,0 +1,14 @@
+package entrypoint
+
+// Test naked and noreturn function attributes
+@naked
+@noreturn
+func _start(): void {
+    asm { "hlt" }
+}
+
+// Test section attribute
+@section(".text.boot")
+func boot(): void {
+    asm { "nop" }
+}

@@ -1,0 +1,156 @@
+package main
+
+declare external func malloc(size: uint64): void*
+declare external func free(ptr: void*): void
+declare external func printf(fmt: string): int
+
+// Rc<T> - Reference counted pointer
+// Layout: [strong:uint64][weak:uint64][value:T]
+class Rc<T> {
+    let ptr: uint64
+
+    func new(value: T): Rc<T> {
+        // Layout: 8 bytes strong + 8 bytes weak + sizeof(T) for value
+        let value_size: uint64 = @size_of<T>()
+        let total_size: uint64 = 16 + value_size
+        let mem: void* = malloc(total_size)
+        let addr: uint64 = mem as uint64
+
+        // Initialize refcounts
+        let strong_ptr: uint64* = addr as uint64*
+        @write_volatile(strong_ptr, 1)
+
+        let weak_ptr: uint64* = (addr + 8) as uint64*
+        @write_volatile(weak_ptr, 1)
+
+        // Write value at offset 16
+        let value_ptr: T* = (addr + 16) as T*
+        @write_volatile(value_ptr, value)
+
+        let r: Rc<T>
+        r.ptr = addr
+        return r
+    }
+
+    func is_valid(self): bool {
+        return self.ptr != 0
+    }
+
+    func strong_count(self): uint64 {
+        if (self.ptr == 0) {
+            return 0
+        }
+        let strong_ptr: uint64* = self.ptr as uint64*
+        return @deref(strong_ptr)
+    }
+
+    func get(self): T {
+        let value_ptr: T* = (self.ptr + 16) as T*
+        return @deref(value_ptr)
+    }
+
+    func clone(self): Rc<T> {
+        if (self.ptr != 0) {
+            let strong_ptr: uint64* = self.ptr as uint64*
+            let count: uint64 = @deref(strong_ptr)
+            @write_volatile(strong_ptr, count + 1)
+        }
+
+        let r: Rc<T>
+        r.ptr = self.ptr
+        return r
+    }
+
+    func drop(self) {
+        if (self.ptr == 0) {
+            return
+        }
+
+        let strong_ptr: uint64* = self.ptr as uint64*
+        let count: uint64 = @deref(strong_ptr)
+
+        if (count <= 1) {
+            free(self.ptr as void*)
+            self.ptr = 0
+        } else {
+            @write_volatile(strong_ptr, count - 1)
+        }
+    }
+}
+
+external func main(): int32 {
+    printf("Testing Rc<T>...\n")
+
+    // Create an Rc
+    let rc1: Rc<int32> = Rc<int32>::new(42)
+
+    if (rc1.is_valid()) {
+        printf("  Rc created: OK\n")
+    } else {
+        printf("  Rc creation FAILED\n")
+        return 1
+    }
+
+    // Check initial refcount
+    if (rc1.strong_count() == 1) {
+        printf("  Initial refcount = 1: OK\n")
+    } else {
+        printf("  Initial refcount FAILED\n")
+        return 1
+    }
+
+    // Read value
+    if (rc1.get() == 42) {
+        printf("  Rc.get() = 42: OK\n")
+    } else {
+        printf("  Rc.get() FAILED\n")
+        return 1
+    }
+
+    // Clone - should increment refcount
+    let rc2: Rc<int32> = rc1.clone()
+
+    if (rc1.strong_count() == 2) {
+        printf("  After clone, refcount = 2: OK\n")
+    } else {
+        printf("  Clone refcount FAILED\n")
+        return 1
+    }
+
+    // Both should have same value
+    if (rc2.get() == 42) {
+        printf("  Cloned Rc has same value: OK\n")
+    } else {
+        printf("  Cloned value FAILED\n")
+        return 1
+    }
+
+    // Drop one reference
+    rc2.drop()
+
+    if (rc1.strong_count() == 1) {
+        printf("  After drop, refcount = 1: OK\n")
+    } else {
+        printf("  Drop refcount FAILED\n")
+        return 1
+    }
+
+    // Clone again
+    let rc3: Rc<int32> = rc1.clone()
+    let rc4: Rc<int32> = rc1.clone()
+
+    if (rc1.strong_count() == 3) {
+        printf("  Multiple clones, refcount = 3: OK\n")
+    } else {
+        printf("  Multiple clones FAILED\n")
+        return 1
+    }
+
+    // Drop all
+    rc4.drop()
+    rc3.drop()
+    rc1.drop()  // This should free the memory
+
+    printf("All Rc<T> tests passed!\n")
+    return 0
+}

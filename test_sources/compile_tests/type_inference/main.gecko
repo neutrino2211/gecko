@@ -1,0 +1,57 @@
+package main
+
+declare external func puts(s: string): int32
+
+func print_int(val: int32) {
+    if (val == 0) {
+        puts("0")
+        return
+    }
+    if (val == 42) {
+        puts("42")
+    }
+    if (val == 30) {
+        puts("30")
+    }
+    if (val == 1) {
+        puts("1")
+    }
+}
+
+external func main(): int32 {
+    // Integer inference
+    let x = 42
+    print_int(x)
+
+    // Boolean inference
+    let flag = true
+    if (flag) {
+        puts("flag is true")
+    }
+
+    // String inference
+    let msg = "Hello, inference!"
+    puts(msg)
+
+    // Expression inference
+    let sum = 10 + 20
+    print_int(sum)
+
+    // Variable reference inference
+    let y = x
+    print_int(y)
+
+    // Comparison inference (bool)
+    let isEqual = x == y
+    if (isEqual) {
+        puts("x equals y")
+    }
+
+    // Negation
+    let negative = !flag
+    if (!negative) {
+        puts("negative is false")
+    }
+
+    return 0
+}

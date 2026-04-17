@@ -1,0 +1,15 @@
+package simple_globals
+
+// Test const keyword for global constants
+const MAX_VALUE: uint32 = 100
+
+// Test let keyword for global mutable variables
+let counter: uint32 = 0
+
+// Test const without initializer should fail (caught by compiler)
+// const INVALID: uint32
+
+// Main function
+func main(): int {
+    return 0
+}

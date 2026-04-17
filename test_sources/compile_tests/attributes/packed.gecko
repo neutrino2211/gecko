@@ -1,0 +1,25 @@
+package test
+
+// Test packed struct for kernel development
+@packed
+class MultibootHeader {
+    let magic: uint32
+    let flags: uint32
+    let checksum: uint32
+}
+
+// Test struct without packed attribute for comparison
+class NormalStruct {
+    let a: uint8
+    let b: uint32
+    let c: uint8
+}
+
+// Test global variable with section attribute
+@section(".multiboot")
+let header: uint32 = 0
+
+func main(): int {
+    let x: uint32 = 42
+    return 0
+}

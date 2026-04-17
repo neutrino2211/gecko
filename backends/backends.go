@@ -49,7 +49,6 @@ func BackendRun(b interfaces.BackendInteface, c *interfaces.BackendConfig) *exec
 func BackendProcessEntries(b interfaces.BackendInteface, scope *ast.Ast, entries []*tokens.Entry) {
 	for _, entry := range entries {
 		if entry.Method != nil {
-			println(entry.Method.Name)
 			b.GetImpls().NewMethod(scope, entry.Method)
 		} else if entry.Field != nil {
 			b.GetImpls().NewVariable(scope, entry.Field)
@@ -83,16 +82,31 @@ func BackendProcessEntries(b interfaces.BackendInteface, scope *ast.Ast, entries
 			// 	})
 			// }
 			b.GetImpls().NewDeclaration(scope, entry.Declaration)
+		} else if entry.Intrinsic != nil {
+			b.GetImpls().IntrinsicStatement(scope, entry.Intrinsic)
 		} else if entry.FuncCall != nil {
 			b.GetImpls().FuncCall(scope, entry.FuncCall)
 		} else if entry.Return != nil {
 			b.GetImpls().NewReturnLiteral(scope, entry.Return)
 		} else if entry.VoidReturn != nil {
 			b.GetImpls().NewReturn(scope)
+		} else if entry.If != nil {
+			b.GetImpls().NewIf(scope, entry.If)
+		} else if entry.Loop != nil {
+			b.GetImpls().NewLoop(scope, entry.Loop)
+		} else if entry.Assignment != nil {
+			b.GetImpls().NewAssignment(scope, entry.Assignment)
+		} else if entry.Asm != nil {
+			b.GetImpls().NewAsm(scope, entry.Asm)
+		} else if entry.Break != nil {
+			b.GetImpls().NewBreak(scope)
+		} else if entry.Continue != nil {
+			b.GetImpls().NewContinue(scope)
 		}
 	}
 }
 
 var Backends = map[string]interfaces.BackendInteface{
 	"llvm": &LLVMBackend{},
+	"c":    &CBackend{},
 }

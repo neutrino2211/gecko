@@ -1,7 +1,10 @@
 package llvmbackend
 
 import (
+	"strconv"
+
 	"github.com/alecthomas/repr"
+	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
 	"github.com/neutrino2211/gecko/ast"
@@ -41,20 +44,44 @@ func (impl *LLVMBackendImplementation) LLVMGetAstMethod(scope *ast.Ast, m *token
 }
 
 func (impl *LLVMBackendImplementation) TypeRefGetLLIRType(t *tokens.TypeRef, scope *ast.Ast) types.Type {
-	prim := findPrimitive(t.Type)
+	var baseType types.Type
 
-	if prim != nil {
-		return prim.Type
-	}
-
-	// TODO: Make LLIR type from compound types
+	// Handle dynamic array types (unsized arrays as pointers)
 	if t.Array != nil {
-		return &types.PointerType{
+		baseType = &types.PointerType{
 			ElemType: impl.TypeRefGetLLIRType(t.Array, scope),
+		}
+	} else if t.Size != nil {
+		// Handle fixed-size array types: [N]T -> [N x T]
+		elemType := impl.TypeRefGetLLIRType(t.Size.Type, scope)
+		size, err := strconv.ParseUint(t.Size.Size, 10, 64)
+		if err != nil {
+			// If size parsing fails, default to 0
+			size = 0
+		}
+		baseType = types.NewArray(size, elemType)
+	} else {
+		// Try to find primitive type
+		prim := findPrimitive(t.Type)
+		if prim != nil {
+			baseType = prim.Type
+		} else {
+			// Try to find struct type from LLVMStructMap
+			structInfo, ok := LLVMStructMap[t.Type]
+			if ok && structInfo.Type != nil {
+				baseType = structInfo.Type
+			}
 		}
 	}
 
-	return nil
+	// If the type is a pointer, wrap the base type in a PointerType
+	if t.Pointer && baseType != nil {
+		return &types.PointerType{
+			ElemType: baseType,
+		}
+	}
+
+	return baseType
 }
 
 func (impl *LLVMBackendImplementation) LLVMResolveFuncContext(a *ast.Ast, funcName string) *option.Optional[*LocalContext] {
@@ -114,15 +141,17 @@ func (impl *LLVMBackendImplementation) LLVMAssignArgumentsToMethodArguments(args
 		vIrType := impl.TypeRefGetLLIRType(v.Type, mth.Scope)
 
 		argVariable := ast.Variable{
-			Name:      v.Name,
-			IsPointer: v.Type.Pointer,
-			Parent:    mth.Scope,
+			Name:       v.Name,
+			IsPointer:  v.Type.Pointer,
+			IsVolatile: v.Type.Volatile,
+			Parent:     mth.Scope,
 		}
 
 		(*LLVMProgramValues)[argVariable.GetFullName()] = &LLVMValueInformation{
-			Type:      vIrType,
-			Value:     def,
-			GeckoType: v.Type,
+			Type:       vIrType,
+			Value:      def,
+			GeckoType:  v.Type,
+			IsVolatile: v.Type.Volatile,
 		}
 
 		mth.Arguments = append(mth.Arguments, argVariable)
@@ -219,4 +248,24 @@ func (impl *LLVMBackendImplementation) TraitAssignToScope(scope *ast.Ast, t *tok
 		mthds = append(mthds, impl.LLVMGetAstMethod(scope, m))
 	}
 	scope.Traits[t.Name] = &mthds
+}
+
+// NewVolatileLoad creates a load instruction with the volatile flag set if isVolatile is true.
+// This is used for memory-mapped I/O where reads must not be optimized away.
+func (impl *LLVMBackendImplementation) NewVolatileLoad(block *ir.Block, elemType types.Type, src value.Value, isVolatile bool) *ir.InstLoad {
+	load := block.NewLoad(elemType, src)
+	if isVolatile {
+		load.Volatile = true
+	}
+	return load
+}
+
+// NewVolatileStore creates a store instruction with the volatile flag set if isVolatile is true.
+// This is used for memory-mapped I/O where writes must not be optimized away.
+func (impl *LLVMBackendImplementation) NewVolatileStore(block *ir.Block, src value.Value, dst value.Value, isVolatile bool) *ir.InstStore {
+	store := block.NewStore(src, dst)
+	if isVolatile {
+		store.Volatile = true
+	}
+	return store
 }

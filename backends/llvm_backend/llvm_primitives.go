@@ -119,6 +119,15 @@ var Uint64Type = &PrimitiveType{
 var Primitives = []*PrimitiveType{
 	VoidType,
 	IntType,
+	Int8Type,
+	Int16Type,
+	Int32Type,
+	Int64Type,
+	UintType,
+	Uint8Type,
+	Uint16Type,
+	Uint32Type,
+	Uint64Type,
 	RawStringType,
 	BoolType,
 }

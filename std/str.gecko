@@ -1,0 +1,18 @@
+package str
+
+declare external func strlen(s: string): uint64
+declare external func strcmp(s1: string, s2: string): int32
+declare external func strncmp(s1: string, s2: string, n: uint64): int32
+declare external func strcpy(dest: string, src: string): string
+declare external func strncpy(dest: string, src: string, n: uint64): string
+declare external func strcat(dest: string, src: string): string
+declare external func strchr(s: string, c: int32): string
+declare external func strstr(haystack: string, needle: string): string
+
+func len(s: string): uint64 {
+    return strlen(s)
+}
+
+func equal(a: string, b: string): bool {
+    return strcmp(a, b) == 0
+}

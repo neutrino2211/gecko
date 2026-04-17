@@ -1,0 +1,132 @@
+package raw
+
+/// Raw<T> - Unsafe pointer wrapper for low-level memory operations.
+///
+/// This is the escape hatch when you need direct memory access.
+/// Functions using `Raw<T>` in their signature signal potential unsafety.
+///
+/// Example:
+/// ```
+/// let ptr: Raw<uint32> = Raw<uint32>::new(addr)
+/// ptr.write(42)
+/// let val: uint32 = ptr.read()
+/// ```
+class Raw<T> {
+    /// The raw memory address stored as a 64-bit unsigned integer.
+    let addr: uint64
+
+    /// Creates a new `Raw<T>` from a memory address.
+    ///
+    /// The caller is responsible for ensuring the address is valid
+    /// and points to memory of the correct type.
+    func new(address: uint64): Raw<T> {
+        let r: Raw<T>
+        r.addr = address
+        return r
+    }
+
+    /// Creates a null `Raw<T>` pointer.
+    ///
+    /// Useful for representing optional pointers or uninitialized state.
+    func null(): Raw<T> {
+        let r: Raw<T>
+        r.addr = 0
+        return r
+    }
+
+    /// Initializes this pointer from a memory address.
+    func init(self, address: uint64) {
+        self.addr = address
+    }
+
+    /// Initializes this pointer as null (address 0).
+    func init_null(self) {
+        self.addr = 0
+    }
+
+    /// Returns the raw memory address as a uint64.
+    func to_address(self): uint64 {
+        return self.addr
+    }
+
+    /// Returns true if this pointer is null (address 0).
+    func is_null(self): bool {
+        return self.addr == 0
+    }
+
+    /// Returns true if this pointer is not null.
+    func is_valid(self): bool {
+        return self.addr != 0
+    }
+
+    /// Reads and returns the value at the pointer address.
+    ///
+    /// Does not perform null checking - caller must ensure pointer is valid.
+    func read(self): T {
+        let ptr: T* = self.addr as T*
+        return @deref(ptr)
+    }
+
+    /// Writes a value to the pointer address.
+    ///
+    /// Does not perform null checking - caller must ensure pointer is valid.
+    func write(self, value: T) {
+        let ptr: T* = self.addr as T*
+        @write_volatile(ptr, value)
+    }
+
+    /// Returns a new pointer offset by `n` elements forward.
+    ///
+    /// The offset is calculated as `n * sizeof(T)` bytes.
+    func add(self, n: uint64): Raw<T> {
+        let element_size: uint64 = @size_of<T>()
+        let new_addr: uint64 = self.addr + n * element_size
+        let result: Raw<T>
+        result.init(new_addr)
+        return result
+    }
+
+    /// Returns a new pointer offset by `n` elements backward.
+    ///
+    /// The offset is calculated as `n * sizeof(T)` bytes.
+    func sub(self, n: uint64): Raw<T> {
+        let element_size: uint64 = @size_of<T>()
+        let new_addr: uint64 = self.addr - n * element_size
+        let result: Raw<T>
+        result.init(new_addr)
+        return result
+    }
+
+    /// Copies `count` elements from source pointer to this pointer.
+    func copy_from(self, src: Raw<T>, count: uint64) {
+        let size: uint64 = count * @size_of<T>()
+        @copy(self.addr as void*, src.addr as void*, size)
+    }
+
+    /// Sets `count` elements at this pointer to zero.
+    func zero(self, count: uint64) {
+        let size: uint64 = count * @size_of<T>()
+        @zero(self.addr as void*, size)
+    }
+}
+
+/// Creates a `Raw<T>` from a memory address.
+func raw_from_address<T>(address: uint64): Raw<T> {
+    let r: Raw<T>
+    r.init(address)
+    return r
+}
+
+/// Creates a null `Raw<T>` pointer.
+func raw_null<T>(): Raw<T> {
+    let r: Raw<T>
+    r.init_null()
+    return r
+}
+
+/// Casts a `Raw<T>` to a `Raw<U>` by reinterpreting the address.
+func raw_cast<T, U>(from: Raw<T>): Raw<U> {
+    let r: Raw<U>
+    r.init(from.to_address())
+    return r
+}

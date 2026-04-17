@@ -1,0 +1,140 @@
+package weak
+
+declare external func malloc(size: uint64): void*
+declare external func free(ptr: void*): void
+
+/// Weak<T> - Non-owning reference to `Rc<T>` data.
+///
+/// A weak reference does not prevent the data from being freed.
+/// Before accessing the data, you must check if the `Rc` is still
+/// alive using `is_alive()`.
+///
+/// Use weak references to break reference cycles in data structures
+/// like graphs or trees with parent pointers.
+///
+/// Example:
+/// ```
+/// let rc: Rc<int32> = Rc<int32>::new(42)
+/// let weak: Weak<int32> = Weak<int32>::from_rc_ptr(rc.inner_ptr())
+///
+/// if (weak.is_alive()) {
+///     let val: int32 = weak.try_get()
+/// }
+/// ```
+class Weak<T> {
+    /// Internal pointer to the same allocation as the `Rc`.
+    let ptr: uint64
+
+    /// Creates a weak reference from an `Rc`'s internal pointer.
+    ///
+    /// Increments the weak reference count.
+    func from_rc_ptr(rc_ptr: uint64): Weak<T> {
+        if (rc_ptr != 0) {
+            // Increment weak count
+            let weak_ptr: uint64* = (rc_ptr + 8) as uint64*
+            let count: uint64 = @deref(weak_ptr)
+            @write_volatile(weak_ptr, count + 1)
+        }
+
+        let w: Weak<T>
+        w.ptr = rc_ptr
+        return w
+    }
+
+    /// Creates a null weak reference.
+    func null(): Weak<T> {
+        let w: Weak<T>
+        w.ptr = 0
+        return w
+    }
+
+    /// Returns true if this weak reference is not null.
+    func is_valid(self): bool {
+        return self.ptr != 0
+    }
+
+    /// Returns the strong reference count of the underlying allocation.
+    func strong_count(self): uint64 {
+        if (self.ptr == 0) {
+            return 0
+        }
+        let strong_ptr: uint64* = self.ptr as uint64*
+        return @deref(strong_ptr)
+    }
+
+    /// Returns the weak reference count of the underlying allocation.
+    func weak_count(self): uint64 {
+        if (self.ptr == 0) {
+            return 0
+        }
+        let weak_ptr: uint64* = (self.ptr + 8) as uint64*
+        return @deref(weak_ptr)
+    }
+
+    /// Returns true if the underlying `Rc` still exists.
+    ///
+    /// If this returns false, the data has been freed and `try_get()`
+    /// will return a default value.
+    func is_alive(self): bool {
+        return self.strong_count() > 0
+    }
+
+    /// Attempts to read the value, returning 0 if the Rc was dropped.
+    ///
+    /// Check `is_alive()` first to know if the value is valid.
+    /// In the future, this will return `Option<T>`.
+    func try_get(self): T {
+        if (self.ptr == 0) {
+            return 0 as T
+        }
+
+        if (self.strong_count() == 0) {
+            return 0 as T
+        }
+
+        let value_ptr: T* = (self.ptr + 16) as T*
+        return @deref(value_ptr)
+    }
+
+    /// Creates another weak reference to the same data.
+    func clone(self): Weak<T> {
+        if (self.ptr != 0) {
+            let weak_ptr: uint64* = (self.ptr + 8) as uint64*
+            let count: uint64 = @deref(weak_ptr)
+            @write_volatile(weak_ptr, count + 1)
+        }
+
+        let w: Weak<T>
+        w.ptr = self.ptr
+        return w
+    }
+
+    /// Releases this weak reference.
+    ///
+    /// Decrements the weak count. If both strong and weak counts reach zero,
+    /// the underlying memory allocation is freed.
+    func drop(self) {
+        if (self.ptr == 0) {
+            return
+        }
+
+        let weak_ptr: uint64* = (self.ptr + 8) as uint64*
+        let weak_count: uint64 = @deref(weak_ptr)
+
+        if (weak_count <= 1) {
+            // Check if strong count is also 0 - if so, free memory
+            let strong_ptr: uint64* = self.ptr as uint64*
+            let strong_count: uint64 = @deref(strong_ptr)
+
+            if (strong_count == 0) {
+                free(self.ptr as void*)
+            } else {
+                @write_volatile(weak_ptr, weak_count - 1)
+            }
+        } else {
+            @write_volatile(weak_ptr, weak_count - 1)
+        }
+
+        self.ptr = 0
+    }
+}

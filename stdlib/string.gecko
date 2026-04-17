@@ -1,0 +1,265 @@
+package string
+
+declare external func malloc(size: uint64): void*
+declare external func realloc(ptr: void*, size: uint64): void*
+declare external func free(ptr: void*): void
+declare external func memcpy(dest: void*, src: void*, n: uint64): void*
+declare external func strlen(s: string): uint64
+
+/// Add<T> - Trait for the `+` operator.
+trait Add<T> {
+    func add(self, other: T): T
+}
+
+/// String - A growable, heap-allocated string.
+///
+/// Unlike string literals (string type), String owns its data
+/// and can be modified. Use this when you need to build strings
+/// dynamically or concatenate multiple strings.
+class String {
+    /// Pointer to the character data (null-terminated).
+    let data: uint64
+    /// Number of bytes in the string (excluding null terminator).
+    let len: uint64
+    /// Allocated capacity in bytes (including null terminator).
+    let cap: uint64
+
+    /// Creates a new empty String with default capacity.
+    func new(): String {
+        let initial_cap: uint64 = 16
+        let mem: void* = malloc(initial_cap)
+        let addr: uint64 = mem as uint64
+
+        // Write null terminator
+        let ptr: uint8* = addr as uint8*
+        @write_volatile(ptr, 0)
+
+        let s: String
+        s.data = addr
+        s.len = 0
+        s.cap = initial_cap
+        return s
+    }
+
+    /// Creates a new String with the specified initial capacity.
+    func with_capacity(capacity: uint64): String {
+        let actual_cap: uint64 = capacity + 1
+        let mem: void* = malloc(actual_cap)
+        let addr: uint64 = mem as uint64
+
+        let ptr: uint8* = addr as uint8*
+        @write_volatile(ptr, 0)
+
+        let s: String
+        s.data = addr
+        s.len = 0
+        s.cap = actual_cap
+        return s
+    }
+
+    /// Creates a String from a string literal.
+    func from(literal: string): String {
+        let lit_len: uint64 = strlen(literal)
+        let capacity: uint64 = lit_len + 1
+
+        let mem: void* = malloc(capacity)
+        let addr: uint64 = mem as uint64
+
+        memcpy(mem, literal as void*, capacity)
+
+        let s: String
+        s.data = addr
+        s.len = lit_len
+        s.cap = capacity
+        return s
+    }
+
+    /// Returns true if the string is empty.
+    func is_empty(self): bool {
+        return self.len == 0
+    }
+
+    /// Returns the length of the string in bytes.
+    func length(self): uint64 {
+        return self.len
+    }
+
+    /// Returns the allocated capacity.
+    func capacity(self): uint64 {
+        return self.cap
+    }
+
+    /// Returns a pointer to the underlying C string.
+    func as_ptr(self): string {
+        return self.data as string
+    }
+
+    /// Returns the byte at the given index.
+    func char_at(self, index: uint64): uint8 {
+        if (index >= self.len) {
+            return 0
+        }
+        let ptr: uint8* = (self.data + index) as uint8*
+        return @deref(ptr)
+    }
+
+    /// Ensures the string has at least the specified capacity.
+    func reserve(self, additional: uint64) {
+        let required: uint64 = self.len + additional + 1
+        if (required <= self.cap) {
+            return
+        }
+
+        // Grow by at least doubling
+        let new_cap: uint64 = self.cap * 2
+        if (new_cap < required) {
+            new_cap = required
+        }
+
+        let new_mem: void* = realloc(self.data as void*, new_cap)
+        self.data = new_mem as uint64
+        self.cap = new_cap
+    }
+
+    /// Appends a single byte to the string.
+    func push(self, c: uint8) {
+        self.reserve(1)
+
+        let ptr: uint8* = (self.data + self.len) as uint8*
+        @write_volatile(ptr, c)
+
+        self.len = self.len + 1
+
+        // Write null terminator
+        let term_ptr: uint8* = (self.data + self.len) as uint8*
+        @write_volatile(term_ptr, 0)
+    }
+
+    /// Appends a string literal to the string.
+    func push_str(self, s: string) {
+        let s_len: uint64 = strlen(s)
+        if (s_len == 0) {
+            return
+        }
+
+        self.reserve(s_len)
+
+        let dest: void* = (self.data + self.len) as void*
+        memcpy(dest, s as void*, s_len)
+
+        self.len = self.len + s_len
+
+        // Write null terminator
+        let term_ptr: uint8* = (self.data + self.len) as uint8*
+        @write_volatile(term_ptr, 0)
+    }
+
+    /// Appends another String to this string.
+    func append(self, other: String) {
+        if (other.len == 0) {
+            return
+        }
+
+        self.reserve(other.len)
+
+        let dest: void* = (self.data + self.len) as void*
+        memcpy(dest, other.data as void*, other.len)
+
+        self.len = self.len + other.len
+
+        let term_ptr: uint8* = (self.data + self.len) as uint8*
+        @write_volatile(term_ptr, 0)
+    }
+
+    /// Clears the string, setting length to 0 but keeping capacity.
+    func clear(self) {
+        self.len = 0
+        let ptr: uint8* = self.data as uint8*
+        @write_volatile(ptr, 0)
+    }
+
+    /// Creates a copy of this string.
+    func clone(self): String {
+        let new_s: String = String::with_capacity(self.len)
+
+        if (self.len > 0) {
+            memcpy(new_s.data as void*, self.data as void*, self.len + 1)
+            new_s.len = self.len
+        }
+
+        return new_s
+    }
+
+    /// Compares two strings for equality.
+    func equals(self, other: String): bool {
+        if (self.len != other.len) {
+            return false
+        }
+
+        let i: uint64 = 0
+        while i < self.len {
+            let a: uint8 = self.char_at(i)
+            let b: uint8 = other.char_at(i)
+            if (a != b) {
+                return false
+            }
+            i = i + 1
+        }
+
+        return true
+    }
+
+    /// Compares with a string literal for equality.
+    func equals_str(self, s: string): bool {
+        let s_len: uint64 = strlen(s)
+        if (self.len != s_len) {
+            return false
+        }
+
+        let i: uint64 = 0
+        while i < self.len {
+            let a: uint8 = self.char_at(i)
+            let s_ptr: uint8* = (s as uint64 + i) as uint8*
+            let b: uint8 = @deref(s_ptr)
+            if (a != b) {
+                return false
+            }
+            i = i + 1
+        }
+
+        return true
+    }
+
+    /// Frees the memory owned by this string.
+    func drop(self) {
+        if (self.data != 0) {
+            free(self.data as void*)
+            self.data = 0
+            self.len = 0
+            self.cap = 0
+        }
+    }
+}
+
+impl Add<String> for String {
+    func add(self, other: String): String {
+        let result: String = String::with_capacity(self.len + other.len)
+
+        if (self.len > 0) {
+            memcpy(result.data as void*, self.data as void*, self.len)
+            result.len = self.len
+        }
+
+        if (other.len > 0) {
+            let dest: void* = (result.data + result.len) as void*
+            memcpy(dest, other.data as void*, other.len)
+            result.len = result.len + other.len
+        }
+
+        // Write null terminator
+        let term_ptr: uint8* = (result.data + result.len) as uint8*
+        @write_volatile(term_ptr, 0)
+
+        return result
+    }
+}

@@ -1,0 +1,233 @@
+package core
+
+// =============================================================================
+// CORE TRAITS - Freestanding (no external dependencies)
+// =============================================================================
+// These traits can be used in any environment including kernels and embedded
+// systems. They define fundamental interfaces without requiring heap allocation
+// or any C library functions.
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Operator Traits
+// -----------------------------------------------------------------------------
+
+/// Add<T> - Trait for the `+` operator.
+trait Add<T> {
+    func add(self, other: T): T
+}
+
+/// Sub<T> - Trait for the `-` operator.
+trait Sub<T> {
+    func sub(self, other: T): T
+}
+
+/// Mul<T> - Trait for the `*` operator.
+trait Mul<T> {
+    func mul(self, other: T): T
+}
+
+/// Div<T> - Trait for the `/` operator.
+trait Div<T> {
+    func div(self, other: T): T
+}
+
+/// Neg - Trait for unary `-` operator.
+trait Neg {
+    func neg(self): Self
+}
+
+/// Not - Trait for unary `!` operator.
+trait Not {
+    func not(self): Self
+}
+
+// -----------------------------------------------------------------------------
+// Bitwise Operator Traits
+// -----------------------------------------------------------------------------
+
+/// BitAnd<T> - Trait for the `&` operator.
+trait BitAnd<T> {
+    func bitand(self, other: T): T
+}
+
+/// BitOr<T> - Trait for the `|` operator.
+trait BitOr<T> {
+    func bitor(self, other: T): T
+}
+
+/// BitXor<T> - Trait for the `^` operator.
+trait BitXor<T> {
+    func bitxor(self, other: T): T
+}
+
+/// Shl<T> - Trait for the `<<` operator.
+trait Shl<T> {
+    func shl(self, other: T): T
+}
+
+/// Shr<T> - Trait for the `>>` operator.
+trait Shr<T> {
+    func shr(self, other: T): T
+}
+
+// -----------------------------------------------------------------------------
+// Comparison Traits
+// -----------------------------------------------------------------------------
+
+/// Eq<T> - Trait for the `==` operator.
+trait Eq<T> {
+    func eq(self, other: T): bool
+}
+
+/// Ne<T> - Trait for the `!=` operator.
+trait Ne<T> {
+    func ne(self, other: T): bool
+}
+
+/// Lt<T> - Trait for the `<` operator.
+trait Lt<T> {
+    func lt(self, other: T): bool
+}
+
+/// Gt<T> - Trait for the `>` operator.
+trait Gt<T> {
+    func gt(self, other: T): bool
+}
+
+/// Le<T> - Trait for the `<=` operator.
+trait Le<T> {
+    func le(self, other: T): bool
+}
+
+/// Ge<T> - Trait for the `>=` operator.
+trait Ge<T> {
+    func ge(self, other: T): bool
+}
+
+// -----------------------------------------------------------------------------
+// Fundamental Traits
+// -----------------------------------------------------------------------------
+
+/// Clone - Trait for types that can be duplicated.
+/// For freestanding: implementors must handle their own allocation.
+trait Clone {
+    func clone(self): Self
+}
+
+/// Copy - Marker trait for types that can be copied bitwise.
+/// Types implementing Copy are implicitly cloned on assignment.
+trait Copy {
+    func copy(self): Self
+}
+
+/// Default - Trait for types with a default value.
+/// Static trait methods (without `self`) are supported.
+/// Call via Type::method_name() syntax.
+trait Default {
+    func default_val(): Self
+}
+
+/// Drop - Trait for types that need cleanup when going out of scope.
+/// Called automatically when a value is no longer needed.
+trait Drop {
+    func drop(self): void
+}
+
+// -----------------------------------------------------------------------------
+// Conversion Traits
+// -----------------------------------------------------------------------------
+
+/// From<T> - Trait for converting from type T.
+trait From<T> {
+    func from(value: T): Self
+}
+
+/// Into<T> - Trait for converting into type T.
+trait Into<T> {
+    func into(self): T
+}
+
+/// TryFrom<T> - Fallible conversion from type T.
+/// Returns an error indicator (0 = success, non-zero = error code).
+trait TryFrom<T> {
+    func try_from(value: T, out: Self*): int32
+}
+
+// -----------------------------------------------------------------------------
+// Size and Alignment Traits
+// -----------------------------------------------------------------------------
+
+/// Sized - Trait for types with a known size at compile time.
+trait Sized {
+    func size(): uint64
+    func align(): uint64
+}
+
+// -----------------------------------------------------------------------------
+// Hashing Trait
+// -----------------------------------------------------------------------------
+
+/// Hash - Trait for types that can be hashed.
+trait Hash {
+    func hash(self): uint64
+}
+
+// -----------------------------------------------------------------------------
+// Debug/Display Traits
+// -----------------------------------------------------------------------------
+
+/// Debug - Trait for debug formatting.
+/// Writes debug representation to a buffer, returns bytes written.
+trait Debug {
+    func debug_fmt(self, buf: uint8*, len: uint64): uint64
+}
+
+/// Display - Trait for user-facing formatting.
+/// Writes display representation to a buffer, returns bytes written.
+trait Display {
+    func display_fmt(self, buf: uint8*, len: uint64): uint64
+}
+
+// -----------------------------------------------------------------------------
+// Iterator Traits
+// -----------------------------------------------------------------------------
+
+/// Iterator<T> - Trait for types that can produce a sequence of values.
+trait Iterator<T> {
+    func next(self): T
+    func has_next(self): bool
+}
+
+/// IntoIterator<T> - Trait for types that can be converted into an iterator.
+trait IntoIterator<T> {
+    func iter(self): Iterator<T>
+}
+
+// -----------------------------------------------------------------------------
+// Index Traits
+// -----------------------------------------------------------------------------
+
+/// Index<I, T> - Trait for indexing operations (read).
+trait Index<I, T> {
+    func index(self, idx: I): T
+}
+
+/// IndexMut<I, T> - Trait for mutable indexing operations (write).
+trait IndexMut<I, T> {
+    func index_mut(self, idx: I, value: T): void
+}
+
+// -----------------------------------------------------------------------------
+// Function Traits
+// -----------------------------------------------------------------------------
+
+/// FnOnce<A, R> - Trait for callable types (consumed on call).
+trait FnOnce<A, R> {
+    func call_once(self, arg: A): R
+}
+
+/// Fn<A, R> - Trait for callable types (can be called multiple times).
+trait Fn<A, R> {
+    func call(self, arg: A): R
+}

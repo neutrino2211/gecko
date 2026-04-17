@@ -1,0 +1,76 @@
+package option
+
+/// Option<T> - Represents an optional value.
+///
+/// An Option is either `Some` (containing a value) or `None` (empty).
+/// Use this instead of null pointers for safer code.
+///
+/// Example:
+/// ```
+/// func find(arr: Vec<int32>, target: int32): Option<uint64> {
+///     // ... search logic ...
+///     if (found) {
+///         return Option<uint64>::some(index)
+///     }
+///     return Option<uint64>::none()
+/// }
+///
+/// let result = find(arr, 42)
+/// if (result.is_some()) {
+///     let idx = result.unwrap()
+/// }
+/// ```
+class Option<T> {
+    /// The contained value (only valid if has_value is true).
+    let value: T
+    /// Whether this Option contains a value.
+    let has_value: bool
+
+    /// Creates an Option containing a value.
+    func some(val: T): Option<T> {
+        let opt: Option<T>
+        opt.value = val
+        opt.has_value = true
+        return opt
+    }
+
+    /// Creates an empty Option.
+    func none(): Option<T> {
+        let opt: Option<T>
+        opt.has_value = false
+        return opt
+    }
+
+    /// Returns true if this Option contains a value.
+    func is_some(self): bool {
+        return self.has_value
+    }
+
+    /// Returns true if this Option is empty.
+    func is_none(self): bool {
+        return !self.has_value
+    }
+
+    /// Returns the contained value.
+    /// Behavior is undefined if the Option is None.
+    func unwrap(self): T {
+        return self.value
+    }
+
+    /// Returns the contained value, or a default if None.
+    func unwrap_or(self, default_val: T): T {
+        if (self.has_value) {
+            return self.value
+        }
+        return default_val
+    }
+
+    /// Returns the contained value, or computes it from a default.
+    /// Note: In Gecko, this takes the computed default directly.
+    func get_or(self, default_val: T): T {
+        if (self.has_value) {
+            return self.value
+        }
+        return default_val
+    }
+}

@@ -1,0 +1,58 @@
+package types
+
+trait Sized {
+    func size(self): uint64
+}
+
+trait Default {
+    func default(): self
+}
+
+trait Clone {
+    func clone(self): self
+}
+
+trait Eq {
+    func eq(self, other: self): bool
+}
+
+trait Ord {
+    func lt(self, other: self): bool
+    func gt(self, other: self): bool
+    func le(self, other: self): bool
+    func ge(self, other: self): bool
+}
+
+trait Add {
+    func add(self, other: self): self
+}
+
+trait Sub {
+    func sub(self, other: self): self
+}
+
+trait Mul {
+    func mul(self, other: self): self
+}
+
+trait Div {
+    func div(self, other: self): self
+}
+
+trait Pointer<T> {
+    func deref(self): T
+    func is_null(self): bool
+    func offset(self, n: int): T*
+}
+
+trait NonNullable<T> {
+    func value(self): T
+}
+
+trait Buffer<T> {
+    func get(self, index: uint64): T
+    func set(self, index: uint64, value: T): void
+    func len(self): uint64
+    func copy_from(self, src: T*, count: uint64): void
+    func zero(self, count: uint64): void
+}

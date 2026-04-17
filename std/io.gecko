@@ -1,0 +1,18 @@
+package io
+
+declare external func putchar(c: int32): int32
+declare external func getchar(): int32
+declare external func puts(s: string): int32
+declare external func fflush(stream: void*): int32
+
+func print_char(c: int32): void {
+    putchar(c)
+}
+
+func print_line(s: string): void {
+    puts(s)
+}
+
+func flush(): void {
+    fflush(0 as void*)
+}

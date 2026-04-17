@@ -1,0 +1,98 @@
+package box
+
+declare external func malloc(size: uint64): void*
+declare external func free(ptr: void*): void
+
+/// Box<T> - Unique ownership smart pointer.
+///
+/// Provides single-owner heap allocation with automatic cleanup.
+/// When a `Box<T>` goes out of scope, the memory is freed.
+///
+/// Unlike `Rc<T>`, `Box<T>` cannot be cloned - ownership must be
+/// transferred (moved) rather than shared.
+///
+/// Example:
+/// ```
+/// let b: Box<int32> = Box<int32>::new(42)
+/// let val: int32 = b.get()
+/// b.drop()  // Manual cleanup (automatic in future)
+/// ```
+class Box<T> {
+    /// Internal pointer to heap-allocated memory.
+    let ptr: uint64
+
+    /// Allocates memory and stores a value, returning a new `Box<T>`.
+    ///
+    /// The value is copied to heap-allocated memory. The `Box<T>`
+    /// becomes the sole owner of this memory.
+    func new(value: T): Box<T> {
+        let size: uint64 = @size_of<T>()
+        let mem: void* = malloc(size)
+        let addr: uint64 = mem as uint64
+
+        // Write value to allocated memory
+        let dest: T* = addr as T*
+        @write_volatile(dest, value)
+
+        let b: Box<T>
+        b.ptr = addr
+        return b
+    }
+
+    /// Takes ownership of memory from a raw pointer.
+    ///
+    /// The caller must ensure the pointer was allocated with `malloc`
+    /// and is of the correct type. After this call, the `Box<T>` owns
+    /// the memory and will free it when dropped.
+    func from_raw(raw_ptr: uint64): Box<T> {
+        let b: Box<T>
+        b.ptr = raw_ptr
+        return b
+    }
+
+    /// Returns true if this Box contains valid (non-null) memory.
+    func is_valid(self): bool {
+        return self.ptr != 0
+    }
+
+    /// Returns the value stored in the Box.
+    func get(self): T {
+        let p: T* = self.ptr as T*
+        return @deref(p)
+    }
+
+    /// Overwrites the value stored in the Box.
+    func set(self, value: T) {
+        let p: T* = self.ptr as T*
+        @write_volatile(p, value)
+    }
+
+    /// Returns the raw pointer without giving up ownership.
+    ///
+    /// The Box still owns the memory after this call.
+    func as_raw(self): uint64 {
+        return self.ptr
+    }
+
+    /// Gives up ownership and returns the raw pointer.
+    ///
+    /// After this call, the Box is invalidated and the caller
+    /// is responsible for freeing the memory.
+    func into_raw(self): uint64 {
+        let addr: uint64 = self.ptr
+        self.ptr = 0  // Invalidate box
+        return addr
+    }
+
+    /// Frees the memory owned by this Box.
+    ///
+    /// After calling drop, the Box is invalidated.
+    /// In the future, this will be called automatically when
+    /// the Box goes out of scope.
+    func drop(self) {
+        if (self.ptr != 0) {
+            free(self.ptr as void*)
+            self.ptr = 0
+        }
+    }
+}

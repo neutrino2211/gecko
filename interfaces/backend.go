@@ -40,4 +40,17 @@ type BackendCodegenImplementations interface {
 	NewDeclaration(*ast.Ast, *tokens.Declaration)
 	NewImplementation(*ast.Ast, *tokens.Implementation)
 	NewTrait(*ast.Ast, *tokens.Trait)
+
+	// Control flow
+	NewIf(*ast.Ast, *tokens.If)
+	NewLoop(*ast.Ast, *tokens.Loop)
+	NewAssignment(*ast.Ast, *tokens.Assignment)
+	NewBreak(*ast.Ast)
+	NewContinue(*ast.Ast)
+
+	// Inline assembly
+	NewAsm(*ast.Ast, *tokens.Asm)
+
+	// Intrinsic statements
+	IntrinsicStatement(*ast.Ast, *tokens.Intrinsic)
 }

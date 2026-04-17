@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -52,6 +53,68 @@ func streamCommand(cmd *exec.Cmd) error {
 }
 
 var allErrorScopes []*errors.ErrorScope = make([]*errors.ErrorScope, 0)
+var parsedFiles = make(map[string]*tokens.File)
+
+// resolveImports finds and parses imported modules
+func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.CompileCfg) {
+	for _, entry := range sourceFile.Entries {
+		if entry.Import == nil {
+			continue
+		}
+
+		moduleName := entry.Import.Package
+
+		// Skip if already parsed
+		if _, ok := parsedFiles[moduleName]; ok {
+			sourceFile.Imports = append(sourceFile.Imports, parsedFiles[moduleName])
+			continue
+		}
+
+		// Try to find the module file
+		// 1. Same directory: moduleName.gecko
+		// 2. Subdirectory: moduleName/mod.gecko
+		var modulePath string
+		candidates := []string{
+			filepath.Join(baseDir, moduleName+".gecko"),
+			filepath.Join(baseDir, moduleName, "mod.gecko"),
+		}
+
+		for _, candidate := range candidates {
+			if _, err := os.Stat(candidate); err == nil {
+				modulePath = candidate
+				break
+			}
+		}
+
+		if modulePath == "" {
+			continue // Module not found, will be handled as error later
+		}
+
+		// Parse the module
+		moduleContents, err := os.ReadFile(modulePath)
+		if err != nil {
+			continue
+		}
+
+		moduleFile := &tokens.File{}
+		parseErr := parser.Parser.ParseString(string(moduleContents), moduleFile)
+		if parseErr != nil {
+			continue
+		}
+
+		moduleFile.Content = string(moduleContents)
+		moduleFile.Path = modulePath
+		moduleFile.Name = moduleName
+		moduleFile.Config = cfg
+
+		parsedFiles[moduleName] = moduleFile
+		sourceFile.Imports = append(sourceFile.Imports, moduleFile)
+
+		// Recursively resolve imports in the module
+		moduleDir := filepath.Dir(modulePath)
+		resolveImports(moduleFile, moduleDir, cfg)
+	}
+}
 
 func Compile(file string, config *config.CompileCfg) string {
 	fileOpt := option.SomePair(os.ReadFile(file))
@@ -67,6 +130,13 @@ func Compile(file string, config *config.CompileCfg) string {
 	sourceFile.Content = string(fileContents)
 	sourceFile.Path = file
 	sourceFile.Config = config
+
+	// Resolve imports
+	baseDir := filepath.Dir(file)
+	if baseDir == "" {
+		baseDir = "."
+	}
+	resolveImports(sourceFile, baseDir, config)
 
 	compileErrorScope := errors.NewErrorScope("compile", sourceFile.Name, string(fileContents))
 
@@ -144,7 +214,6 @@ func Compile(file string, config *config.CompileCfg) string {
 
 func haveErrors() bool {
 	for _, e := range allErrorScopes {
-		println(e.Name, e.HasErrors())
 		if e.HasErrors() {
 			return true
 		}

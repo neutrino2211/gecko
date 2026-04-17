@@ -79,3 +79,92 @@ func (l *Logger) Fatal(params ...string) {
 
 	os.Exit(1)
 }
+
+type LogLevel int
+
+const (
+	LevelSilent LogLevel = iota
+	LevelError
+	LevelWarn
+	LevelInfo
+	LevelDebug
+	LevelTrace
+)
+
+var globalLogLevel = LevelSilent
+
+func SetLogLevel(level LogLevel) {
+	globalLogLevel = level
+}
+
+func GetLogLevel() LogLevel {
+	return globalLogLevel
+}
+
+func IsDebugEnabled() bool {
+	return globalLogLevel >= LevelDebug
+}
+
+func GlobalError(format string, args ...interface{}) {
+	if globalLogLevel >= LevelError {
+		color.Set(color.FgRed, color.Bold)
+		print("[ERROR] ")
+		color.Unset()
+		println(format)
+	}
+}
+
+func GlobalWarn(format string, args ...interface{}) {
+	if globalLogLevel >= LevelWarn {
+		color.Set(color.FgYellow)
+		print("[WARN] ")
+		color.Unset()
+		println(format)
+	}
+}
+
+func GlobalInfo(format string, args ...interface{}) {
+	if globalLogLevel >= LevelInfo {
+		color.Set(color.FgCyan)
+		print("[INFO] ")
+		color.Unset()
+		println(format)
+	}
+}
+
+func GlobalDebug(section string, format string) {
+	if globalLogLevel >= LevelDebug {
+		color.Set(color.FgMagenta)
+		print("[DEBUG:" + section + "] ")
+		color.Unset()
+		println(format)
+	}
+}
+
+func ParseLogLevel(s string) LogLevel {
+	switch strings.ToLower(s) {
+	case "silent":
+		return LevelSilent
+	case "error":
+		return LevelError
+	case "warn", "warning":
+		return LevelWarn
+	case "info":
+		return LevelInfo
+	case "debug":
+		return LevelDebug
+	case "trace":
+		return LevelTrace
+	default:
+		return LevelSilent
+	}
+}
+
+func init() {
+	if os.Getenv("GECKO_DEBUG") != "" {
+		globalLogLevel = LevelDebug
+	}
+	if level := os.Getenv("GECKO_LOG_LEVEL"); level != "" {
+		globalLogLevel = ParseLogLevel(level)
+	}
+}

@@ -4,14 +4,23 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/neutrino2211/gecko/compiler"
 	"github.com/neutrino2211/gecko/config"
+	"github.com/neutrino2211/gecko/logger"
 	"github.com/urfave/cli/v2"
 
 	"github.com/fatih/color"
 )
+
+func setLogLevel(ctx *cli.Context) {
+	level := ctx.String("log-level")
+	logger.SetLogLevel(logger.ParseLogLevel(level))
+}
 
 // CopyFile copies a file from src to dst. If src and dst files exist, and are
 // the same, then return success. Otherise, attempt to create a hard link
@@ -79,6 +88,8 @@ var CompileCommand = &cli.Command{
 	Usage:       "gecko compile ...sources",
 	Description: compileHelp,
 	Action: func(ctx *cli.Context) error {
+		setLogLevel(ctx)
+
 		if ctx.Args().Len() == 0 {
 			println("No sources provided")
 			return nil
@@ -117,8 +128,8 @@ var CompileCommand = &cli.Command{
 		},
 		&cli.StringFlag{
 			Name:  "backend",
-			Value: "llvm",
-			Usage: "The compilation backend to use (llvm | c)",
+			Value: "c",
+			Usage: "The compilation backend to use (c | llvm)",
 		},
 		&cli.StringFlag{
 			Name:  "target-arch",
@@ -150,10 +161,225 @@ var CompileCommand = &cli.Command{
 			Value: &cli.StringSlice{},
 			Usage: "Pass arguments to underlying llc command",
 		},
+		&cli.StringFlag{
+			Name:  "log-level",
+			Value: "silent",
+			Usage: "Log level (silent | error | warn | info | debug | trace)",
+		},
 	},
 }
 
 var (
-	compileHelp  = `compiles a gecko source file or a gecko project`
+	compileHelp  = `compiles a gecko source file to C code`
+	buildHelp    = `compiles a gecko source file to an executable`
+	runHelp      = `compiles and runs a gecko source file`
 	invokeDir, _ = os.Getwd()
 )
+
+// Common flags shared between commands
+var commonFlags = []cli.Flag{
+	&cli.StringFlag{
+		Name:  "backend",
+		Value: "c",
+		Usage: "The compilation backend to use (c | llvm)",
+	},
+	&cli.StringFlag{
+		Name:  "target-arch",
+		Value: runtime.GOARCH,
+		Usage: "The compilation target architecture",
+	},
+	&cli.StringFlag{
+		Name:  "target-platform",
+		Value: runtime.GOOS,
+		Usage: "The compilation target operating system",
+	},
+	&cli.StringFlag{
+		Name:  "target-vendor",
+		Value: "",
+		Usage: "The compilation target vendor",
+	},
+	&cli.StringFlag{
+		Name:  "log-level",
+		Value: "silent",
+		Usage: "Log level (silent | error | warn | info | debug | trace)",
+	},
+}
+
+// compileToC compiles a gecko file to C and returns the C file path
+func compileToC(ctx *cli.Context, source string) (string, error) {
+	// Create a modified context with ir-only set
+	compiler.Compile(source, &config.CompileCfg{
+		Arch:     ctx.String("target-arch"),
+		Platform: ctx.String("target-platform"),
+		Vendor:   ctx.String("target-vendor"),
+		CFlags:   []string{},
+		CLFlags:  []string{},
+		CObjects: []string{},
+		Ctx:      ctx,
+	})
+
+	// The C file is generated next to the source
+	sourceDir := filepath.Dir(source)
+	sourceName := filepath.Base(source)
+	cFile := filepath.Join(sourceDir, sourceName+".c")
+
+	return cFile, nil
+}
+
+// BuildCommand compiles gecko to an executable
+var BuildCommand = &cli.Command{
+	Name:        "build",
+	Aliases:     []string{"b"},
+	Usage:       "gecko build <source.gecko> [-o output]",
+	Description: buildHelp,
+	Action: func(ctx *cli.Context) error {
+		setLogLevel(ctx)
+
+		if ctx.Args().Len() == 0 {
+			fmt.Println("Usage: gecko build <source.gecko> [-o output]")
+			return nil
+		}
+
+		source := ctx.Args().First()
+
+		// Compile to C
+		cFile, err := compileToC(ctx, source)
+		if err != nil {
+			return err
+		}
+
+		// Determine output name
+		output := ctx.String("output")
+		if output == "" {
+			// Default: source name without extension
+			base := filepath.Base(source)
+			output = strings.TrimSuffix(base, filepath.Ext(base))
+		}
+
+		// Compile C to executable with gcc
+		gccArgs := []string{"-o", output, cFile}
+
+		// Add optimization
+		if ctx.Bool("release") {
+			gccArgs = append([]string{"-O2"}, gccArgs...)
+		}
+
+		cmd := exec.Command("gcc", gccArgs...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("gcc compilation failed: %w", err)
+		}
+
+		fmt.Printf("Built: %s\n", output)
+
+		// Clean up C file unless --keep-c is set
+		if !ctx.Bool("keep-c") {
+			os.Remove(cFile)
+		}
+
+		return nil
+	},
+	Flags: append(commonFlags,
+		&cli.StringFlag{
+			Name:    "output",
+			Aliases: []string{"o"},
+			Value:   "",
+			Usage:   "Output executable name",
+		},
+		&cli.BoolFlag{
+			Name:  "release",
+			Value: false,
+			Usage: "Build with optimizations",
+		},
+		&cli.BoolFlag{
+			Name:  "keep-c",
+			Value: false,
+			Usage: "Keep generated C file",
+		},
+		&cli.BoolFlag{
+			Name:  "ir-only",
+			Value: true,
+			Usage: "Only compile to IR (always true for build)",
+		},
+	),
+}
+
+// RunCommand compiles and runs a gecko program
+var RunCommand = &cli.Command{
+	Name:        "run",
+	Aliases:     []string{"r"},
+	Usage:       "gecko run <source.gecko> [-- args...]",
+	Description: runHelp,
+	Action: func(ctx *cli.Context) error {
+		setLogLevel(ctx)
+
+		if ctx.Args().Len() == 0 {
+			fmt.Println("Usage: gecko run <source.gecko> [-- args...]")
+			return nil
+		}
+
+		source := ctx.Args().First()
+
+		// Compile to C
+		cFile, err := compileToC(ctx, source)
+		if err != nil {
+			return err
+		}
+
+		// Create temp executable
+		tmpDir := os.TempDir()
+		base := filepath.Base(source)
+		exeName := strings.TrimSuffix(base, filepath.Ext(base))
+		tmpExe := filepath.Join(tmpDir, "gecko_"+exeName)
+
+		// Compile C to executable
+		cmd := exec.Command("gcc", "-o", tmpExe, cFile)
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("gcc compilation failed: %w", err)
+		}
+
+		// Clean up C file
+		os.Remove(cFile)
+
+		// Run the executable
+		// Get args after -- if present
+		var runArgs []string
+		args := ctx.Args().Slice()
+		for i, arg := range args {
+			if arg == "--" && i+1 < len(args) {
+				runArgs = args[i+1:]
+				break
+			}
+		}
+
+		runCmd := exec.Command(tmpExe, runArgs...)
+		runCmd.Stdout = os.Stdout
+		runCmd.Stderr = os.Stderr
+		runCmd.Stdin = os.Stdin
+
+		runErr := runCmd.Run()
+
+		// Clean up executable
+		os.Remove(tmpExe)
+
+		if runErr != nil {
+			if exitErr, ok := runErr.(*exec.ExitError); ok {
+				// Program exited with non-zero - propagate silently
+				os.Exit(exitErr.ExitCode())
+			}
+			return runErr
+		}
+
+		return nil
+	},
+	Flags: append(commonFlags,
+		&cli.BoolFlag{
+			Name:  "ir-only",
+			Value: true,
+			Usage: "Only compile to IR (always true for run)",
+		},
+	),
+}

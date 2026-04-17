@@ -8,6 +8,7 @@ type Variable struct {
 	Name       string
 	IsPointer  bool
 	IsConst    bool
+	IsVolatile bool
 	IsExternal bool
 	IsArgument bool
 	Parent     *Ast

@@ -14,16 +14,19 @@ type Ast struct {
 	Methods    map[string]*Method
 	Variables  map[string]Variable
 	Classes    map[string]*Ast
+	Children   map[string]*Ast // Imported modules
 	Traits     map[string]*[]*Method
 	Parent     *Ast
 	ErrorScope *errors.ErrorScope
 	Config     *config.CompileCfg
+	IsPacked   bool // Set to true if class has @packed attribute
 }
 
 func (a *Ast) Init(errorScope *errors.ErrorScope) {
 	a.Methods = make(map[string]*Method)
 	a.Variables = make(map[string]Variable)
 	a.Classes = make(map[string]*Ast)
+	a.Children = make(map[string]*Ast)
 	a.Traits = make(map[string]*[]*Method)
 	a.Imports = []string{}
 	a.ErrorScope = errorScope
@@ -52,6 +55,15 @@ func (a *Ast) GetFullName() string {
 	}
 
 	return cString
+}
+
+// GetRoot returns the root AST node by traversing up the parent chain
+func (a *Ast) GetRoot() *Ast {
+	root := a
+	for root.Parent != nil {
+		root = root.Parent
+	}
+	return root
 }
 
 func (a *Ast) ResolveSymbolAsVariable(symbol string) *option.Optional[*Variable] {

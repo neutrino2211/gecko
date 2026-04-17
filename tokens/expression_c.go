@@ -7,9 +7,35 @@ import (
 func (e *Expression) ToCString(scope *ast.Ast) string {
 	base := ""
 
-	eq := e.Equality
+	lo := e.LogicalOr
 
-	base += eq.ToCString(scope)
+	base += lo.ToCString(scope)
+
+	return base
+}
+
+func (lo *LogicalOr) ToCString(scope *ast.Ast) string {
+	base := ""
+
+	base += lo.LogicalAnd.ToCString(scope)
+
+	if lo.Next != nil {
+		base += " || "
+		base += lo.Next.ToCString(scope)
+	}
+
+	return base
+}
+
+func (la *LogicalAnd) ToCString(scope *ast.Ast) string {
+	base := ""
+
+	base += la.Equality.ToCString(scope)
+
+	if la.Next != nil {
+		base += " && "
+		base += la.Next.ToCString(scope)
+	}
 
 	return base
 }

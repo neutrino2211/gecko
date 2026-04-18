@@ -499,6 +499,9 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 		return ""
 	}
 
+	// Type check the function call arguments
+	impl.CheckFunctionCallTypes(f, scope)
+
 	var funcName string
 	var baseFuncName string
 	var selfArg string

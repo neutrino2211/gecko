@@ -479,7 +479,7 @@ func (impl *CBackendImplementation) GenerateClassMethodDef(scope *ast.Ast, class
 // FuncCall handles standalone function calls
 func (impls *CBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncCall) {
 	info := CGetScopeInformation(scope)
-	callStr := impls.FuncCallToCString(f, scope)
+	callStr := impls.FuncCallToCString(f, scope) // Type checking happens inside
 	info.Code += "    " + callStr + ";\n"
 }
 
@@ -621,9 +621,13 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 
 // NewMethod generates a C function
 func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
+	// Register method signature for type checking (with both full and short names)
+	fullName := scope.GetFullName() + "__" + m.Name
+	RegisterMethodSignature(fullName, m)
+	RegisterMethodSignature(m.Name, m) // Also register with short name for local lookups
+
 	// If this is a generic method, register it and skip code generation
 	if len(m.TypeParams) > 0 {
-		fullName := scope.GetFullName() + "__" + m.Name
 		Generics.RegisterGenericMethod(fullName, m)
 		// Still register in scope for resolution
 		astMth := &ast.Method{
@@ -1145,6 +1149,9 @@ func (impl *CBackendImplementation) NewLoop(scope *ast.Ast, l *tokens.Loop) {
 
 // NewAssignment handles variable assignment
 func (impl *CBackendImplementation) NewAssignment(scope *ast.Ast, a *tokens.Assignment) {
+	// Type check the assignment
+	impl.CheckAssignmentType(a, scope)
+
 	info := CGetScopeInformation(scope)
 
 	// Resolve the variable

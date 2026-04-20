@@ -1,9 +1,0 @@
-package mem
-
-declare external func malloc(size: uint64): void*
-declare external func free(ptr: void*): void
-declare external func realloc(ptr: void*, size: uint64): void*
-declare external func memcpy(dest: void*, src: void*, n: uint64): void*
-declare external func memset(s: void*, c: int32, n: uint64): void*
-declare external func memmove(dest: void*, src: void*, n: uint64): void*
-declare external func memcmp(s1: void*, s2: void*, n: uint64): int32

@@ -42,6 +42,7 @@ The `examples/` directory contains complete, buildable examples:
 
 - **`examples/hello_kernel/`** - A minimal x86 kernel (requires QEMU)
 - **`examples/traits/`** - Demonstrates traits, trait constraints, and generics
+- **`examples/string_builder/`** - StringBuilder from stdlib with project-based build
 
 ## Testing
 
@@ -104,7 +105,9 @@ Source (.gecko) -> Lexer/Parser (Participle) -> tokens.File -> Backend -> C/LLVM
 - Function attributes: `@naked`, `@noreturn`, `@section(".text")`
 - Global variables with `@section` placement
 - Struct literals: `Type { field: value }`
-- Module imports: `import modulename`
+- Module imports with dot notation: `import std.collections.string`
+- Selective imports: `import std.collections.vec use { Vec }`
+- Directory imports with qualified types: `import ./shapes` then `shapes.Circle`
 - Generics with monomorphization: `func identity<T>(x: T): T`
 - Traits: `trait Name { func method(self): Type }`
 - Trait implementations: `impl Trait for Class { ... }`
@@ -114,6 +117,68 @@ Source (.gecko) -> Lexer/Parser (Participle) -> tokens.File -> Backend -> C/LLVM
 - Function pointers: `func(T, T): T`
 - Break/continue in loops
 - For-in loops with `@iterator_hook` trait: `for let x in collection { }`
+
+### Standard Library
+
+The stdlib lives in `$GECKO_HOME/stdlib/` and uses dot notation imports:
+
+```gecko
+// Import specific types
+import std.collections.string use { StringBuilder, String }
+import std.collections.vec use { Vec }
+import std.collections.slice use { Slice }
+import std.memory.box use { Box }
+
+// Use qualified access
+import std.collections.string
+let sb: string.StringBuilder
+```
+
+**Stdlib structure:**
+```
+stdlib/
+├── core/
+│   ├── traits.gecko    # Drop, Clone, Copy, Iterator, Index
+│   └── ops.gecko       # Add, Sub, Mul, Div, Eq, Lt, Gt, etc.
+├── collections/
+│   ├── vec.gecko       # Vec<T> dynamic array
+│   ├── slice.gecko     # Slice<T> borrowed view
+│   └── string.gecko    # String, StringBuilder
+├── memory/
+│   ├── box.gecko       # Box<T> heap allocation
+│   ├── rc.gecko        # Rc<T> reference counting
+│   └── weak.gecko      # Weak<T> weak references
+└── option.gecko        # Option<T>
+```
+
+### Hook Attributes
+
+Traits can define hooks that enable syntactic sugar:
+
+```gecko
+@drop_hook(.drop)           // Called on scope exit
+@clone_hook(.clone)         // Explicit cloning
+@iterator_hook(.next, .has_next)  // for-in loops
+@index_hook(.index)         // arr[i] read access
+@index_mut_hook(.index_mut) // arr[i] = v write access
+@add_hook(.add)             // a + b operator
+@eq_hook(.eq)               // a == b operator
+```
+
+### Visibility
+
+Symbols are private by default. Use `public` for exports:
+
+```gecko
+public class MyClass { ... }
+public func helper(): void { ... }
+public trait MyTrait { ... }
+
+impl MyClass {
+    public func visible(self): void { }  // Accessible from other modules
+    func internal(self): void { }        // Private to this module
+}
+```
 
 ### Type Checking
 
@@ -149,10 +214,11 @@ go build -o gecko-lsp ./lsp
 
 ### Not Yet Implemented
 
-- String iteration (for-in loop infrastructure exists, strings need Iterator impl)
+- Copy/clone hooks (automatic trigger on assignments)
+- String iteration (strings need Iterator impl)
 - Default trait implementations
 - Trait inheritance
-- Full module completion (shows placeholder, needs module resolution)
+- LSP import suggestions for unknown types
 
 ## Ground Rules for Development
 

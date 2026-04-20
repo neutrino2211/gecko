@@ -1,4 +1,4 @@
-import string use { StringBuilder }
+import std.collections.string use { StringBuilder, str_len, streq }
 
 declare external func printf(fmt: string): int
 
@@ -66,7 +66,7 @@ external func main(): int32 {
     printf("StringBuilder freed successfully\n")
 
     let hello: string = "Hello"
-    let hlen: uint64 = string.strlen(hello)
+    let hlen: uint64 = string.str_len(hello)
     if (hlen == 5) {
         printf("strlen works: 5\n")
     } else {

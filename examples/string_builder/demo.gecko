@@ -1,6 +1,6 @@
 package demo
 
-import string
+import std.collections.string
 
 declare external variardic func printf(fmt: string): int
 declare external func putchar(c: int): int
@@ -108,7 +108,7 @@ external func main(): int32 {
     let s2: string = "Hello"
     let s3: string = "World"
 
-    printf("   strlen(\"Hello\") = %lu\n", string.strlen(s1))
+    printf("   strlen(\"Hello\") = %lu\n", string.str_len(s1))
     if (string.streq(s1, s2)) {
         printf("   \"Hello\" == \"Hello\": true\n")
     }

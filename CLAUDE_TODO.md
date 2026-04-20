@@ -19,7 +19,7 @@ Tracking implementation of the new module system per specs in `spec/modules.md`,
   - Added `GetStringValue()` and `GetHookMethods()` helper methods
   - Reordered Entry parser to parse declarations before intrinsics
 
-## Phase 2: Compiler Changes
+## Phase 2: Compiler Changes ✅ COMPLETE
 
 - [x] **Module resolution order** ✅
   - Relative: `./path/module.gecko`
@@ -36,15 +36,16 @@ Tracking implementation of the new module system per specs in `spec/modules.md`,
   - [x] **Symbol resolution via `package`** - Lazy-resolved modules use their `package` declaration as scope prefix (e.g., `point__Point__new`)
   - [x] **Qualified type syntax** (`shapes.Circle`) - Implemented via `LazyModuleTypeResolver`
 
-- [x] **Type suggestion on unresolved types** ✅ (already implemented)
+- [x] **Type suggestion on unresolved types** ✅
   - `TypeRegistry` scans stdlib and project directories for types
   - `FormatSuggestions()` generates helpful import suggestions
   - Test: `test_sources/compile_tests/type_suggestions/missing_type.gecko`
 
-- [ ] **Hook registry**
-  - Track which traits are registered for which hooks
-  - Verify trait signature matches expected shape
-  - Error on duplicate hooks
+- [x] **Hook registry** ✅
+  - 19 hook types defined in `hooks/hook_registry.go`
+  - `ProcessTraitHooks()` validates signatures and registers traits
+  - Duplicate hook detection with errors
+  - Tests: `hook_invalid_method`, `hook_duplicate`, `hook_wrong_signature`
 
 - [x] **Visibility enforcement** ✅
   - Private by default for methods in impl blocks and class bodies
@@ -53,43 +54,57 @@ Tracking implementation of the new module system per specs in `spec/modules.md`,
   - Added visibility checking in `FuncCallToCString` and `processChain`
   - Tests: `visibility_private_access`, `visibility_private_method`
 
-- [ ] **Code generation for hooks**
-  - `@drop_hook`: Insert cleanup calls at scope exit
-  - `@add_hook` etc.: Desugar operators to method calls
-  - `@index_hook`: Desugar `a[i]` to method calls
+- [x] **Code generation for hooks** ✅
+  - `@drop_hook`: Cleanup calls at scope exit via `generateDropCalls()` (LIFO order)
+  - `@add_hook` etc.: Operator desugaring via `GetOperatorTraitMethodCall()`
+  - `@index_hook`: Array indexing desugars to `get()` method calls
+  - `@iterator_hook`: For-in loops use `next()` and `has_next()` methods
+  - Tests: `index_hook/`, `for_in_loop/`, `hooks/`
 
-## Phase 3: Stdlib Consolidation
+- [ ] **Copy/clone hooks** (lower priority)
+  - `@copy_hook`: Implicit copy on pass-by-value (not yet triggered)
+  - `@clone_hook`: Explicit `.clone()` calls (not yet triggered)
 
-- [ ] **Create new directory structure**
+## Phase 3: Stdlib Consolidation ✅ COMPLETE
+
+- [x] **Created new directory structure**
   ```
   stdlib/
+  ├── mod.gecko           # Package: std
   ├── core/
-  │   ├── traits.gecko
-  │   └── ops.gecko
+  │   ├── mod.gecko       # Package: core
+  │   ├── traits.gecko    # Drop, Clone, Copy, Iterator, Index traits
+  │   └── ops.gecko       # Add, Sub, Mul, Div, Eq, etc. operator traits
   ├── collections/
-  │   ├── vec.gecko
-  │   ├── hash.gecko
-  │   └── string.gecko
+  │   ├── mod.gecko       # Package: collections
+  │   ├── vec.gecko       # Package: vec
+  │   ├── slice.gecko     # Package: slice
+  │   └── string.gecko    # Package: string (String, StringBuilder, str_len, streq)
   ├── memory/
-  │   ├── box.gecko
-  │   ├── rc.gecko
-  │   ├── weak.gecko
-  │   └── raw.gecko
-  ├── option.gecko
-  ├── result.gecko
-  └── io.gecko
+  │   ├── mod.gecko       # Package: memory
+  │   ├── box.gecko       # Package: box
+  │   ├── rc.gecko        # Package: rc
+  │   ├── weak.gecko      # Package: weak
+  │   └── raw.gecko       # Package: raw
+  └── option.gecko        # Package: option
   ```
 
-- [ ] **Add hook attributes to core traits**
+- [x] **Added hook attributes to core traits**
   - `@drop_hook(.drop)` on Drop trait
   - `@clone_hook(.clone)` on Clone trait
-  - Operator hooks on Add, Sub, Eq, etc.
+  - `@copy_hook(.copy)` on Copy trait
+  - `@iterator_hook(.next, .has_next)` on Iterator trait
+  - `@into_iterator_hook(.iter)` on IntoIterator trait
+  - `@index_hook(.index)` on Index trait
+  - `@index_mut_hook(.index_mut)` on IndexMut trait
+  - All operator hooks (@add_hook, @sub_hook, @eq_hook, etc.) on operator traits
 
-- [ ] **Update imports in examples and tests**
-  - Change `import vec` to `import std.collections.vec`
-  - Update all test files
+- [x] **Updated imports in examples and tests**
+  - `import std.collections.string` for StringBuilder
+  - `import std.collections.slice` for Slice
+  - Test expectation updated for new module paths
 
-- [ ] **Delete old `std/` directory**
+- [x] **Deleted old `std/` directory**
 
 ## Phase 4: LSP Updates
 
@@ -101,11 +116,11 @@ Tracking implementation of the new module system per specs in `spec/modules.md`,
   - Only show `pub` items from other modules
   - Show all items from current module
 
-## Phase 5: Documentation
+## Phase 5: Documentation ✅ COMPLETE
 
-- [ ] Update CLAUDE.md with new import syntax
-- [ ] Update examples to use new patterns
-- [ ] Add stdlib usage examples
+- [x] Update CLAUDE.md with new import syntax
+- [x] Update examples to use new patterns (string_builder, traits)
+- [x] Add stdlib usage examples in CLAUDE.md
 
 ---
 
@@ -192,7 +207,7 @@ These issues allowed incorrect code to compile silently:
   - Pointer builtin methods (offset, read, write) handled in `GetTypeOfFuncCall`
   - Generic return types substituted: `T` → actual type arg
 
-### P3 - Low (Edge Cases) - PARTIALLY COMPLETED 2026-04-20
+### P3 - Low (Edge Cases) - MOSTLY COMPLETED 2026-04-20
 
 - [x] **Nested generics (3+ levels)** ✅
   - Fixed struct literal type inference for generic types

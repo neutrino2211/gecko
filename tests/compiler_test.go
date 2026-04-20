@@ -297,7 +297,7 @@ func TestTypeCheckingErrors(t *testing.T) {
 			name:          "type_suggestion",
 			file:          "test_sources/compile_tests/type_suggestions/missing_type.gecko",
 			expectedError: "Type Check Error",
-			expectedMsg:   "std.string",
+			expectedMsg:   "std.collections.string",
 		},
 		{
 			name:          "hook_invalid_method",

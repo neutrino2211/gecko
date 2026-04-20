@@ -1,0 +1,7 @@
+package core
+
+// Core module - re-exports all core traits
+// Import via: import std.core
+
+import traits
+import ops

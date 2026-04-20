@@ -1,0 +1,115 @@
+package ops
+
+// =============================================================================
+// ARITHMETIC OPERATOR TRAITS
+// =============================================================================
+
+/// Add<T> - Trait for the `+` operator.
+@add_hook(.add)
+public trait Add<T> {
+    func add(self, other: T): T
+}
+
+/// Sub<T> - Trait for the `-` operator.
+@sub_hook(.sub)
+public trait Sub<T> {
+    func sub(self, other: T): T
+}
+
+/// Mul<T> - Trait for the `*` operator.
+@mul_hook(.mul)
+public trait Mul<T> {
+    func mul(self, other: T): T
+}
+
+/// Div<T> - Trait for the `/` operator.
+@div_hook(.div)
+public trait Div<T> {
+    func div(self, other: T): T
+}
+
+/// Neg - Trait for unary `-` operator.
+@neg_hook(.neg)
+public trait Neg {
+    func neg(self): Self
+}
+
+/// Not - Trait for unary `!` operator.
+@not_hook(.not)
+public trait Not {
+    func not(self): Self
+}
+
+// =============================================================================
+// BITWISE OPERATOR TRAITS
+// =============================================================================
+
+/// BitAnd<T> - Trait for the `&` operator.
+@bitand_hook(.bitand)
+public trait BitAnd<T> {
+    func bitand(self, other: T): T
+}
+
+/// BitOr<T> - Trait for the `|` operator.
+@bitor_hook(.bitor)
+public trait BitOr<T> {
+    func bitor(self, other: T): T
+}
+
+/// BitXor<T> - Trait for the `^` operator.
+@bitxor_hook(.bitxor)
+public trait BitXor<T> {
+    func bitxor(self, other: T): T
+}
+
+/// Shl<T> - Trait for the `<<` operator.
+@shl_hook(.shl)
+public trait Shl<T> {
+    func shl(self, other: T): T
+}
+
+/// Shr<T> - Trait for the `>>` operator.
+@shr_hook(.shr)
+public trait Shr<T> {
+    func shr(self, other: T): T
+}
+
+// =============================================================================
+// COMPARISON OPERATOR TRAITS
+// =============================================================================
+
+/// Eq<T> - Trait for the `==` operator.
+@eq_hook(.eq)
+public trait Eq<T> {
+    func eq(self, other: T): bool
+}
+
+/// Ne<T> - Trait for the `!=` operator.
+@ne_hook(.ne)
+public trait Ne<T> {
+    func ne(self, other: T): bool
+}
+
+/// Lt<T> - Trait for the `<` operator.
+@lt_hook(.lt)
+public trait Lt<T> {
+    func lt(self, other: T): bool
+}
+
+/// Gt<T> - Trait for the `>` operator.
+@gt_hook(.gt)
+public trait Gt<T> {
+    func gt(self, other: T): bool
+}
+
+/// Le<T> - Trait for the `<=` operator.
+@le_hook(.le)
+public trait Le<T> {
+    func le(self, other: T): bool
+}
+
+/// Ge<T> - Trait for the `>=` operator.
+@ge_hook(.ge)
+public trait Ge<T> {
+    func ge(self, other: T): bool
+}

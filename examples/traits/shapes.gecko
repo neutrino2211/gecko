@@ -1,6 +1,6 @@
 package shapes
 
-import std.slice use { Slice }
+import std.collections.slice use { Slice }
 
 declare external variardic func printf(format: string): void
 

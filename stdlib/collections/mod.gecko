@@ -1,0 +1,9 @@
+package collections
+
+// Collections module - dynamic data structures
+// Import via: import std.collections use { Vec, Slice }
+// Import via: import std.collections.string use { StringBuilder }
+
+import vec
+import slice
+import string

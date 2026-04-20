@@ -1,0 +1,127 @@
+package traits
+
+// =============================================================================
+// FUNDAMENTAL TRAITS - Lifecycle and core behaviors
+// =============================================================================
+
+/// Drop - Trait for types that need cleanup when going out of scope.
+@drop_hook(.drop)
+public trait Drop {
+    func drop(self): void
+}
+
+/// Clone - Trait for types that can be explicitly duplicated.
+@clone_hook(.clone)
+public trait Clone {
+    func clone(self): Self
+}
+
+/// Copy - Marker trait for types that can be copied bitwise.
+@copy_hook(.copy)
+public trait Copy {
+    func copy(self): Self
+}
+
+/// Default - Trait for types with a default value.
+public trait Default {
+    func default_val(): Self
+}
+
+// =============================================================================
+// CONVERSION TRAITS
+// =============================================================================
+
+/// From<T> - Trait for converting from type T.
+public trait From<T> {
+    func from(value: T): Self
+}
+
+/// Into<T> - Trait for converting into type T.
+public trait Into<T> {
+    func into(self): T
+}
+
+/// TryFrom<T> - Fallible conversion from type T.
+public trait TryFrom<T> {
+    func try_from(value: T, out: Self*): int32
+}
+
+// =============================================================================
+// ITERATOR TRAITS
+// =============================================================================
+
+/// Iterator<T> - Trait for types that produce a sequence of values.
+@iterator_hook(.next, .has_next)
+public trait Iterator<T> {
+    func next(self): T
+    func has_next(self): bool
+}
+
+/// IntoIterator<T> - Trait for types convertible to an iterator.
+@into_iterator_hook(.iter)
+public trait IntoIterator<T> {
+    func iter(self): Iterator<T>
+}
+
+// =============================================================================
+// INDEX TRAITS
+// =============================================================================
+
+/// Index<I, T> - Trait for read indexing (a[i]).
+@index_hook(.index)
+public trait Index<I, T> {
+    func index(self, idx: I): T
+}
+
+/// IndexMut<I, T> - Trait for write indexing (a[i] = v).
+@index_mut_hook(.index_mut)
+public trait IndexMut<I, T> {
+    func index_mut(self, idx: I, value: T): void
+}
+
+// =============================================================================
+// SIZE AND ALIGNMENT
+// =============================================================================
+
+/// Sized - Trait for types with known size at compile time.
+public trait Sized {
+    func size(): uint64
+    func align(): uint64
+}
+
+// =============================================================================
+// HASHING
+// =============================================================================
+
+/// Hash - Trait for types that can be hashed.
+public trait Hash {
+    func hash(self): uint64
+}
+
+// =============================================================================
+// FORMATTING
+// =============================================================================
+
+/// Debug - Trait for debug formatting.
+public trait Debug {
+    func debug_fmt(self, buf: uint8*, len: uint64): uint64
+}
+
+/// Display - Trait for user-facing formatting.
+public trait Display {
+    func display_fmt(self, buf: uint8*, len: uint64): uint64
+}
+
+// =============================================================================
+// FUNCTION TRAITS
+// =============================================================================
+
+/// FnOnce<A, R> - Callable types consumed on call.
+public trait FnOnce<A, R> {
+    func call_once(self, arg: A): R
+}
+
+/// Fn<A, R> - Callable types (multiple calls allowed).
+public trait Fn<A, R> {
+    func call(self, arg: A): R
+}

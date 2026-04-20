@@ -1,0 +1,16 @@
+package std
+
+// Gecko Standard Library
+//
+// Import patterns:
+//   import std.core use { Drop, Clone }
+//   import std.core.ops use { Add, Eq }
+//   import std.collections use { Vec, Slice }
+//   import std.collections.string use { StringBuilder }
+//   import std.memory use { Box, Rc, Weak }
+//   import std.option use { Option }
+
+import core
+import collections
+import memory
+import option

@@ -47,3 +47,4 @@ test_import*
 *.swo
 *~
 .DS_Store
+lsp/lsp

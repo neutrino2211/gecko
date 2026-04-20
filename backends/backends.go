@@ -7,6 +7,7 @@ import (
 	"os/exec"
 
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/hooks"
 	"github.com/neutrino2211/gecko/interfaces"
 	"github.com/neutrino2211/gecko/tokens"
 )
@@ -57,7 +58,11 @@ func BackendProcessEntries(b interfaces.BackendInteface, scope *ast.Ast, entries
 		} else if entry.Implementation != nil {
 			b.GetImpls().NewImplementation(scope, entry.Implementation)
 		} else if entry.Trait != nil {
+			// Process any hook attributes on the trait
+			hooks.ProcessTraitHooks(entry.Trait, scope.Scope, scope.ErrorScope)
 			b.GetImpls().NewTrait(scope, entry.Trait)
+		} else if entry.Enum != nil {
+			b.GetImpls().NewEnum(scope, entry.Enum)
 		} else if entry.Declaration != nil {
 			// if entry.Declaration.Field != nil {
 			// 	variableOpt := entry.Declaration.ToAstVariable(scope)
@@ -84,6 +89,8 @@ func BackendProcessEntries(b interfaces.BackendInteface, scope *ast.Ast, entries
 			b.GetImpls().NewDeclaration(scope, entry.Declaration)
 		} else if entry.Intrinsic != nil {
 			b.GetImpls().IntrinsicStatement(scope, entry.Intrinsic)
+		} else if entry.MethodCall != nil {
+			b.GetImpls().MethodCall(scope, entry.MethodCall)
 		} else if entry.FuncCall != nil {
 			b.GetImpls().FuncCall(scope, entry.FuncCall)
 		} else if entry.Return != nil {
@@ -102,6 +109,8 @@ func BackendProcessEntries(b interfaces.BackendInteface, scope *ast.Ast, entries
 			b.GetImpls().NewBreak(scope)
 		} else if entry.Continue != nil {
 			b.GetImpls().NewContinue(scope)
+		} else if entry.CImport != nil {
+			b.GetImpls().NewCImport(scope, entry.CImport)
 		}
 	}
 }
@@ -109,4 +118,5 @@ func BackendProcessEntries(b interfaces.BackendInteface, scope *ast.Ast, entries
 var Backends = map[string]interfaces.BackendInteface{
 	"llvm": &LLVMBackend{},
 	"c":    &CBackend{},
+	"asm":  &AsmBackend{},
 }

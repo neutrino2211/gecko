@@ -1,0 +1,8 @@
+package main
+
+import mylib
+
+external func main(): int32 {
+    let p: Point = Point::new(10, 25)
+    return p.sum()
+}

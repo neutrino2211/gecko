@@ -65,6 +65,25 @@ func (impl *CBackendImplementation) GetTypeOfLiteral(l *tokens.Literal, scope *a
 		return nil
 	}
 
+	// Handle address-of operator (&variable)
+	// Get the base type first, then wrap in pointer if needed
+	baseType := impl.getBaseLiteralType(l, scope)
+	if baseType != nil && l.IsPointer {
+		// &variable produces a non-null pointer (address of local can't be null)
+		return &tokens.TypeRef{
+			Type:    baseType.Type,
+			Pointer: true,
+			NonNull: true,
+		}
+	}
+	return baseType
+}
+
+func (impl *CBackendImplementation) getBaseLiteralType(l *tokens.Literal, scope *ast.Ast) *tokens.TypeRef {
+	if l == nil {
+		return nil
+	}
+
 	// Number literals - default to int32
 	if l.Number != "" {
 		return &tokens.TypeRef{Type: "int32"}
@@ -80,7 +99,101 @@ func (impl *CBackendImplementation) GetTypeOfLiteral(l *tokens.Literal, scope *a
 		return &tokens.TypeRef{Type: "string"}
 	}
 
-	// Symbol - look up in scope
+	// Handle chain access FIRST (e.g., sq.area(), rect.width)
+	// This must come before simple symbol lookup to handle method calls
+	if len(l.Chain) > 0 {
+		// Get the base type from the symbol
+		var currentType *tokens.TypeRef
+		if l.Symbol != "" {
+			varOpt := scope.ResolveSymbolAsVariable(l.Symbol)
+			if !varOpt.IsNil() {
+				variable := varOpt.Unwrap()
+				fullName := variable.GetFullName()
+				if info, ok := (*CProgramValues)[fullName]; ok {
+					currentType = info.GeckoType
+				}
+			}
+		}
+
+		// Walk through the chain to determine the final type
+		for _, chain := range l.Chain {
+			if currentType == nil {
+				break
+			}
+
+			// Handle builtin pointer methods before class lookup
+			if currentType.Pointer && chain.IsMethodCall() {
+				switch chain.Name {
+				case "offset":
+					// ptr.offset(n) returns the same pointer type
+					continue
+				case "read":
+					// ptr.read() returns the element type (dereference)
+					currentType = &tokens.TypeRef{Type: currentType.Type}
+					continue
+				case "write":
+					// ptr.write(value) returns void
+					currentType = &tokens.TypeRef{Type: "void"}
+					continue
+				}
+			}
+
+			typeName := currentType.Type
+			rootScope := scope.GetRoot()
+			classOpt := rootScope.ResolveClass(typeName)
+			if classOpt.IsNil() {
+				currentType = nil
+				break
+			}
+			class := classOpt.Unwrap()
+
+			if chain.IsMethodCall() {
+				// Method call - look up return type
+				// First check direct class methods
+				if method, ok := class.Methods[chain.Name]; ok {
+					currentType = &tokens.TypeRef{Type: method.Type}
+					continue
+				}
+
+				// Then check trait methods
+				for _, traitMethods := range class.Traits {
+					if traitMethods == nil {
+						continue
+					}
+					for _, method := range *traitMethods {
+						// Trait method names are mangled: TypeName__TraitName__methodName
+						// We need to match just the methodName part
+						if len(method.Name) > len(chain.Name) {
+							suffix := "__" + chain.Name
+							if len(method.Name) >= len(suffix) && method.Name[len(method.Name)-len(suffix):] == suffix {
+								currentType = &tokens.TypeRef{Type: method.Type}
+								goto foundMethod
+							}
+						}
+					}
+				}
+				// Method not found
+				currentType = nil
+			foundMethod:
+			} else {
+				// Field access - look up field type
+				if fieldVar, ok := class.Variables[chain.Name]; ok {
+					fieldFullName := fieldVar.GetFullName()
+					if fieldInfo, ok := (*CProgramValues)[fieldFullName]; ok {
+						currentType = fieldInfo.GeckoType
+					} else {
+						currentType = nil
+					}
+				} else {
+					currentType = nil
+				}
+			}
+		}
+
+		return currentType
+	}
+
+	// Symbol - look up in scope (only if no chain)
 	if l.Symbol != "" {
 		if l.SymbolModule != "" {
 			// module.field or var.field - get field type
@@ -118,7 +231,7 @@ func (impl *CBackendImplementation) GetTypeOfLiteral(l *tokens.Literal, scope *a
 
 	// Struct literal
 	if l.IsStructLiteral() {
-		return &tokens.TypeRef{Type: l.StructType}
+		return &tokens.TypeRef{Type: l.StructType, TypeArgs: l.StructTypeArgs}
 	}
 
 	// Function call - would need return type analysis
@@ -147,6 +260,70 @@ func (impl *CBackendImplementation) GetTypeOfFuncCall(f *tokens.FuncCall, scope 
 		}
 	}
 
+	// Method call on variable: variable.method()
+	if f.Module != "" {
+		// Check if Module is a local variable
+		varOpt := scope.ResolveSymbolAsVariable(f.Module)
+		if !varOpt.IsNil() {
+			variable := varOpt.Unwrap()
+			fullVarName := variable.GetFullName()
+			if valueInfo, ok := (*CProgramValues)[fullVarName]; ok && valueInfo.GeckoType != nil {
+				// Handle builtin pointer methods first
+				if valueInfo.GeckoType.Pointer {
+					switch f.Function {
+					case "offset":
+						// ptr.offset(n) returns the same pointer type
+						return valueInfo.GeckoType
+					case "read":
+						// ptr.read() returns the element type (dereference)
+						return &tokens.TypeRef{Type: valueInfo.GeckoType.Type}
+					case "write":
+						// ptr.write(value) returns void
+						return &tokens.TypeRef{Type: "void"}
+					}
+				}
+
+				typeName := valueInfo.GeckoType.Type
+				typeArgs := valueInfo.GeckoType.TypeArgs
+				rootScope := scope.GetRoot()
+				classOpt := rootScope.ResolveClass(typeName)
+				if !classOpt.IsNil() {
+					class := classOpt.Unwrap()
+
+					// First check direct class methods
+					if method, ok := class.Methods[f.Function]; ok {
+						returnType := method.Type
+						// Substitute generic type parameter with actual type arg
+						// e.g., Vec<int32>.get() returns T -> substitute T with int32
+						if len(typeArgs) > 0 && returnType == "T" {
+							return typeArgs[0]
+						}
+						return &tokens.TypeRef{Type: returnType}
+					}
+
+					// Then check trait methods
+					for _, traitMethods := range class.Traits {
+						if traitMethods == nil {
+							continue
+						}
+						for _, method := range *traitMethods {
+							// Trait method names are mangled: TypeName__TraitName__methodName
+							suffix := "__" + f.Function
+							if len(method.Name) >= len(suffix) && method.Name[len(method.Name)-len(suffix):] == suffix {
+								returnType := method.Type
+								// Substitute generic type parameter
+								if len(typeArgs) > 0 && returnType == "T" {
+									return typeArgs[0]
+								}
+								return &tokens.TypeRef{Type: returnType}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// Regular function call
 	if f.Module == "" {
 		mth := scope.ResolveMethod(f.Function)
@@ -162,6 +339,11 @@ func (impl *CBackendImplementation) GetTypeOfFuncCall(f *tokens.FuncCall, scope 
 func (impl *CBackendImplementation) GetTypeOfUnary(u *tokens.Unary, scope *ast.Ast) *tokens.TypeRef {
 	if u == nil {
 		return nil
+	}
+
+	// If there's a cast, the result type is the cast target type
+	if u.Cast != nil && u.Cast.Type != nil {
+		return u.Cast.Type
 	}
 
 	if u.Primary != nil {

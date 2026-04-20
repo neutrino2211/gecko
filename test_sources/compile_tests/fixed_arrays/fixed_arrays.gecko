@@ -21,7 +21,7 @@ func test_local_arrays(): void {
 // Function that uses a fixed-size array parameter is not yet supported
 // but we can work with pointers to arrays
 
-func main(): int {
+external func main(): int32 {
     test_local_arrays()
     return 0
 }

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/alecthomas/participle/lexer"
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/fatih/color"
 )
 
@@ -116,7 +116,7 @@ func (s *ErrorScope) NewCompileTimeWarning(title string, message string, pos lex
 		Title:   title,
 	}
 
-	s.CompileTimeWarnings = append(s.CompileTimeErrors, e)
+	s.CompileTimeWarnings = append(s.CompileTimeWarnings, e)
 }
 
 func (s *ErrorScope) HasErrors() bool {
@@ -139,11 +139,33 @@ func (e *ErrorScope) GetSummary() string {
 	return color.HiWhiteString(e.SourceName + ": No warnings or errors generated")
 }
 
+// Global registry of all error scopes for centralized warning/error collection
+var allScopes []*ErrorScope
+
+// RegisterScope adds an ErrorScope to the global registry for later printing
+func RegisterScope(scope *ErrorScope) {
+	allScopes = append(allScopes, scope)
+}
+
+// GetAllScopes returns all registered error scopes
+func GetAllScopes() []*ErrorScope {
+	return allScopes
+}
+
+// ResetScopes clears the global scope registry
+func ResetScopes() {
+	allScopes = make([]*ErrorScope, 0)
+}
+
 func NewErrorScope(name string, sourceName string, source string) *ErrorScope {
-	return &ErrorScope{
-		Name:              name,
-		CompileTimeErrors: make([]*CompileTimeMessage, 0),
-		Source:            &source,
-		SourceName:        sourceName,
+	scope := &ErrorScope{
+		Name:                name,
+		CompileTimeErrors:   make([]*CompileTimeMessage, 0),
+		CompileTimeWarnings: make([]*CompileTimeMessage, 0),
+		Source:              &source,
+		SourceName:          sourceName,
 	}
+	// Auto-register for centralized collection
+	RegisterScope(scope)
+	return scope
 }

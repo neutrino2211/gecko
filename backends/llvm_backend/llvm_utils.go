@@ -161,7 +161,7 @@ func (impl *LLVMBackendImplementation) LLVMAssignArgumentsToMethodArguments(args
 func (impl *LLVMBackendImplementation) LLVMImplementationToMethodTokens(scope *ast.Ast, i *tokens.Implementation) []*tokens.Method {
 	mTokens := make([]*tokens.Method, 0)
 
-	for _, m := range i.Fields {
+	for _, m := range i.GetFields() {
 		mTokens = append(mTokens, m.ToMethodToken())
 	}
 
@@ -169,21 +169,21 @@ func (impl *LLVMBackendImplementation) LLVMImplementationToMethodTokens(scope *a
 }
 
 func (impl *LLVMBackendImplementation) LLVMImplementationForClass(scope *ast.Ast, i *tokens.Implementation) {
-	classOpt := scope.ResolveClass(i.For)
-	traitOpt := scope.ResolveTrait(i.Name)
+	classOpt := scope.ResolveClass(i.GetFor())
+	traitOpt := scope.ResolveTrait(i.GetName())
 
 	class := classOpt.UnwrapOrElse(func(err error) *ast.Ast {
-		scope.ErrorScope.NewCompileTimeError("Resolution Error", "Could not resolve the class '"+i.For+"'", i.Pos)
+		scope.ErrorScope.NewCompileTimeError("Resolution Error", "Could not resolve the class '"+i.GetFor()+"'", i.Pos)
 
 		return &ast.Ast{}
 	})
 	traitMthds := traitOpt.UnwrapOrElse(func(err error) *[]*ast.Method {
-		scope.ErrorScope.NewCompileTimeError("Resolution Error", "Could not resolve the trait '"+i.Name+"'", i.Pos)
+		scope.ErrorScope.NewCompileTimeError("Resolution Error", "Could not resolve the trait '"+i.GetName()+"'", i.Pos)
 
 		return &[]*ast.Method{}
 	})
 
-	if i.Fields != nil && i.Default {
+	if i.GetFields() != nil && i.Default {
 		scope.ErrorScope.NewCompileTimeError(
 			"Implementation Error",
 			"A default trait implementation must not have a body",
@@ -205,7 +205,31 @@ func (impl *LLVMBackendImplementation) LLVMImplementationForClass(scope *ast.Ast
 		}
 	}
 
-	class.Traits[i.Name] = &mthdList
+	// Build mangled trait name with type arguments for generic traits
+	// This matches the C backend behavior to avoid collisions when implementing
+	// multiple instantiations of the same generic trait (e.g., Iterator<int32> and Iterator<string>)
+	mangledTraitName := i.GetName()
+	if len(i.GetTypeArgs()) > 0 {
+		for _, typeArg := range i.GetTypeArgs() {
+			mangledTraitName += "__" + typeRefToMangledName(typeArg)
+		}
+	}
+
+	class.Traits[mangledTraitName] = &mthdList
+}
+
+// typeRefToMangledName converts a TypeRef to a mangled string for trait keys.
+// This ensures consistent naming between C and LLVM backends.
+func typeRefToMangledName(t *tokens.TypeRef) string {
+	if t == nil {
+		return "void"
+	}
+
+	base := t.Type
+	if t.Pointer {
+		base += "_ptr"
+	}
+	return base
 }
 
 func (impl *LLVMBackendImplementation) LLVMImplementationForArch(scope *ast.Ast, i *tokens.Implementation) {
@@ -219,14 +243,14 @@ func (impl *LLVMBackendImplementation) LLVMImplementationForArch(scope *ast.Ast,
 		return
 	}
 
-	if scope.Config.Arch == i.Name {
+	if scope.Config.Arch == i.GetName() {
 		for _, m := range impl.LLVMImplementationToMethodTokens(scope, i) {
 			scope.Methods[m.Name] = impl.LLVMGetAstMethod(scope, m)
 		}
 	} else {
 		scope.ErrorScope.NewCompileTimeWarning(
 			"Arch Implementation",
-			"Implementation for the arch '"+i.Name+"' was skipped due to target being '"+scope.Config.Arch+"'",
+			"Implementation for the arch '"+i.GetName()+"' was skipped due to target being '"+scope.Config.Arch+"'",
 			i.Pos,
 		)
 	}

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/hooks"
 	"github.com/neutrino2211/gecko/tokens"
 )
 
@@ -209,6 +210,7 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 		// In C, string literals are already const char*
 		base = l.String
 	} else if l.Symbol != "" {
+		symbolName := l.Symbol
 		if l.SymbolModule != "" {
 			// Could be module.SYMBOL or struct.field
 			// First check if SymbolModule is a local variable (struct field access)
@@ -221,9 +223,9 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 				}
 				// Check if it's a pointer - use -> instead of .
 				if variable.IsPointer {
-					base = varName + "->" + l.Symbol
+					base = varName + "->" + symbolName
 				} else {
-					base = varName + "." + l.Symbol
+					base = varName + "." + symbolName
 				}
 			} else {
 				// Module-prefixed symbol: module.SYMBOL
@@ -233,37 +235,42 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 				}
 
 				if importedModule, ok := rootScope.Children[l.SymbolModule]; ok {
-					symbolVariable := importedModule.ResolveSymbolAsVariable(l.Symbol)
+					symbolVariable := importedModule.ResolveSymbolAsVariable(symbolName)
 					if !symbolVariable.IsNil() {
 						variable := symbolVariable.Unwrap()
 						base = variable.GetFullName()
 					} else {
-						base = l.SymbolModule + "__" + l.Symbol
+						base = l.SymbolModule + "__" + symbolName
 					}
 				} else {
-					base = l.SymbolModule + "__" + l.Symbol
+					base = l.SymbolModule + "__" + symbolName
 				}
 			}
 		} else {
-			// Local symbol - try variable first, then function
-			symbolVariable := scope.ResolveSymbolAsVariable(l.Symbol)
-			if !symbolVariable.IsNil() {
-				variable := symbolVariable.Unwrap()
-				// For local variables and arguments, use just the name (not the full qualified name)
-				if variable.IsArgument || variable.Parent == scope {
-					base = variable.Name
-				} else {
-					base = variable.GetFullName()
-				}
+			// Handle nil literal
+			if symbolName == "nil" {
+				base = "NULL"
 			} else {
-				// Try to resolve as a function reference (for function pointers)
-				symbolMethod := scope.ResolveMethod(l.Symbol)
-				if !symbolMethod.IsNil() {
-					method := symbolMethod.Unwrap()
-					base = method.GetFullName()
+				// Local symbol - try variable first, then function
+				symbolVariable := scope.ResolveSymbolAsVariable(symbolName)
+				if !symbolVariable.IsNil() {
+					variable := symbolVariable.Unwrap()
+					// For local variables and arguments, use just the name (not the full qualified name)
+					if variable.IsArgument || variable.Parent == scope {
+						base = variable.Name
+					} else {
+						base = variable.GetFullName()
+					}
 				} else {
-					// Could be an unknown symbol, use as-is
-					base = l.Symbol
+					// Try to resolve as a function reference (for function pointers)
+					symbolMethod := scope.ResolveMethod(symbolName)
+					if !symbolMethod.IsNil() {
+						method := symbolMethod.Unwrap()
+						base = method.GetFullName()
+					} else {
+						// Could be an unknown symbol, use as-is
+						base = symbolName
+					}
 				}
 			}
 		}
@@ -284,8 +291,18 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 		base += "}"
 	} else if l.IsStructLiteral() {
 		// Handle struct literal: TypeName { field: value, ... }
+		// Type check struct literal fields
+		impl.CheckStructLiteralTypes(l.StructType, l.StructFields, scope, l.Pos)
+
 		// Generate C99 compound literal: (TypeName){ .field = value, ... }
-		base = "(" + l.StructType + "){ "
+		// For generic types, mangle: Box<T> -> Box__T
+		mangledType := l.StructType
+		if len(l.StructTypeArgs) > 0 {
+			for _, arg := range l.StructTypeArgs {
+				mangledType += "__" + TypeRefToCType(arg, scope)
+			}
+		}
+		base = "(" + mangledType + "){ "
 		for i, kv := range l.StructFields {
 			if i > 0 {
 				base += ", "
@@ -295,14 +312,63 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 		base += " }"
 	}
 
-	// Handle array indexing
-	if l.ArrayIndex != nil {
-		base += "[" + impl.LiteralToCString(l.ArrayIndex, scope) + "]"
-	}
-
-	// Handle chained access (.field or .method())
+	// Handle chained access (.field or .method()) BEFORE array indexing
+	// This ensures self.buffer[i] becomes self->buffer[i], not self[i]->buffer
 	if len(l.Chain) > 0 {
 		base = impl.processChain(base, l, scope)
+	}
+
+	// Handle array indexing - check for Index trait first
+	if l.ArrayIndex != nil {
+		indexed := false
+		indexExpr := impl.ExpressionToCString(l.ArrayIndex, scope)
+
+		// Try to get the type of the indexed expression
+		// For chain access like self.buffer[i], we need the type after the chain
+		var indexedTypeName string
+		if len(l.Chain) > 0 {
+			// Get the type of the last chain element
+			indexedType := impl.GetTypeOfLiteral(l, scope)
+			if indexedType != nil {
+				// ArrayIndex applies to the result, so we need the element type, not array type
+				// For now, skip Index trait check for chained access
+				indexedTypeName = ""
+			}
+		} else if l.Symbol != "" {
+			varOpt := scope.ResolveSymbolAsVariable(l.Symbol)
+			if !varOpt.IsNil() {
+				variable := varOpt.Unwrap()
+				fullName := variable.GetFullName()
+				if valueInfo, ok := (*CProgramValues)[fullName]; ok && valueInfo.GeckoType != nil {
+					indexedTypeName = valueInfo.GeckoType.Type
+				}
+			}
+		}
+
+		// Check for Index trait
+		if indexedTypeName != "" {
+			if classOpt := scope.ResolveClass(indexedTypeName); !classOpt.IsNil() {
+				class := classOpt.Unwrap()
+				// Check for Index trait with any type argument
+				for traitName := range class.Traits {
+					if len(traitName) >= 5 && traitName[:5] == "Index" {
+						// Found Index trait - get the index method
+						indexHook := hooks.GetHookRegistry().GetHook(scope.GetRoot().Scope, hooks.HookIndex)
+						if indexHook != nil && len(indexHook.Methods) > 0 {
+							methodName := indexHook.Methods[0]
+							mangledMethod := indexedTypeName + "__" + traitName + "__" + methodName
+							base = mangledMethod + "(&" + base + ", " + indexExpr + ")"
+							indexed = true
+						}
+						break
+					}
+				}
+			}
+		}
+
+		if !indexed {
+			base += "[" + indexExpr + "]"
+		}
 	}
 
 	// Handle address-of operator
@@ -318,9 +384,71 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 	// Track the current type as we traverse the chain
 	var currentType *tokens.TypeRef
 	var isPointer bool
+	var isModule bool        // Track if base is a module, not a variable
+	var moduleName string    // The module name for module.constant/function patterns
+
+	// Check if the base symbol is a module or enum (not a variable)
+	if l.Symbol != "" && l.SymbolModule == "" {
+		symbolName := l.Symbol
+		varOpt := scope.ResolveSymbolAsVariable(symbolName)
+		if varOpt.IsNil() {
+			// Not a variable - check if it's an enum type
+			if enumCType, isEnum := EnumToCType[symbolName]; isEnum && len(l.Chain) > 0 {
+				// Enum value access: Color.Red -> enums__Color_Red
+				chain := l.Chain[0]
+				enumValue := enumCType[:len(enumCType)] + "_" + chain.Name
+				return enumValue
+			}
+
+			// Not a variable - check if it's a module
+			// Search up the scope hierarchy for imported modules
+			checkScope := scope
+			for checkScope != nil {
+				if _, ok := checkScope.Children[symbolName]; ok {
+					isModule = true
+					moduleName = symbolName
+					break
+				}
+				checkScope = checkScope.Parent
+			}
+		}
+	}
+
+	// If the base is a module, handle chain access as module-prefixed symbols
+	if isModule && len(l.Chain) > 0 {
+		result := base
+		for i, chain := range l.Chain {
+			if chain.IsMethodCall() {
+				// Module function call: module.func(args)
+				args := ""
+				for j, arg := range chain.GetArgs() {
+					if j > 0 {
+						args += ", "
+					}
+					args += impl.ExpressionToCString(arg.Value, scope)
+				}
+				// Generate: module__func(args)
+				funcName := moduleName + "__" + chain.Name
+				if args != "" {
+					result = funcName + "(" + args + ")"
+				} else {
+					result = funcName + "()"
+				}
+			} else {
+				// Module constant access: module.CONSTANT -> module__CONSTANT
+				if i == 0 {
+					result = moduleName + "__" + chain.Name
+				} else {
+					result = result + "__" + chain.Name
+				}
+			}
+		}
+		return result
+	}
 
 	// Try to get the initial type from the literal
 	if l.Symbol != "" {
+		symbolName := l.Symbol
 		if l.SymbolModule != "" {
 			// module.field pattern - base is already "module.field" or "var.field"
 			// Get the type of the field, not the module/var
@@ -335,7 +463,7 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 					classOpt := rootScope.ResolveClass(typeName)
 					if !classOpt.IsNil() {
 						class := classOpt.Unwrap()
-						if fieldVar, ok := class.Variables[l.Symbol]; ok {
+						if fieldVar, ok := class.Variables[symbolName]; ok {
 							// Try CProgramValues first
 							fieldFullName := fieldVar.GetFullName()
 							if fieldInfo, ok := (*CProgramValues)[fieldFullName]; ok {
@@ -352,13 +480,18 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 			}
 		} else {
 			// Simple symbol
-			varOpt := scope.ResolveSymbolAsVariable(l.Symbol)
+			varOpt := scope.ResolveSymbolAsVariable(symbolName)
 			if !varOpt.IsNil() {
 				variable := varOpt.Unwrap()
 				fullName := variable.GetFullName()
+				// First check if the variable itself is a pointer (like self in trait methods)
+				isPointer = variable.IsPointer
 				if info, ok := (*CProgramValues)[fullName]; ok {
 					currentType = info.GeckoType
-					isPointer = currentType != nil && currentType.Pointer
+					// Also check the TypeRef's Pointer flag
+					if currentType != nil && currentType.Pointer {
+						isPointer = true
+					}
 				}
 			}
 		}
@@ -370,7 +503,7 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 		if chain.IsMethodCall() {
 			// Method call - check for builtin trait methods first
 			if currentType != nil {
-				if code, ok := impl.TryBuiltinMethod(result, currentType, chain.Name, chain.Args, scope); ok {
+				if code, ok := impl.TryBuiltinMethod(result, currentType, chain.Name, chain.GetArgs(), scope); ok {
 					result = code
 					// After a method call, we don't know the return type without more analysis
 					currentType = nil
@@ -382,7 +515,7 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 			// Regular method call - convert to function call with self argument
 			// For now, generate as obj.method(args) -> Type__method(&obj, args)
 			args := ""
-			for i, arg := range chain.Args {
+			for i, arg := range chain.GetArgs() {
 				if i > 0 {
 					args += ", "
 				}
@@ -391,53 +524,33 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 
 			// Try to find the method in the type's class or traits
 			if currentType != nil {
-				typeName := currentType.Type
-				rootScope := scope.GetRoot()
-				classOpt := rootScope.ResolveClass(typeName)
-				if !classOpt.IsNil() {
-					class := classOpt.Unwrap()
+				resolver := NewMethodResolver(impl)
+				resolution := resolver.ResolveMethod(currentType, chain.Name, scope)
 
-					// First check for direct class methods
-					if method, ok := class.Methods[chain.Name]; ok {
-						selfArg := result
-						if !isPointer {
-							selfArg = "&" + result
+				if resolution.Found {
+					// Check method visibility for cross-module calls
+					if resolution.Method != nil {
+						if visErr := resolution.Method.CheckVisibility(scope); visErr != "" {
+							scope.ErrorScope.NewCompileTimeError(
+								"Visibility Error",
+								visErr,
+								chain.Pos,
+							)
 						}
-						// Use the full method name from the AST
-						methodName := class.GetFullName() + "__" + method.Name
-						if args != "" {
-							result = methodName + "(" + selfArg + ", " + args + ")"
-						} else {
-							result = methodName + "(" + selfArg + ")"
-						}
-						currentType = nil
-						isPointer = false
-						goto nextChain
 					}
 
-					// Then check trait methods
-					for traitName, traitMethods := range class.Traits {
-						if traitMethods == nil {
-							continue
-						}
-						for _, method := range *traitMethods {
-							expectedName := typeName + "__" + traitName + "__" + chain.Name
-							if method.Name == expectedName {
-								selfArg := result
-								if !isPointer {
-									selfArg = "&" + result
-								}
-								if args != "" {
-									result = expectedName + "(" + selfArg + ", " + args + ")"
-								} else {
-									result = expectedName + "(" + selfArg + ")"
-								}
-								currentType = nil
-								isPointer = false
-								goto nextChain
-							}
-						}
+					selfArg := result
+					if !isPointer {
+						selfArg = "&" + result
 					}
+					if args != "" {
+						result = resolution.MethodName + "(" + selfArg + ", " + args + ")"
+					} else {
+						result = resolution.MethodName + "(" + selfArg + ")"
+					}
+					currentType = nil
+					isPointer = false
+					goto nextChain
 				}
 			}
 
@@ -506,12 +619,34 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 	var baseFuncName string
 	var selfArg string
 
-	// Handle static type calls: Type<Args>::function()
+	// Handle static type calls: module.Type<Args>::function() or Type::function()
 	if f.StaticType != "" {
 		// Build the mangled type name with type arguments
 		typeName := f.StaticType
 		rootScope := scope.GetRoot()
 		isGenericInstance := len(f.StaticTypeArgs) > 0
+
+		// If there's a static module prefix (e.g., console.Console::new())
+		// we need to look up the class in that module's scope
+		var lookupScope *ast.Ast
+		modulePrefix := ""
+		if f.StaticModule != "" {
+			modulePrefix = f.StaticModule + "__"
+			// Look up the module in scope hierarchy
+			checkScope := scope
+			for checkScope != nil {
+				if modScope, ok := checkScope.Children[f.StaticModule]; ok {
+					lookupScope = modScope
+					break
+				}
+				checkScope = checkScope.Parent
+			}
+			if lookupScope == nil {
+				lookupScope = rootScope
+			}
+		} else {
+			lookupScope = rootScope
+		}
 
 		if isGenericInstance {
 			// Generic type instantiation - build mangled name
@@ -519,48 +654,103 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 			for i, typeArg := range f.StaticTypeArgs {
 				typeArgStrs[i] = TypeRefToCType(typeArg, scope)
 			}
-			typeName = typeName + "__" + strings.Join(typeArgStrs, "__")
-			// For generic instances, just use the mangled name directly
-			baseFuncName = typeName + "__" + f.Function
-		} else {
-			// Non-generic type - look up the class to check for direct methods and trait methods
-			classOpt := rootScope.ResolveClass(f.StaticType)
-			if !classOpt.IsNil() {
-				class := classOpt.Unwrap()
-				fullTypeName := class.GetFullName()
 
-				// First check for direct class method
-				if _, ok := class.Methods[f.Function]; ok {
-					baseFuncName = fullTypeName + "__" + f.Function
+			// Validate class type parameter constraints
+			impl.ValidateClassTypeArgs(f.StaticType, f.StaticTypeArgs, scope, f.Pos)
+
+			typeName = typeName + "__" + strings.Join(typeArgStrs, "__")
+
+			// Get origin module for proper method naming
+			effectivePrefix := modulePrefix
+			if originModule, ok := Generics.GenericClassOrigins[f.StaticType]; ok && originModule != "" && effectivePrefix == "" {
+				effectivePrefix = originModule + "__"
+			}
+
+			baseFuncName = effectivePrefix + typeName + "__" + f.Function
+		} else {
+			// Non-generic type reference - but check if the class is actually generic
+			// For Slice::from_raw<Rectangle>(), the type args are on the method call
+			// but should be applied to the class instantiation
+			if Generics.IsGenericClass(f.StaticType) && len(f.TypeArgs) > 0 {
+				// This is a generic class with type args on the method call
+				// Treat as: GenericClass<TypeArgs>::method()
+				typeArgStrs := make([]string, len(f.TypeArgs))
+				for i, typeArg := range f.TypeArgs {
+					typeArgStrs[i] = TypeRefToCType(typeArg, scope)
+				}
+
+				// Validate class type parameter constraints
+				impl.ValidateClassTypeArgs(f.StaticType, f.TypeArgs, scope, f.Pos)
+
+				// Request class instantiation
+				mangledTypeName := Generics.RequestClassInstantiation(f.StaticType, typeArgStrs)
+
+				// Get origin module for proper method naming
+				originModule := Generics.GenericClassOrigins[f.StaticType]
+				if originModule != "" {
+					baseFuncName = originModule + "__" + mangledTypeName + "__" + f.Function
 				} else {
-					// Not a direct method - search trait implementations for static methods
-					found := false
-					for traitName, traitMethods := range class.Traits {
-						if traitMethods == nil {
-							continue
+					baseFuncName = modulePrefix + mangledTypeName + "__" + f.Function
+				}
+
+				// Clear TypeArgs since we've handled them as class type args
+				f.TypeArgs = nil
+			} else {
+				// Non-generic type - look up the class to check for direct methods and trait methods
+				classOpt := lookupScope.ResolveClass(f.StaticType)
+				if !classOpt.IsNil() {
+					class := classOpt.Unwrap()
+					fullTypeName := class.GetFullName()
+
+					// First check for direct class method
+					if method, ok := class.Methods[f.Function]; ok {
+						// Check method visibility for cross-module calls
+						if visErr := method.CheckVisibility(scope); visErr != "" {
+							scope.ErrorScope.NewCompileTimeError(
+								"Visibility Error",
+								visErr,
+								f.Pos,
+							)
 						}
-						for _, method := range *traitMethods {
-							// Check if this trait has a method with matching name
-							expectedName := typeName + "__" + traitName + "__" + f.Function
-							if method.Name == expectedName {
-								baseFuncName = expectedName
-								found = true
+						baseFuncName = fullTypeName + "__" + f.Function
+					} else {
+						// Not a direct method - search trait implementations for static methods
+						found := false
+						for traitName, traitMethods := range class.Traits {
+							if traitMethods == nil {
+								continue
+							}
+							for _, method := range *traitMethods {
+								// Check if this trait has a method with matching name
+								expectedName := typeName + "__" + traitName + "__" + f.Function
+								if method.Name == expectedName {
+									// Check method visibility for cross-module calls
+									if visErr := method.CheckVisibility(scope); visErr != "" {
+										scope.ErrorScope.NewCompileTimeError(
+											"Visibility Error",
+											visErr,
+											f.Pos,
+										)
+									}
+									baseFuncName = modulePrefix + expectedName
+									found = true
+									break
+								}
+							}
+							if found {
 								break
 							}
 						}
-						if found {
-							break
+
+						// If still not found, use the default mangling (might be external or direct method)
+						if !found {
+							baseFuncName = fullTypeName + "__" + f.Function
 						}
 					}
-
-					// If still not found, use the default mangling (might be external or direct method)
-					if !found {
-						baseFuncName = fullTypeName + "__" + f.Function
-					}
+				} else {
+					// Class not found - use module-prefixed default mangling
+					baseFuncName = modulePrefix + typeName + "__" + f.Function
 				}
-			} else {
-				// Class not found - use default mangling
-				baseFuncName = typeName + "__" + f.Function
 			}
 		}
 	} else if f.Module != "" {
@@ -586,105 +776,37 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 
 
 				typeName := valueInfo.GeckoType.Type
+				resolver := NewMethodResolver(impl)
 
 				// Check if this is a generic type parameter with a trait constraint
-				if CurrentMonomorphContext != nil {
-					if concreteType, ok := CurrentMonomorphContext.GetConcreteTypeForParam(typeName); ok {
-						if traitName, hasTrait := CurrentMonomorphContext.GetTraitConstraint(typeName); hasTrait {
-							// This is a constrained type parameter - use the concrete type's trait method
-							expectedName := concreteType + "__" + traitName + "__" + f.Function
-							baseFuncName = expectedName
-							// Add self as first argument (always pointer for trait methods)
-							if variable.IsPointer {
-								selfArg = varName
-							} else {
-								selfArg = "&" + varName
-							}
-						}
+				if constrainedName, ok := resolver.ResolveConstrainedGeneric(typeName, f.Function); ok {
+					baseFuncName = constrainedName
+					if variable.IsPointer {
+						selfArg = varName
+					} else {
+						selfArg = "&" + varName
 					}
 				}
 
 				// If not a constrained generic, try regular class/trait lookup
 				if baseFuncName == "" {
-					// Look up the class in root scope (and imported modules)
-					rootScope := scope
-					for rootScope.Parent != nil {
-						rootScope = rootScope.Parent
-					}
-
-					// For generic class instances, build the mangled class name
-					lookupName := typeName
-					isGenericInstance := len(valueInfo.GeckoType.TypeArgs) > 0
-					if isGenericInstance {
-						typeArgStrs := make([]string, len(valueInfo.GeckoType.TypeArgs))
-						for i, typeArg := range valueInfo.GeckoType.TypeArgs {
-							typeArgStrs[i] = TypeRefToCType(typeArg, scope)
-						}
-						lookupName = typeName + "__" + strings.Join(typeArgStrs, "__")
-					} else if strings.Contains(typeName, "__") {
-						// Type name is already mangled (e.g., self in generic class method)
-						isGenericInstance = true
-						lookupName = typeName
-					}
-
-					classOpt := rootScope.ResolveClass(lookupName)
-					// If not found in current scope, search imported modules (children)
-					if classOpt.IsNil() {
-						for _, child := range rootScope.Children {
-							classOpt = child.ResolveClass(lookupName)
-							if !classOpt.IsNil() {
-								break
+					resolution := resolver.ResolveMethod(valueInfo.GeckoType, f.Function, scope)
+					if resolution.Found {
+						// Check method visibility for cross-module calls
+						if resolution.Method != nil {
+							if visErr := resolution.Method.CheckVisibility(scope); visErr != "" {
+								scope.ErrorScope.NewCompileTimeError(
+									"Visibility Error",
+									visErr,
+									f.Pos,
+								)
 							}
 						}
-					}
-
-					// For generic class instances, directly construct the method name
-					// The method name is always className__methodName (without scope prefix)
-					if isGenericInstance {
-						// This is a generic class instance - method name is className__methodName
-						baseFuncName = lookupName + "__" + f.Function
+						baseFuncName = resolution.MethodName
 						if variable.IsPointer {
 							selfArg = varName
 						} else {
 							selfArg = "&" + varName
-						}
-					} else if !classOpt.IsNil() {
-						class := classOpt.Unwrap()
-
-						// First check for direct class methods
-						if method, ok := class.Methods[f.Function]; ok {
-							baseFuncName = class.GetFullName() + "__" + method.Name
-							// Add self as first argument
-							if variable.IsPointer {
-								selfArg = varName
-							} else {
-								selfArg = "&" + varName
-							}
-						}
-
-						// Then search traits for the method
-						if baseFuncName == "" {
-							for traitName, traitMethods := range class.Traits {
-								if traitMethods == nil {
-									continue
-								}
-								for _, method := range *traitMethods {
-									expectedName := typeName + "__" + traitName + "__" + f.Function
-									if method.Name == expectedName {
-										baseFuncName = method.Name
-										// Add self as first argument
-										if variable.IsPointer {
-											selfArg = varName
-										} else {
-											selfArg = "&" + varName
-										}
-										break
-									}
-								}
-								if baseFuncName != "" {
-									break
-								}
-							}
 						}
 					}
 				}

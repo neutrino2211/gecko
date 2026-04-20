@@ -1,0 +1,10 @@
+package main
+
+func identity<T>(x: T): T {
+    return x
+}
+
+external func main(): int32 {
+    let result = identity<int32>("hello")
+    return 0
+}

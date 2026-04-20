@@ -8,7 +8,6 @@ import (
 
 	"github.com/neutrino2211/gecko/docgen"
 	"github.com/neutrino2211/gecko/parser"
-	"github.com/neutrino2211/gecko/tokens"
 	"github.com/urfave/cli/v2"
 )
 
@@ -100,8 +99,7 @@ func docAction(ctx *cli.Context) error {
 			continue
 		}
 
-		parsed := &tokens.File{}
-		err = parser.Parser.ParseString(string(content), parsed)
+		parsed, err := parser.Parser.ParseString(file, string(content))
 		if err != nil {
 			fmt.Printf("Warning: cannot parse %s: %v\n", file, err)
 			continue

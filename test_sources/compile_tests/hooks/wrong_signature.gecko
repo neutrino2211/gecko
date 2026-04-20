@@ -1,0 +1,10 @@
+package main
+
+@drop_hook(.drop)
+trait Drop {
+    func drop(self): int32
+}
+
+external func main(): int32 {
+    return 0
+}

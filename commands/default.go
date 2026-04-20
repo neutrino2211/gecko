@@ -8,5 +8,7 @@ var GeckoCommands = []*cli.Command{
 	RunCommand,
 	BuildCommand,
 	CompileCommand,
+	CheckCommand,
 	DocCommand,
+	DepsCommand,
 }

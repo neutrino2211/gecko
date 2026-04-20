@@ -1,0 +1,55 @@
+package main
+
+class Box<T> {
+    let value: T
+
+    func new(v: T): Box<T> {
+        return Box<T> { value: v }
+    }
+
+    func get(self): T {
+        return self.value
+    }
+}
+
+class Wrapper<U> {
+    let inner: U
+
+    func new(i: U): Wrapper<U> {
+        return Wrapper<U> { inner: i }
+    }
+
+    func unwrap(self): U {
+        return self.inner
+    }
+}
+
+class Container<V> {
+    let data: V
+
+    func new(d: V): Container<V> {
+        return Container<V> { data: d }
+    }
+
+    func extract(self): V {
+        return self.data
+    }
+}
+
+external func main(): int32 {
+    // Level 1: Box<int32>
+    let b: Box<int32> = Box<int32>::new(42)
+
+    // Level 2: Wrapper<Box<int32>>
+    let w: Wrapper<Box<int32>> = Wrapper<Box<int32>>::new(b)
+
+    // Level 3: Container<Wrapper<Box<int32>>>
+    let c: Container<Wrapper<Box<int32>>> = Container<Wrapper<Box<int32>>>::new(w)
+
+    // Unwrap all levels
+    let w2: Wrapper<Box<int32>> = c.extract()
+    let b2: Box<int32> = w2.unwrap()
+    let val: int32 = b2.get()
+
+    return val
+}

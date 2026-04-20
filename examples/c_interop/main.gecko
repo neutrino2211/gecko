@@ -1,0 +1,69 @@
+package c_interop
+
+cimport "<stdio.h>"
+
+declare external variardic func printf(format: string): int32
+
+class Point {
+    let x: int32
+    let y: int32
+}
+
+class Rectangle {
+    let width: int32
+    let height: int32
+}
+
+func squared_distance(p1: Point*, p2: Point*): int32 {
+    let dx: int32 = p2.x - p1.x
+    let dy: int32 = p2.y - p1.y
+    return dx * dx + dy * dy
+}
+
+func print_point(name: string, p: Point*): void {
+    printf("  %s: (%d, %d)\n", name, p.x, p.y)
+}
+
+func area(r: Rectangle*): int32 {
+    return r.width * r.height
+}
+
+func perimeter(r: Rectangle*): int32 {
+    return 2 * (r.width + r.height)
+}
+
+external func main(): int32 {
+    printf("=== Gecko C Interop Demo ===\n\n")
+    printf("This example demonstrates cimport for C headers.\n")
+    printf("The stdio.h header provides printf.\n\n")
+
+    printf("1. Point operations:\n")
+    let p1: Point
+    p1.x = 0
+    p1.y = 0
+
+    let p2: Point
+    p2.x = 3
+    p2.y = 4
+
+    print_point("Origin", &p1)
+    print_point("Target", &p2)
+
+    let dist_sq: int32 = squared_distance(&p1, &p2)
+    printf("  Squared distance: %d (3^2 + 4^2 = 25)\n\n", dist_sq)
+
+    printf("2. Rectangle operations:\n")
+    let rect: Rectangle
+    rect.width = 10
+    rect.height = 5
+    printf("  Rectangle: %d x %d\n", rect.width, rect.height)
+    printf("  Area: %d\n", area(&rect))
+    printf("  Perimeter: %d\n\n", perimeter(&rect))
+
+    printf("3. Return value for test validation:\n")
+    let result: int32 = dist_sq + area(&rect) + perimeter(&rect)
+    printf("  25 + 50 + 30 = %d\n\n", result)
+
+    printf("=== Demo Complete ===\n")
+    return result
+}

@@ -21,7 +21,7 @@ declare external func free(ptr: void*): void
 ///     let val: int32 = weak.try_get()
 /// }
 /// ```
-class Weak<T> {
+public class Weak<T> {
     /// Internal pointer to the same allocation as the `Rc`.
     let ptr: uint64
 

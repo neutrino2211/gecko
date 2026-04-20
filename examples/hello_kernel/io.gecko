@@ -1,0 +1,24 @@
+package io
+
+external let port_val: uint16 = 0
+external let byte_val: uint8 = 0
+
+public func outb(port: uint16, value: uint8): void {
+    port_val = port
+    byte_val = value
+    asm { "mov port_val, %dx" }
+    asm { "mov byte_val, %al" }
+    asm { "outb %al, %dx" }
+}
+
+public func inb(port: uint16): uint8 {
+    port_val = port
+    asm { "mov port_val, %dx" }
+    asm { "inb %dx, %al" }
+    asm { "mov %al, byte_val" }
+    return byte_val
+}
+
+public func io_wait(): void {
+    outb(0x80, 0)
+}

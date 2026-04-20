@@ -9,15 +9,18 @@ import (
 
 // GenericInstantiation tracks a specific instantiation of a generic type/function
 type GenericInstantiation struct {
-	Name     string            // Original name (e.g., "Box")
-	TypeArgs []string          // Concrete types (e.g., ["int64_t"])
-	FullName string            // Mangled name (e.g., "Box__int64_t")
+	Name         string   // Original name (e.g., "Box")
+	TypeArgs     []string // Concrete types (e.g., ["int64_t"])
+	FullName     string   // Mangled name (e.g., "Box__int64_t")
+	OriginModule string   // Module where the generic was defined (e.g., "slice")
 }
 
 // GenericRegistry tracks all generic definitions and their instantiations
 type GenericRegistry struct {
 	// Generic class definitions: name -> Class token
 	GenericClasses map[string]*tokens.Class
+	// Origin module for generic classes: name -> module name
+	GenericClassOrigins map[string]string
 	// Generic method definitions: name -> Method token
 	GenericMethods map[string]*tokens.Method
 	// Instantiations that need to be generated
@@ -32,12 +35,13 @@ type GenericRegistry struct {
 type MonomorphContext struct {
 	// Maps type parameter name to concrete type
 	TypeMap map[string]string
-	// Maps type parameter name to trait constraint (if any)
-	Constraints map[string]string
+	// Maps type parameter name to trait constraints (supports multiple: T is A & B)
+	Constraints map[string][]string
 }
 
 var Generics = &GenericRegistry{
 	GenericClasses:       make(map[string]*tokens.Class),
+	GenericClassOrigins:  make(map[string]string),
 	GenericMethods:       make(map[string]*tokens.Method),
 	ClassInstantiations:  make([]*GenericInstantiation, 0),
 	MethodInstantiations: make([]*GenericInstantiation, 0),
@@ -48,17 +52,28 @@ var Generics = &GenericRegistry{
 // CurrentMonomorphContext is set during monomorphization to track type mappings
 var CurrentMonomorphContext *MonomorphContext
 
+func init() {
+	// Set up the type parameter checker for the tokens package
+	tokens.IsTypeParameter = func(name string) bool {
+		if CurrentMonomorphContext == nil {
+			return false
+		}
+		_, isTypeParam := CurrentMonomorphContext.GetConcreteTypeForParam(name)
+		return isTypeParam
+	}
+}
+
 // BuildMonomorphContext creates a context for monomorphization
 func BuildMonomorphContext(typeParams []*tokens.TypeParam, typeArgs []string) *MonomorphContext {
 	ctx := &MonomorphContext{
 		TypeMap:     make(map[string]string),
-		Constraints: make(map[string]string),
+		Constraints: make(map[string][]string),
 	}
 	for i, param := range typeParams {
 		if i < len(typeArgs) {
 			ctx.TypeMap[param.Name] = typeArgs[i]
-			if param.Trait != "" {
-				ctx.Constraints[param.Name] = param.Trait
+			if traits := param.AllTraits(); len(traits) > 0 {
+				ctx.Constraints[param.Name] = traits
 			}
 		}
 	}
@@ -74,18 +89,50 @@ func (ctx *MonomorphContext) GetConcreteTypeForParam(paramName string) (string, 
 	return concreteType, ok
 }
 
-// GetTraitConstraint returns the trait constraint for a type parameter
-func (ctx *MonomorphContext) GetTraitConstraint(paramName string) (string, bool) {
+// GetTraitConstraints returns all trait constraints for a type parameter
+func (ctx *MonomorphContext) GetTraitConstraints(paramName string) ([]string, bool) {
 	if ctx == nil {
-		return "", false
+		return nil, false
 	}
-	trait, ok := ctx.Constraints[paramName]
-	return trait, ok
+	traits, ok := ctx.Constraints[paramName]
+	return traits, ok && len(traits) > 0
 }
 
-// RegisterGenericClass registers a generic class definition
-func (g *GenericRegistry) RegisterGenericClass(name string, class *tokens.Class) {
+// GetTraitConstraint returns the first trait constraint for backwards compatibility
+func (ctx *MonomorphContext) GetTraitConstraint(paramName string) (string, bool) {
+	traits, ok := ctx.GetTraitConstraints(paramName)
+	if !ok || len(traits) == 0 {
+		return "", false
+	}
+	return traits[0], true
+}
+
+// FindTraitWithMethod searches the type parameter's trait constraints to find which trait provides a method.
+// Returns the trait name if found, empty string if not found.
+func (ctx *MonomorphContext) FindTraitWithMethod(paramName string, methodName string) string {
+	traits, ok := ctx.GetTraitConstraints(paramName)
+	if !ok {
+		return ""
+	}
+
+	for _, traitName := range traits {
+		traitDef, ok := TraitDefinitions[traitName]
+		if !ok {
+			continue
+		}
+		for _, field := range traitDef.Fields {
+			if field.Name == methodName {
+				return traitName
+			}
+		}
+	}
+	return ""
+}
+
+// RegisterGenericClass registers a generic class definition with its origin module
+func (g *GenericRegistry) RegisterGenericClass(name string, class *tokens.Class, originModule string) {
 	g.GenericClasses[name] = class
+	g.GenericClassOrigins[name] = originModule
 }
 
 // RegisterGenericMethod registers a generic method definition
@@ -101,10 +148,13 @@ func (g *GenericRegistry) RequestClassInstantiation(name string, typeArgs []stri
 		return fullName
 	}
 
+	originModule := g.GenericClassOrigins[name]
+
 	g.ClassInstantiations = append(g.ClassInstantiations, &GenericInstantiation{
-		Name:     name,
-		TypeArgs: typeArgs,
-		FullName: fullName,
+		Name:         name,
+		TypeArgs:     typeArgs,
+		FullName:     fullName,
+		OriginModule: originModule,
 	})
 	g.GeneratedClasses[fullName] = true
 
@@ -167,6 +217,7 @@ func SubstituteTypeParams(typeStr string, typeParams []*tokens.TypeParam, typeAr
 func ResetGenerics() {
 	Generics = &GenericRegistry{
 		GenericClasses:       make(map[string]*tokens.Class),
+		GenericClassOrigins:  make(map[string]string),
 		GenericMethods:       make(map[string]*tokens.Method),
 		ClassInstantiations:  make([]*GenericInstantiation, 0),
 		MethodInstantiations: make([]*GenericInstantiation, 0),

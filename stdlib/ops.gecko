@@ -12,118 +12,118 @@ package ops
 ///     }
 /// }
 /// ```
-trait Add<T> {
+public trait Add<T> {
     func add(self, other: T): T
 }
 
 /// Sub<T> - Trait for the `-` operator.
 ///
 /// Types implementing this trait can be subtracted using `-`.
-trait Sub<T> {
+public trait Sub<T> {
     func sub(self, other: T): T
 }
 
 /// Mul<T> - Trait for the `*` operator.
 ///
 /// Types implementing this trait can be multiplied using `*`.
-trait Mul<T> {
+public trait Mul<T> {
     func mul(self, other: T): T
 }
 
 /// Div<T> - Trait for the `/` operator.
 ///
 /// Types implementing this trait can be divided using `/`.
-trait Div<T> {
+public trait Div<T> {
     func div(self, other: T): T
 }
 
 /// Eq<T> - Trait for the `==` operator.
 ///
 /// Types implementing this trait can be compared for equality using `==`.
-trait Eq<T> {
+public trait Eq<T> {
     func eq(self, other: T): bool
 }
 
 /// Ne<T> - Trait for the `!=` operator.
 ///
 /// Types implementing this trait can be compared for inequality using `!=`.
-trait Ne<T> {
+public trait Ne<T> {
     func ne(self, other: T): bool
 }
 
 /// Lt<T> - Trait for the `<` operator.
 ///
 /// Types implementing this trait can be compared using `<`.
-trait Lt<T> {
+public trait Lt<T> {
     func lt(self, other: T): bool
 }
 
 /// Gt<T> - Trait for the `>` operator.
 ///
 /// Types implementing this trait can be compared using `>`.
-trait Gt<T> {
+public trait Gt<T> {
     func gt(self, other: T): bool
 }
 
 /// Le<T> - Trait for the `<=` operator.
 ///
 /// Types implementing this trait can be compared using `<=`.
-trait Le<T> {
+public trait Le<T> {
     func le(self, other: T): bool
 }
 
 /// Ge<T> - Trait for the `>=` operator.
 ///
 /// Types implementing this trait can be compared using `>=`.
-trait Ge<T> {
+public trait Ge<T> {
     func ge(self, other: T): bool
 }
 
 /// BitAnd<T> - Trait for the `&` operator.
 ///
 /// Types implementing this trait support bitwise AND using `&`.
-trait BitAnd<T> {
+public trait BitAnd<T> {
     func bitand(self, other: T): T
 }
 
 /// BitOr<T> - Trait for the `|` operator.
 ///
 /// Types implementing this trait support bitwise OR using `|`.
-trait BitOr<T> {
+public trait BitOr<T> {
     func bitor(self, other: T): T
 }
 
 /// BitXor<T> - Trait for the `^` operator.
 ///
 /// Types implementing this trait support bitwise XOR using `^`.
-trait BitXor<T> {
+public trait BitXor<T> {
     func bitxor(self, other: T): T
 }
 
 /// Shl<T> - Trait for the `<<` operator.
 ///
 /// Types implementing this trait support left shift using `<<`.
-trait Shl<T> {
+public trait Shl<T> {
     func shl(self, other: T): T
 }
 
 /// Shr<T> - Trait for the `>>` operator.
 ///
 /// Types implementing this trait support right shift using `>>`.
-trait Shr<T> {
+public trait Shr<T> {
     func shr(self, other: T): T
 }
 
 /// Neg - Trait for the unary `-` operator.
 ///
 /// Types implementing this trait can be negated using `-x`.
-trait Neg {
+public trait Neg {
     func neg(self): Self
 }
 
 /// Not - Trait for the unary `!` operator.
 ///
 /// Types implementing this trait can be logically negated using `!x`.
-trait Not {
+public trait Not {
     func not(self): Self
 }

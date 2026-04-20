@@ -71,8 +71,9 @@ func (impls *LLVMBackendImplementation) NewDeclaration(scope *ast.Ast, decl *tok
 
 func (impls *LLVMBackendImplementation) NewClass(scope *ast.Ast, c *tokens.Class) {
 	classAst := &ast.Ast{
-		Scope:  c.Name,
-		Parent: scope,
+		Scope:        c.Name,
+		Parent:       scope,
+		OriginModule: scope.GetRoot().Scope,
 	}
 
 	classAst.Init(scope.ErrorScope)
@@ -153,6 +154,11 @@ func (impls *LLVMBackendImplementation) NewClassField(scope *ast.Ast, f *tokens.
 	scope.Variables[f.Name] = fieldVariable
 }
 
+func (impls *LLVMBackendImplementation) MethodCall(scope *ast.Ast, m *tokens.MethodCall) {
+	// TODO: Implement chained method calls for LLVM backend
+	scope.ErrorScope.NewCompileTimeError("Not Implemented", "Chained method calls are not yet supported in the LLVM backend", m.Pos)
+}
+
 func (impls *LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncCall) {
 	mth := scope.ResolveMethod(f.Function)
 
@@ -191,7 +197,7 @@ func (impls *LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncC
 }
 
 func (impl *LLVMBackendImplementation) NewImplementation(scope *ast.Ast, i *tokens.Implementation) {
-	if i.For != "" {
+	if i.GetFor() != "" {
 		impl.LLVMImplementationForClass(scope, i)
 	} else {
 		impl.LLVMImplementationForArch(scope, i)
@@ -202,10 +208,15 @@ func (impl *LLVMBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait)
 
 }
 
+func (impl *LLVMBackendImplementation) NewEnum(scope *ast.Ast, e *tokens.Enum) {
+	// TODO: Implement LLVM enum generation
+}
+
 func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
 	methodScope := ast.Ast{
-		Scope:  m.Name,
-		Parent: scope,
+		Scope:        m.Name,
+		Parent:       scope,
+		OriginModule: scope.GetRoot().Scope,
 	}
 
 	info := LLVMGetScopeInformation(scope)
@@ -244,11 +255,7 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 		case "noreturn":
 			irFunc.FuncAttrs = append(irFunc.FuncAttrs, enum.FuncAttrNoReturn)
 		case "section":
-			value := attr.Value
-			if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-				value = value[1 : len(value)-1]
-			}
-			irFunc.Section = value
+			irFunc.Section = attr.GetStringValue()
 		case "used":
 			irFunc.Linkage = enum.LinkageExternal
 		}

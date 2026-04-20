@@ -1,0 +1,21 @@
+[package]
+name = "hello_kernel"
+version = "0.1.0"
+
+[build]
+backend = "c"
+default_target = "i386-none-elf"
+
+[build.entries]
+boot = "boot.gecko"
+kernel = "main.gecko"
+
+[build.profiles.debug]
+optimize = false
+
+[build.profiles.release]
+optimize = true
+
+[target.i386-none-elf]
+freestanding = true
+linker_script = "linker.ld"

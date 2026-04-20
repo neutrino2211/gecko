@@ -1,0 +1,65 @@
+package main
+
+// Arithmetic operator traits with hooks
+@add_hook(.add)
+trait Add<T> {
+    func add(self, other: T): T
+}
+
+@sub_hook(.sub)
+trait Sub<T> {
+    func sub(self, other: T): T
+}
+
+@mul_hook(.mul)
+trait Mul<T> {
+    func mul(self, other: T): T
+}
+
+@div_hook(.div)
+trait Div<T> {
+    func div(self, other: T): T
+}
+
+class Number {
+    let value: int32
+}
+
+impl Add<Number> for Number {
+    func add(self, other: Number): Number {
+        return Number { value: self.value + other.value }
+    }
+}
+
+impl Sub<Number> for Number {
+    func sub(self, other: Number): Number {
+        return Number { value: self.value - other.value }
+    }
+}
+
+impl Mul<Number> for Number {
+    func mul(self, other: Number): Number {
+        return Number { value: self.value * other.value }
+    }
+}
+
+impl Div<Number> for Number {
+    func div(self, other: Number): Number {
+        return Number { value: self.value / other.value }
+    }
+}
+
+external func main(): int32 {
+    let a: Number = Number { value: 20 }
+    let b: Number = Number { value: 5 }
+
+    // Test all arithmetic operators
+    let sum: Number = a + b      // 20 + 5 = 25
+    let diff: Number = a - b     // 20 - 5 = 15
+    let prod: Number = a * b     // 20 * 5 = 100
+    let quot: Number = a / b     // 20 / 5 = 4
+
+    // Combined: (25 + 15) + (100 / 4) = 40 + 25 = 65
+    // Actually: sum.value + diff.value + quot.value = 25 + 15 + 4 = 44
+    return sum.value + diff.value + quot.value
+}

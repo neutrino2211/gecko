@@ -20,7 +20,7 @@ package option
 ///     let idx = result.unwrap()
 /// }
 /// ```
-class Option<T> {
+public class Option<T> {
     /// The contained value (only valid if has_value is true).
     let value: T
     /// Whether this Option contains a value.

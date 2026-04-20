@@ -1,0 +1,144 @@
+package console
+
+import io
+
+const VGA_ADDRESS: uint64 = 0xB8000
+const WIDTH: int = 80
+const HEIGHT: int = 25
+const TAB_SIZE: int = 4
+const CRTC_ADDR: uint16 = 0x3D4
+const CRTC_DATA: uint16 = 0x3D5
+
+public const BLACK: uint8 = 0
+public const BLUE: uint8 = 1
+public const GREEN: uint8 = 2
+public const CYAN: uint8 = 3
+public const RED: uint8 = 4
+public const MAGENTA: uint8 = 5
+public const BROWN: uint8 = 6
+public const LIGHT_GRAY: uint8 = 7
+public const DARK_GRAY: uint8 = 8
+public const LIGHT_BLUE: uint8 = 9
+public const LIGHT_GREEN: uint8 = 10
+public const LIGHT_CYAN: uint8 = 11
+public const LIGHT_RED: uint8 = 12
+public const LIGHT_MAGENTA: uint8 = 13
+public const YELLOW: uint8 = 14
+public const WHITE: uint8 = 15
+
+public class Console {
+    let buffer: uint16 volatile*
+    let cursor_x: int
+    let cursor_y: int
+    let color: uint8
+}
+
+func make_color(fg: uint8, bg: uint8): uint8 {
+    return fg | (bg << 4)
+}
+
+func make_entry(c: uint8, color: uint8): uint16 {
+    return c as uint16 | (color as uint16 << 8)
+}
+
+func update_cursor(x: int, y: int): void {
+    let pos: uint16 = (y * WIDTH + x) as uint16
+    io.outb(CRTC_ADDR, 0x0F)
+    io.outb(CRTC_DATA, (pos & 0xFF) as uint8)
+    io.outb(CRTC_ADDR, 0x0E)
+    io.outb(CRTC_DATA, ((pos >> 8) & 0xFF) as uint8)
+}
+
+impl Console {
+    public func new(): Console {
+        return Console {
+            buffer: VGA_ADDRESS as uint16 volatile*,
+            cursor_x: 0,
+            cursor_y: 0,
+            color: make_color(LIGHT_GRAY, BLACK)
+        }
+    }
+
+    public func set_color(self, fg: uint8, bg: uint8): void {
+        self.color = make_color(fg, bg)
+    }
+
+    public func clear(self): void {
+        let space: uint16 = make_entry(32, self.color)
+        let i: int = 0
+        while i < WIDTH * HEIGHT {
+            self.buffer[i] = space
+            i = i + 1
+        }
+        self.cursor_x = 0
+        self.cursor_y = 0
+        update_cursor(0, 0)
+    }
+
+    public func putchar(self, c: uint8): void {
+        if c == 10 {
+            self.newline()
+            return
+        }
+        if c == 8 {
+            self.backspace()
+            return
+        }
+        if self.cursor_x >= WIDTH {
+            self.newline()
+        }
+        let index: int = self.cursor_y * WIDTH + self.cursor_x
+        self.buffer[index] = make_entry(c, self.color)
+        self.cursor_x = self.cursor_x + 1
+        update_cursor(self.cursor_x, self.cursor_y)
+    }
+
+    func newline(self): void {
+        self.cursor_x = 0
+        self.cursor_y = self.cursor_y + 1
+        if self.cursor_y >= HEIGHT {
+            self.scroll()
+            self.cursor_y = HEIGHT - 1
+        }
+        update_cursor(self.cursor_x, self.cursor_y)
+    }
+
+    func backspace(self): void {
+        if self.cursor_x > 0 {
+            self.cursor_x = self.cursor_x - 1
+            let index: int = self.cursor_y * WIDTH + self.cursor_x
+            self.buffer[index] = make_entry(32, self.color)
+            update_cursor(self.cursor_x, self.cursor_y)
+        }
+    }
+
+    func scroll(self): void {
+        let i: int = 0
+        while i < WIDTH * (HEIGHT - 1) {
+            self.buffer[i] = self.buffer[i + WIDTH]
+            i = i + 1
+        }
+        let space: uint16 = make_entry(32, self.color)
+        i = WIDTH * (HEIGHT - 1)
+        while i < WIDTH * HEIGHT {
+            self.buffer[i] = space
+            i = i + 1
+        }
+    }
+
+    public func print(self, text: uint8*, len: int): void {
+        let i: int = 0
+        while i < len {
+            self.putchar(text[i])
+            i = i + 1
+        }
+    }
+
+    public func print_str(self, s: uint8*): void {
+        let i: int = 0
+        while s[i] != 0 {
+            self.putchar(s[i])
+            i = i + 1
+        }
+    }
+}

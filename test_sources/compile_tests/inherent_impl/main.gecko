@@ -1,0 +1,21 @@
+package main
+
+class Point {
+    let x: int32
+    let y: int32
+}
+
+impl Point {
+    func new(x: int32, y: int32): Point {
+        return Point { x: x, y: y }
+    }
+
+    func sum(self): int32 {
+        return self.x + self.y
+    }
+}
+
+external func main(): int32 {
+    let p: Point = Point::new(10, 25)
+    return p.sum()
+}

@@ -1,0 +1,18 @@
+package main
+
+import utils use { add_numbers, multiply_numbers }
+
+declare external func printf(format: string, val: int32): int32
+
+external func main(): int32 {
+    let sum = add_numbers(10, 5)
+    let product = multiply_numbers(3, 4)
+
+    printf("Sum: %d\n", sum)
+    printf("Product: %d\n", product)
+
+    if sum == 15 && product == 12 {
+        return 0
+    }
+    return 1
+}

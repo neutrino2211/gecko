@@ -1,5 +1,6 @@
 # Binaries for programs and plugins
 gecko
+gecko-lsp
 *.exe
 *.exe~
 *.dll
@@ -16,5 +17,33 @@ gecko
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
-# Dependency directories (remove the comment below to include it)
+# Dependency directories
 # vendor/
+.gecko/
+
+# VS Code extension build artifacts
+editors/vscode/node_modules/
+editors/vscode/out/
+editors/vscode/*.vsix
+
+# Example build outputs (compiled binaries)
+examples/*/demo
+examples/*/shapes
+examples/*/*.bin
+examples/*/*.iso
+
+# Kernel build artifacts
+*.elf
+*.bin
+*.iso
+examples/hello_kernel/*.c
+
+# Temporary test directories
+test_import*
+
+# IDE and editor files
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store

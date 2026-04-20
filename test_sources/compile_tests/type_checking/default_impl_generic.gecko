@@ -1,0 +1,33 @@
+package main
+
+declare external func printf(fmt: string, val: int32): int32
+
+trait Container<T> {
+    func get(self): T
+
+    func is_empty(self): bool {
+        return false
+    }
+}
+
+class IntBox {
+    let value: int32
+}
+
+impl IntBox {
+    func new(v: int32): IntBox {
+        return IntBox { value: v }
+    }
+
+    func get(self): int32 {
+        return self.value
+    }
+}
+
+default impl Container<int32> for IntBox
+
+external func main(): int32 {
+    let box = IntBox::new(42)
+    printf("Value: %d\n", box.get())
+    return 0
+}

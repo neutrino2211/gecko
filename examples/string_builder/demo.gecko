@@ -1,11 +1,11 @@
 package demo
 
-import string use { StringBuilder }
+import string
 
 declare external variardic func printf(fmt: string): int
 declare external func putchar(c: int): int
 
-func print_builder(sb: StringBuilder*): void {
+func print_builder(sb: string.StringBuilder*): void {
     let i: uint64 = 0
     while i < sb.len() {
         let c: uint8 = sb.get(i)
@@ -14,7 +14,7 @@ func print_builder(sb: StringBuilder*): void {
     }
 }
 
-func build_greeting(sb: StringBuilder*, name: string): void {
+func build_greeting(sb: string.StringBuilder*, name: string): void {
     let hello: string = "Hello, "
     let ptr: uint8* = hello as uint8*
 
@@ -33,7 +33,7 @@ func build_greeting(sb: StringBuilder*, name: string): void {
     sb.push_byte(10)
 }
 
-func build_countdown(sb: StringBuilder*): void {
+func build_countdown(sb: string.StringBuilder*): void {
     let i: int = 5
     while i >= 0 {
         let digit: uint8 = (48 + i) as uint8
@@ -52,7 +52,7 @@ func build_countdown(sb: StringBuilder*): void {
     }
 }
 
-func build_box(sb: StringBuilder*, width: int): void {
+func build_box(sb: string.StringBuilder*, width: int): void {
     let i: int = 0
     while i < width {
         sb.push_byte(42)
@@ -78,16 +78,12 @@ func build_box(sb: StringBuilder*, width: int): void {
 }
 
 external func main(): int32 {
-    let sb: StringBuilder = StringBuilder {
-        buffer: 0 as uint8*,
-        length: 0,
-        capacity: 0
-    }
+    let sb: string.StringBuilder
+    sb.init()
 
     printf("=== StringBuilder Demo ===\n\n")
 
     printf("1. Building a greeting:\n")
-    sb.init()
     build_greeting(&sb, "Gecko")
     print_builder(&sb)
     printf("   Length: %lu bytes\n\n", sb.len())

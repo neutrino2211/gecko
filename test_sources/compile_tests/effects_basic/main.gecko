@@ -1,0 +1,38 @@
+package main
+
+declare external variardic func printf(fmt: string): int32
+
+class Error {
+    let code: int32
+    let message: string
+}
+
+// Test: throws annotation on function
+func might_fail(x: int32): int32 throws Error {
+    if x < 0 {
+        return -1
+    }
+    return x * 2
+}
+
+// Test: as! trusted cast
+func trusted_cast_example(): void {
+    let raw: uint64 = 0xB8000
+    let ptr: uint16* = raw as! uint16*
+    printf("Pointer created\n")
+}
+
+// Test: regular as cast still works
+func regular_cast_example(): void {
+    let x: int32 = 42
+    let y: int64 = x as int64
+    printf("Cast: %d\n", y as int32)
+}
+
+external func main(): int32 {
+    trusted_cast_example()
+    regular_cast_example()
+    let result: int32 = might_fail(10)
+    printf("Result: %d\n", result)
+    return 0
+}

@@ -1,0 +1,9 @@
+package main
+
+func get_number(): int32 {
+    return "hello"
+}
+
+external func main(): int32 {
+    return 0
+}

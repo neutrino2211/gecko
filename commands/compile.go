@@ -85,17 +85,50 @@ func copyFileContents(src, dst string) (err error) {
 var CompileCommand = &cli.Command{
 	Name:        "compile",
 	Aliases:     []string{"c"},
-	Usage:       "gecko compile ...sources",
+	Usage:       "gecko compile [sources...] or gecko compile --entry <name>",
 	Description: compileHelp,
 	Action: func(ctx *cli.Context) error {
 		setLogLevel(ctx)
 
-		if ctx.Args().Len() == 0 {
-			println("No sources provided")
+		// Try to load project config
+		wd, _ := os.Getwd()
+		projectCfg, cfgErr := config.LoadProjectConfig(wd)
+
+		// Determine sources to compile
+		var sources []string
+
+		if ctx.Args().Len() > 0 {
+			// Explicit sources provided
+			sources = ctx.Args().Slice()
+		} else if cfgErr == nil && projectCfg != nil {
+			// No args - use gecko.toml entries
+			entryName := ctx.String("entry")
+
+			if entryName != "" {
+				// Specific entry requested
+				entryPath, err := projectCfg.GetEntry(entryName)
+				if err != nil {
+					return fmt.Errorf("entry '%s' not found in gecko.toml", entryName)
+				}
+				sources = []string{entryPath}
+			} else if len(projectCfg.Build.Entries) > 0 {
+				// Build first entry by default
+				for name, path := range projectCfg.Build.Entries {
+					fullPath := filepath.Join(projectCfg.ProjectRoot, path)
+					sources = []string{fullPath}
+					fmt.Printf("Building entry '%s': %s\n", name, path)
+					break
+				}
+			} else {
+				return fmt.Errorf("no entries defined in gecko.toml and no sources provided")
+			}
+		} else {
+			println("No sources provided and no gecko.toml found")
+			println("Usage: gecko compile <source.gecko> or create a gecko.toml with [build.entries]")
 			return nil
 		}
 
-		for _, pos := range ctx.Args().Slice() {
+		for _, pos := range sources {
 			outFile := compiler.Compile(pos, &config.CompileCfg{
 				Arch:     ctx.String("target-arch"),
 				Platform: ctx.String("target-platform"),
@@ -104,6 +137,7 @@ var CompileCommand = &cli.Command{
 				CLFlags:  []string{},
 				CObjects: []string{},
 				Ctx:      ctx,
+				Project:  projectCfg,
 			})
 
 			if outFile != "" {
@@ -122,6 +156,12 @@ var CompileCommand = &cli.Command{
 			Usage: "Output directory path " + color.HiYellowString("(warning: this overrides the build configuration's output directory)"),
 		},
 		&cli.StringFlag{
+			Name:    "entry",
+			Aliases: []string{"e"},
+			Value:   "",
+			Usage:   "Entry point name from gecko.toml [build.entries]",
+		},
+		&cli.StringFlag{
 			Name:  "type",
 			Value: "executable",
 			Usage: "Output type for program. (executable | library)",
@@ -129,7 +169,7 @@ var CompileCommand = &cli.Command{
 		&cli.StringFlag{
 			Name:  "backend",
 			Value: "c",
-			Usage: "The compilation backend to use (c | llvm)",
+			Usage: "The compilation backend to use (c | llvm [experimental])",
 		},
 		&cli.StringFlag{
 			Name:  "target-arch",
@@ -181,7 +221,7 @@ var commonFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:  "backend",
 		Value: "c",
-		Usage: "The compilation backend to use (c | llvm)",
+		Usage: "The compilation backend to use (c | llvm [experimental])",
 	},
 	&cli.StringFlag{
 		Name:  "target-arch",
@@ -230,17 +270,49 @@ func compileToC(ctx *cli.Context, source string) (string, error) {
 var BuildCommand = &cli.Command{
 	Name:        "build",
 	Aliases:     []string{"b"},
-	Usage:       "gecko build <source.gecko> [-o output]",
+	Usage:       "gecko build [source.gecko] [-o output] [--entry name]",
 	Description: buildHelp,
 	Action: func(ctx *cli.Context) error {
 		setLogLevel(ctx)
 
-		if ctx.Args().Len() == 0 {
+		// Try to load project config
+		wd, _ := os.Getwd()
+		projectCfg, cfgErr := config.LoadProjectConfig(wd)
+
+		// Determine source to build
+		var source string
+		var entryName string
+
+		if ctx.Args().Len() > 0 {
+			// Explicit source provided
+			source = ctx.Args().First()
+		} else if cfgErr == nil && projectCfg != nil {
+			// No args - use gecko.toml entries
+			entryName = ctx.String("entry")
+
+			if entryName != "" {
+				// Specific entry requested
+				entryPath, err := projectCfg.GetEntry(entryName)
+				if err != nil {
+					return fmt.Errorf("entry '%s' not found in gecko.toml", entryName)
+				}
+				source = entryPath
+			} else if len(projectCfg.Build.Entries) > 0 {
+				// Build first entry by default
+				for name, path := range projectCfg.Build.Entries {
+					source = filepath.Join(projectCfg.ProjectRoot, path)
+					entryName = name
+					fmt.Printf("Building entry '%s': %s\n", name, path)
+					break
+				}
+			} else {
+				return fmt.Errorf("no entries defined in gecko.toml and no source provided")
+			}
+		} else {
 			fmt.Println("Usage: gecko build <source.gecko> [-o output]")
+			fmt.Println("   or: gecko build --entry <name>  (with gecko.toml)")
 			return nil
 		}
-
-		source := ctx.Args().First()
 
 		// Compile to C
 		cFile, err := compileToC(ctx, source)
@@ -251,15 +323,20 @@ var BuildCommand = &cli.Command{
 		// Determine output name
 		output := ctx.String("output")
 		if output == "" {
-			// Default: source name without extension
-			base := filepath.Base(source)
-			output = strings.TrimSuffix(base, filepath.Ext(base))
+			if entryName != "" {
+				// Use entry name from gecko.toml
+				output = entryName
+			} else {
+				// Default: source name without extension
+				base := filepath.Base(source)
+				output = strings.TrimSuffix(base, filepath.Ext(base))
+			}
 		}
 
 		// Compile C to executable with gcc
 		gccArgs := []string{"-o", output, cFile}
 
-		// Add optimization
+		// Add optimization based on --release flag or profile
 		if ctx.Bool("release") {
 			gccArgs = append([]string{"-O2"}, gccArgs...)
 		}
@@ -287,6 +364,12 @@ var BuildCommand = &cli.Command{
 			Aliases: []string{"o"},
 			Value:   "",
 			Usage:   "Output executable name",
+		},
+		&cli.StringFlag{
+			Name:    "entry",
+			Aliases: []string{"e"},
+			Value:   "",
+			Usage:   "Entry point name from gecko.toml [build.entries]",
 		},
 		&cli.BoolFlag{
 			Name:  "release",

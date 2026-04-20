@@ -1,0 +1,43 @@
+package main
+
+declare external variardic func printf(fmt: string): int32
+
+@iterator_hook(.next, .has_next)
+public trait Iterator<T> {
+    func next(self): T
+    func has_next(self): bool
+}
+
+class Range {
+    let current: int32
+    let end: int32
+}
+
+impl Range {
+    func new(start: int32, end: int32): Range {
+        return Range { current: start, end: end }
+    }
+}
+
+impl Iterator<int32> for Range {
+    func next(self): int32 {
+        let val: int32 = self.current
+        self.current = self.current + 1
+        return val
+    }
+
+    func has_next(self): bool {
+        return self.current < self.end
+    }
+}
+
+external func main(): int32 {
+    let r: Range = Range::new(0, 5)
+
+    for let i in r {
+        printf("i = %d\n", i)
+    }
+
+    printf("Done!\n")
+    return 0
+}

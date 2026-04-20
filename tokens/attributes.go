@@ -28,12 +28,7 @@ func GetAttributeValue(attrs []*Attribute, name string) string {
 	if attr == nil {
 		return ""
 	}
-	// Remove surrounding quotes from the value if present
-	value := attr.Value
-	if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-		value = value[1 : len(value)-1]
-	}
-	return value
+	return attr.GetStringValue()
 }
 
 // IsPacked checks if the attributes contain @packed
@@ -64,17 +59,10 @@ func ToCAttributes(attrs []*Attribute) string {
 		case "packed":
 			cAttrs = append(cAttrs, "__attribute__((packed))")
 		case "section":
-			// Remove surrounding quotes from the value
-			value := attr.Value
-			if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-				value = value[1 : len(value)-1]
-			}
+			value := attr.GetStringValue()
 			cAttrs = append(cAttrs, "__attribute__((section(\""+value+"\")))")
 		case "aligned":
-			value := attr.Value
-			if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-				value = value[1 : len(value)-1]
-			}
+			value := attr.GetStringValue()
 			cAttrs = append(cAttrs, "__attribute__((aligned("+value+")))")
 		case "used":
 			cAttrs = append(cAttrs, "__attribute__((used))")

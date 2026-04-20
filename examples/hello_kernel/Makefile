@@ -1,118 +1,107 @@
-# Gecko Kernel Example Makefile
+# Gecko Kernel Example - Modern Interactive Kernel
 #
-# IMPORTANT: Kernel development requires an ELF cross-compiler.
-# macOS's clang doesn't support ELF sections needed for kernels.
+# Features:
+#   - VGA text console with Index hooks
+#   - PS/2 keyboard input
+#   - Simple shell with commands
 #
-# On macOS, install: brew install x86_64-elf-gcc x86_64-elf-binutils
-# Then use: make CC=x86_64-elf-gcc LD=x86_64-elf-ld AS=x86_64-elf-as
+# Build: make
+# Run:   make run
 #
-# On Linux (Ubuntu/Debian): sudo apt install gcc-multilib nasm
+# Requires cross-compiler on macOS:
+#   brew install x86_64-elf-gcc x86_64-elf-binutils
 
-# Tools - auto-detect cross-compiler on macOS
 GECKO = go run ../..
 UNAME := $(shell uname)
 
 ifeq ($(UNAME), Darwin)
-  # macOS: use cross-compiler (install with: brew install x86_64-elf-gcc x86_64-elf-binutils)
   CC ?= x86_64-elf-gcc
-  AS ?= x86_64-elf-as
   LD ?= x86_64-elf-ld
   OBJCOPY ?= x86_64-elf-objcopy
 else
-  # Linux: use native gcc with -m32
   CC ?= gcc
-  AS ?= as
   LD ?= ld
   OBJCOPY ?= objcopy
 endif
 
-# Flags
 GECKO_FLAGS = --backend c
 
-ifeq ($(UNAME), Darwin)
-  # Cross-compiler flags (no -m32 needed, target is already i386/x86_64)
-  CFLAGS = -m32 -ffreestanding -fno-stack-protector -fno-pie -nostdlib \
-           -Wall -Wextra -O2
-  ASFLAGS = --32
-  LDFLAGS = -m elf_i386 -T linker.ld -nostdlib
-else
-  # Native Linux gcc flags
-  CFLAGS = -m32 -ffreestanding -fno-stack-protector -fno-pie -nostdlib \
-           -Wall -Wextra -O2
-  ASFLAGS = --32
-  LDFLAGS = -m elf_i386 -T linker.ld -nostdlib
-endif
+CFLAGS = -m32 -ffreestanding -fno-stack-protector -fno-pie -nostdlib \
+         -Wall -Wextra -O2 -fno-builtin -mno-sse -mno-sse2 -mno-mmx
+LDFLAGS = -m elf_i386 -T linker.ld -nostdlib
 
-# Files
-KERNEL_SRC = main.gecko
+# Gecko source modules
+GECKO_SOURCES = boot.gecko main.gecko io.gecko keyboard.gecko console.gecko shell.gecko cpu.gecko
+
+# Output files
+BOOT_C = boot.c
 KERNEL_C = kernel.c
-KERNEL_O = kernel.o
-BOOT_S = boot.S
 BOOT_O = boot.o
+KERNEL_O = kernel.o
 KERNEL_ELF = kernel.elf
-KERNEL_BIN = kernel.bin
 ISO = gecko_os.iso
 
 OBJECTS = $(BOOT_O) $(KERNEL_O)
 
-.PHONY: all clean run iso c
+.PHONY: all clean run iso c debug
 
 all: $(KERNEL_ELF)
 
-# Step 1: Gecko -> C
-c:
-	$(GECKO) compile $(GECKO_FLAGS) --ir-only $(KERNEL_SRC)
-	@mv main.gecko.c $(KERNEL_C) 2>/dev/null || true
+c: $(BOOT_C) $(KERNEL_C)
+
+$(BOOT_C): boot.gecko
+	$(GECKO) compile $(GECKO_FLAGS) --ir-only boot.gecko
+	@mv boot.gecko.c $(BOOT_C)
+	@echo "Generated $(BOOT_C)"
+
+$(KERNEL_C): main.gecko io.gecko keyboard.gecko console.gecko shell.gecko cpu.gecko
+	$(GECKO) compile $(GECKO_FLAGS) --ir-only main.gecko
+	@mv main.gecko.c $(KERNEL_C)
 	@echo "Generated $(KERNEL_C)"
 
-# Assemble boot.S
-$(BOOT_O): $(BOOT_S)
-	$(AS) $(ASFLAGS) $< -o $@
+$(BOOT_O): $(BOOT_C)
+	$(CC) $(CFLAGS) -c $(BOOT_C) -o $@
 
-# Compile kernel C code
 $(KERNEL_O): $(KERNEL_C)
 	$(CC) $(CFLAGS) -c $(KERNEL_C) -o $@
 
-# Ensure C is generated
-$(KERNEL_C):
-	$(MAKE) c
-
-# Link everything
 $(KERNEL_ELF): $(OBJECTS) linker.ld
 	$(LD) $(LDFLAGS) -o $@ $(OBJECTS)
+	@echo "Built $(KERNEL_ELF)"
 
-# Create flat binary
-$(KERNEL_BIN): $(KERNEL_ELF)
-	$(OBJCOPY) -O binary $< $@
-
-# Create bootable ISO (requires grub-mkrescue)
 iso: $(KERNEL_ELF)
 	mkdir -p isodir/boot/grub
 	cp $(KERNEL_ELF) isodir/boot/kernel.elf
-	echo 'menuentry "Gecko OS" { multiboot /boot/kernel.elf }' > isodir/boot/grub/grub.cfg
-	grub-mkrescue -o $(ISO) isodir
+	echo 'set timeout=0' > isodir/boot/grub/grub.cfg
+	echo 'menuentry "Gecko OS" { multiboot /boot/kernel.elf }' >> isodir/boot/grub/grub.cfg
+	grub-mkrescue -o $(ISO) isodir 2>/dev/null
 	rm -rf isodir
+	@echo "Created $(ISO)"
 
-# Run in QEMU
+# Run with QEMU (x86_64 in 32-bit compat mode)
 run: $(KERNEL_ELF)
-	qemu-system-i386 -kernel $(KERNEL_ELF)
+	qemu-system-x86_64 -kernel $(KERNEL_ELF) -m 32M
 
-# Run ISO in QEMU
+# Run with debug output
+debug: $(KERNEL_ELF)
+	qemu-system-x86_64 -kernel $(KERNEL_ELF) -m 32M -d int,cpu_reset -no-reboot
+
+# Run ISO
 run-iso: $(ISO)
-	qemu-system-i386 -cdrom $(ISO)
+	qemu-system-x86_64 -cdrom $(ISO) -m 32M
 
-# Clean
 clean:
-	rm -f $(KERNEL_C) $(KERNEL_O) $(BOOT_O) $(KERNEL_ELF) $(KERNEL_BIN) $(ISO) kernel.gecko.c
+	rm -f $(BOOT_C) $(KERNEL_C) $(BOOT_O) $(KERNEL_O) $(KERNEL_ELF) $(ISO)
 	rm -rf isodir
 
-# Show generated C
+# Show generated C code
 show-c: c
-	@cat $(KERNEL_C)
+	@echo "=== boot.c ===" && cat $(BOOT_C)
+	@echo "" && echo "=== kernel.c ===" && cat $(KERNEL_C)
 
 # Debug helpers
 sections: $(KERNEL_ELF)
 	objdump -h $(KERNEL_ELF)
 
 disasm: $(KERNEL_ELF)
-	objdump -d $(KERNEL_ELF)
+	objdump -d $(KERNEL_ELF) | head -200

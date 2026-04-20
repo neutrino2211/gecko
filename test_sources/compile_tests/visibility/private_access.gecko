@@ -1,0 +1,8 @@
+package main
+
+import privatelib
+
+external func main(): int32 {
+    let p: PrivateType = PrivateType { value: 42 }
+    return p.value
+}

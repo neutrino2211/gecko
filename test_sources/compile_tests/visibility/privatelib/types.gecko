@@ -1,0 +1,23 @@
+package types
+
+class PrivateType {
+    let value: int32
+}
+
+public class PublicType {
+    let value: int32
+}
+
+impl PublicType {
+    public func new(v: int32): PublicType {
+        return PublicType { value: v }
+    }
+
+    public func get(self): int32 {
+        return self.value
+    }
+
+    func private_method(self): int32 {
+        return self.value * 2
+    }
+}

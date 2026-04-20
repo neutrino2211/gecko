@@ -4,7 +4,7 @@ declare external func malloc(size: uint64): void*
 declare external func free(ptr: void*): void
 
 /// Internal structure holding reference counts and value.
-class RcInner<T> {
+public class RcInner<T> {
     let strong: uint64   // Strong reference count
     let weak: uint64     // Weak reference count (for Weak<T>)
     let value: T         // The actual value
@@ -27,7 +27,7 @@ class RcInner<T> {
 /// rc2.drop()                         // refcount = 1
 /// rc1.drop()                         // frees memory
 /// ```
-class Rc<T> {
+public class Rc<T> {
     /// Internal pointer to the reference-counted allocation.
     let ptr: uint64
 

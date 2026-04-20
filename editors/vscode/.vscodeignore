@@ -1,4 +1,9 @@
 .git
 .gitignore
+src/**
+*.ts
+tsconfig.json
+node_modules
+!node_modules/vscode-languageclient/**
 *.md
 !README.md

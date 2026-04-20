@@ -1,0 +1,15 @@
+package main
+
+@drop_hook(.drop)
+trait Drop {
+    func drop(self): void
+}
+
+@drop_hook(.cleanup)
+trait Cleanup {
+    func cleanup(self): void
+}
+
+external func main(): int32 {
+    return 0
+}

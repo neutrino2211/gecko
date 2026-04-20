@@ -1,0 +1,191 @@
+package shell
+
+import console
+import keyboard
+
+const MAX_INPUT: int = 256
+const MAX_HISTORY: int = 8
+
+public class Shell {
+    let con: console.Console
+    let input_buf: [256]uint8
+    let input_len: int
+    let running: bool
+}
+
+impl Shell {
+    public func new(con: console.Console): Shell {
+        let sh: Shell = Shell {
+            con: con,
+            input_len: 0,
+            running: true
+        }
+        return sh
+    }
+
+    public func run(self): void {
+        self.print_banner()
+
+        while self.running {
+            self.print_prompt()
+            self.read_line()
+            self.execute()
+        }
+    }
+
+    func print_banner(self): void {
+        self.con.set_color(console.LIGHT_CYAN, console.BLACK)
+        self.con.print_str("  _____ ______ _____ _  ______     ____   _____ \n")
+        self.con.print_str(" / ____|  ____/ ____| |/ / __ \\   / __ \\ / ____|\n")
+        self.con.print_str("| |  __| |__ | |    | ' / |  | | | |  | | (___  \n")
+        self.con.print_str("| | |_ |  __|| |    |  <| |  | | | |  | |\\___ \\ \n")
+        self.con.print_str("| |__| | |___| |____| . \\ |__| | | |__| |____) |\n")
+        self.con.print_str(" \\_____|______\\_____|_|\\_\\____/   \\____/|_____/ \n")
+        self.con.print_str("\n")
+        self.con.set_color(console.LIGHT_GRAY, console.BLACK)
+        self.con.print_str("Gecko OS v0.1 - A kernel written in Gecko\n")
+        self.con.print_str("Type 'help' for available commands.\n\n")
+    }
+
+    func print_prompt(self): void {
+        self.con.set_color(console.LIGHT_GREEN, console.BLACK)
+        self.con.print_str("gecko")
+        self.con.set_color(console.WHITE, console.BLACK)
+        self.con.print_str("> ")
+        self.con.set_color(console.LIGHT_GRAY, console.BLACK)
+    }
+
+    func read_line(self): void {
+        self.input_len = 0
+        let i: int = 0
+        while i < MAX_INPUT {
+            self.input_buf[i] = 0
+            i = i + 1
+        }
+
+        let done: bool = false
+        while !done {
+            let c: uint8 = keyboard.wait_char()
+
+            if c == 10 {
+                self.con.putchar(10)
+                done = true
+            } else if c == 8 {
+                if self.input_len > 0 {
+                    self.input_len = self.input_len - 1
+                    self.input_buf[self.input_len] = 0
+                    self.con.putchar(8)
+                }
+            } else if c != 0 {
+                if self.input_len < MAX_INPUT - 1 {
+                    self.input_buf[self.input_len] = c
+                    self.input_len = self.input_len + 1
+                    self.con.putchar(c)
+                }
+            }
+        }
+    }
+
+    func execute(self): void {
+        if self.input_len == 0 {
+            return
+        }
+
+        if self.str_eq("help") {
+            self.cmd_help()
+        } else if self.str_eq("clear") {
+            self.cmd_clear()
+        } else if self.str_eq("about") {
+            self.cmd_about()
+        } else if self.str_eq("echo") {
+            self.cmd_echo()
+        } else if self.str_eq("color") {
+            self.cmd_color()
+        } else if self.str_eq("reboot") {
+            self.cmd_reboot()
+        } else if self.str_eq("halt") {
+            self.cmd_halt()
+        } else {
+            self.con.set_color(console.LIGHT_RED, console.BLACK)
+            self.con.print_str("Unknown command: ")
+            self.con.print(&self.input_buf[0], self.input_len)
+            self.con.print_str("\n")
+            self.con.set_color(console.LIGHT_GRAY, console.BLACK)
+        }
+    }
+
+    func str_eq(self, cmd: uint8*): bool {
+        let i: int = 0
+        while cmd[i] != 0 {
+            if i >= self.input_len {
+                return false
+            }
+            if self.input_buf[i] != cmd[i] {
+                return false
+            }
+            i = i + 1
+        }
+        return i == self.input_len || self.input_buf[i] == 32
+    }
+
+    func cmd_help(self): void {
+        self.con.set_color(console.YELLOW, console.BLACK)
+        self.con.print_str("Available commands:\n")
+        self.con.set_color(console.LIGHT_GRAY, console.BLACK)
+        self.con.print_str("  help   - Show this help message\n")
+        self.con.print_str("  clear  - Clear the screen\n")
+        self.con.print_str("  about  - About Gecko OS\n")
+        self.con.print_str("  echo   - Echo text back\n")
+        self.con.print_str("  color  - Change text color\n")
+        self.con.print_str("  reboot - Reboot the system\n")
+        self.con.print_str("  halt   - Halt the CPU\n")
+    }
+
+    func cmd_clear(self): void {
+        self.con.clear()
+    }
+
+    func cmd_about(self): void {
+        self.con.set_color(console.LIGHT_CYAN, console.BLACK)
+        self.con.print_str("\nGecko OS v0.1\n")
+        self.con.set_color(console.LIGHT_GRAY, console.BLACK)
+        self.con.print_str("A minimal kernel written entirely in Gecko.\n\n")
+        self.con.print_str("Features:\n")
+        self.con.print_str("  - VGA text mode console with scrolling\n")
+        self.con.print_str("  - PS/2 keyboard input (polling)\n")
+        self.con.print_str("  - Simple command shell\n\n")
+        self.con.print_str("Built with:\n")
+        self.con.print_str("  - Gecko programming language\n")
+        self.con.print_str("  - Index hooks for array access\n")
+        self.con.print_str("  - Traits and generics\n")
+        self.con.print_str("  - Module imports\n\n")
+    }
+
+    func cmd_echo(self): void {
+        let i: int = 5
+        while i < self.input_len {
+            self.con.putchar(self.input_buf[i])
+            i = i + 1
+        }
+        self.con.putchar(10)
+    }
+
+    func cmd_color(self): void {
+        self.con.set_color(console.LIGHT_GREEN, console.BLACK)
+        self.con.print_str("Color set to green!\n")
+    }
+
+    func cmd_reboot(self): void {
+        self.con.print_str("Rebooting...\n")
+        // Triple fault to reboot (keyboard controller reset)
+        asm { "movb $0xFE, %al" }
+        asm { "outb %al, $0x64" }
+    }
+
+    func cmd_halt(self): void {
+        self.con.print_str("Halting CPU. Goodbye!\n")
+        self.running = false
+        asm { "cli" }
+        asm { "hlt" }
+    }
+}

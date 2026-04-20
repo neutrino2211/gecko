@@ -165,10 +165,23 @@ func inferFromLiteral(lit *Literal, resolveSymbol func(string) *TypeRef) *TypeRe
 		return nil
 	}
 
-	// Symbol reference - look it up
-	if lit.Symbol != "" {
+	// Symbol reference - look it up (handle address-of operator too)
+	// If there's a chain (like rect.width), let the backend handle it
+	// since it has full type information for field access
+	if lit.Symbol != "" && len(lit.Chain) == 0 {
 		if resolveSymbol != nil {
-			return resolveSymbol(lit.Symbol)
+			baseType := resolveSymbol(lit.Symbol)
+			if baseType != nil {
+				// Address-of operator: &symbol produces a pointer
+				if lit.IsPointer {
+					return &TypeRef{
+						Type:     baseType.Type,
+						TypeArgs: baseType.TypeArgs,
+						Pointer:  true,
+					}
+				}
+				return baseType
+			}
 		}
 	}
 
@@ -182,20 +195,6 @@ func inferFromLiteral(lit *Literal, resolveSymbol func(string) *TypeRef) *TypeRe
 		elemType := inferFromLiteral(lit.Array[0], resolveSymbol)
 		if elemType != nil {
 			return &TypeRef{Array: elemType}
-		}
-	}
-
-	// Address-of operator
-	if lit.IsPointer && lit.Symbol != "" {
-		if resolveSymbol != nil {
-			baseType := resolveSymbol(lit.Symbol)
-			if baseType != nil {
-				return &TypeRef{
-					Type:     baseType.Type,
-					TypeArgs: baseType.TypeArgs,
-					Pointer:  true,
-				}
-			}
 		}
 	}
 

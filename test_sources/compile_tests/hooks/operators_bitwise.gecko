@@ -1,0 +1,85 @@
+package main
+
+// Bitwise operator traits with hooks
+@bitand_hook(.bitand)
+trait BitAnd<T> {
+    func bitand(self, other: T): T
+}
+
+@bitor_hook(.bitor)
+trait BitOr<T> {
+    func bitor(self, other: T): T
+}
+
+@bitxor_hook(.bitxor)
+trait BitXor<T> {
+    func bitxor(self, other: T): T
+}
+
+@shl_hook(.shl)
+trait Shl<T> {
+    func shl(self, other: T): T
+}
+
+@shr_hook(.shr)
+trait Shr<T> {
+    func shr(self, other: T): T
+}
+
+class Bits {
+    let value: int32
+}
+
+impl BitAnd<Bits> for Bits {
+    func bitand(self, other: Bits): Bits {
+        return Bits { value: self.value & other.value }
+    }
+}
+
+impl BitOr<Bits> for Bits {
+    func bitor(self, other: Bits): Bits {
+        return Bits { value: self.value | other.value }
+    }
+}
+
+impl BitXor<Bits> for Bits {
+    func bitxor(self, other: Bits): Bits {
+        return Bits { value: self.value ^ other.value }
+    }
+}
+
+impl Shl<Bits> for Bits {
+    func shl(self, other: Bits): Bits {
+        return Bits { value: self.value << other.value }
+    }
+}
+
+impl Shr<Bits> for Bits {
+    func shr(self, other: Bits): Bits {
+        return Bits { value: self.value >> other.value }
+    }
+}
+
+external func main(): int32 {
+    let a: Bits = Bits { value: 12 }   // 1100 in binary
+    let b: Bits = Bits { value: 10 }   // 1010 in binary
+    let shift: Bits = Bits { value: 2 }
+
+    // 12 & 10 = 8 (1000)
+    let and_result: Bits = a & b
+
+    // 12 | 10 = 14 (1110)
+    let or_result: Bits = a | b
+
+    // 12 ^ 10 = 6 (0110)
+    let xor_result: Bits = a ^ b
+
+    // 12 << 2 = 48
+    let shl_result: Bits = a << shift
+
+    // 12 >> 2 = 3
+    let shr_result: Bits = a >> shift
+
+    // 8 + 14 + 6 + 48 + 3 = 79
+    return and_result.value + or_result.value + xor_result.value + shl_result.value + shr_result.value
+}

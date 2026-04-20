@@ -1,0 +1,113 @@
+package main
+
+// Comparison operator traits with hooks
+@eq_hook(.eq)
+trait Eq<T> {
+    func eq(self, other: T): bool
+}
+
+@ne_hook(.ne)
+trait Ne<T> {
+    func ne(self, other: T): bool
+}
+
+@lt_hook(.lt)
+trait Lt<T> {
+    func lt(self, other: T): bool
+}
+
+@gt_hook(.gt)
+trait Gt<T> {
+    func gt(self, other: T): bool
+}
+
+@le_hook(.le)
+trait Le<T> {
+    func le(self, other: T): bool
+}
+
+@ge_hook(.ge)
+trait Ge<T> {
+    func ge(self, other: T): bool
+}
+
+class Value {
+    let n: int32
+}
+
+impl Eq<Value> for Value {
+    func eq(self, other: Value): bool {
+        return self.n == other.n
+    }
+}
+
+impl Ne<Value> for Value {
+    func ne(self, other: Value): bool {
+        return self.n != other.n
+    }
+}
+
+impl Lt<Value> for Value {
+    func lt(self, other: Value): bool {
+        return self.n < other.n
+    }
+}
+
+impl Gt<Value> for Value {
+    func gt(self, other: Value): bool {
+        return self.n > other.n
+    }
+}
+
+impl Le<Value> for Value {
+    func le(self, other: Value): bool {
+        return self.n <= other.n
+    }
+}
+
+impl Ge<Value> for Value {
+    func ge(self, other: Value): bool {
+        return self.n >= other.n
+    }
+}
+
+external func main(): int32 {
+    let a: Value = Value { n: 10 }
+    let b: Value = Value { n: 20 }
+    let c: Value = Value { n: 10 }
+
+    let result: int32 = 0
+
+    // a == c should be true (1)
+    if a == c {
+        result = result + 1
+    }
+
+    // a != b should be true (1)
+    if a != b {
+        result = result + 2
+    }
+
+    // a < b should be true (1)
+    if a < b {
+        result = result + 4
+    }
+
+    // b > a should be true (1)
+    if b > a {
+        result = result + 8
+    }
+
+    // a <= c should be true (1)
+    if a <= c {
+        result = result + 16
+    }
+
+    // b >= a should be true (1)
+    if b >= a {
+        result = result + 32
+    }
+
+    // All true: 1 + 2 + 4 + 8 + 16 + 32 = 63
+    return result
+}

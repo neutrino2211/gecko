@@ -1,0 +1,37 @@
+package main
+
+@index_hook(.get)
+public trait Index<I, T> {
+    func get(self, index: I): T
+}
+
+public class IntArray {
+    let data: int32*
+    let len: int32
+
+    func new(len: int32): IntArray {
+        let data: int32* = malloc(len * @size_of<int32>()) as int32*
+        return IntArray { data: data, len: len }
+    }
+}
+
+impl Index<int32, int32> for IntArray {
+    func get(self, index: int32): int32 {
+        return @deref((self.data + index) as int32*)
+    }
+}
+
+declare external func malloc(size: uint64): void*
+declare external variardic func printf(fmt: string): int32
+
+external func main(): int32 {
+    let arr = IntArray::new(3)
+
+    @write_volatile(arr.data, 10)
+    @write_volatile((arr.data + 1) as int32*, 20)
+    @write_volatile((arr.data + 2) as int32*, 12)
+
+    let sum: int32 = arr[0] + arr[1] + arr[2]
+    printf(&"Sum: %d\n", sum)
+    return sum
+}

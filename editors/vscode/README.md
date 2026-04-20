@@ -1,51 +1,65 @@
 # Gecko Language Support for VS Code
 
-Syntax highlighting for the [Gecko programming language](https://github.com/neutrino2211/gecko).
+Language support for the [Gecko programming language](https://github.com/neutrino2211/gecko).
 
 ## Features
 
 - Syntax highlighting for `.gecko` files
+- Real-time error diagnostics (via LSP)
 - Bracket matching and auto-closing
 - Code folding
 - Comment toggling (`Cmd+/` or `Ctrl+/`)
 
 ## Installation
 
-### From Source (Development)
+### 1. Build the LSP Server
 
-1. Copy or symlink this folder to your VS Code extensions directory:
+From the Gecko repository root:
 
-   ```bash
-   # macOS
-   ln -s /path/to/gecko/editors/vscode ~/.vscode/extensions/gecko-lang
+```bash
+go build -o gecko-lsp ./lsp/
+```
 
-   # Linux
-   ln -s /path/to/gecko/editors/vscode ~/.vscode/extensions/gecko-lang
+Add the binary to your PATH, or configure the path in VS Code settings.
 
-   # Windows (PowerShell as Admin)
-   New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.vscode\extensions\gecko-lang" -Target "C:\path\to\gecko\editors\vscode"
-   ```
+### 2. Install the Extension
 
-2. Restart VS Code
+#### From Source (Development)
 
-### From VSIX (Package)
+```bash
+cd editors/vscode
+npm install
+npm run compile
+```
 
-1. Install `vsce` if you haven't:
-   ```bash
-   npm install -g @vscode/vsce
-   ```
+Then symlink to your extensions directory:
 
-2. Package the extension:
-   ```bash
-   cd editors/vscode
-   vsce package
-   ```
+```bash
+# macOS/Linux
+ln -s $(pwd) ~/.cursor/extensions/gecko-lang
+# or for VS Code
+ln -s $(pwd) ~/.vscode/extensions/gecko-lang
+```
 
-3. Install the `.vsix` file:
-   - Open VS Code
-   - Press `Cmd+Shift+P` (or `Ctrl+Shift+P`)
-   - Type "Install from VSIX"
-   - Select the generated `.vsix` file
+Restart your editor.
+
+#### From VSIX (Package)
+
+```bash
+cd editors/vscode
+npm install
+npm run compile
+npm run package
+```
+
+Install the generated `.vsix` file via the Extensions view.
+
+## Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `gecko.lsp.enabled` | `true` | Enable/disable the language server |
+| `gecko.lsp.path` | `""` | Path to `gecko-lsp` binary (uses PATH if empty) |
 
 ## Highlighted Elements
 
@@ -58,8 +72,17 @@ Syntax highlighting for the [Gecko programming language](https://github.com/neut
 | Attributes | `@packed`, `@section(".text")` |
 | Intrinsics | `@deref(ptr)`, `@size_of<T>()` |
 | Static calls | `Point::new()` |
-| Constants | `true`, `false`, `nil` |
-| Comments | `//`, `///`, `/* */` |
+
+## LSP Features
+
+Currently implemented:
+- [x] Diagnostics (parse errors)
+
+Planned:
+- [ ] Hover (type information)
+- [ ] Go to definition
+- [ ] Completions
+- [ ] Find references
 
 ## Contributing
 

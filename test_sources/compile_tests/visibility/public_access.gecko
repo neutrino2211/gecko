@@ -1,0 +1,8 @@
+package main
+
+import privatelib
+
+external func main(): int32 {
+    let p: PublicType = PublicType::new(42)
+    return p.get()
+}

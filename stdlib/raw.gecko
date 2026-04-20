@@ -11,7 +11,7 @@ package raw
 /// ptr.write(42)
 /// let val: uint32 = ptr.read()
 /// ```
-class Raw<T> {
+public class Raw<T> {
     /// The raw memory address stored as a 64-bit unsigned integer.
     let addr: uint64
 

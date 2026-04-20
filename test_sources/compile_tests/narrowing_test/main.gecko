@@ -1,0 +1,25 @@
+package main
+
+declare external variardic func printf(fmt: string): int32
+
+func test_intrinsic(ptr: int32*): int32 {
+    if @is_not_null(ptr) {
+        return 1
+    }
+    return 0
+}
+
+func test_legacy(ptr: int32*): int32 {
+    if (ptr != nil) {
+        return 2
+    }
+    return 0
+}
+
+external func main(): int32 {
+    let x: int32 = 42
+    let r1: int32 = test_intrinsic(&x)
+    let r2: int32 = test_legacy(&x)
+    printf("Intrinsic: %d, Legacy: %d\n", r1, r2)
+    return 0
+}

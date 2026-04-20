@@ -1,0 +1,53 @@
+package main
+
+trait Printable {
+    func print_value(self): int32
+}
+
+trait Comparable {
+    func compare(self, other: int32): int32
+}
+
+class Point {
+    let x: int32
+    let y: int32
+
+    func new(x: int32, y: int32): Point {
+        return Point { x: x, y: y }
+    }
+}
+
+impl Printable for Point {
+    func print_value(self): int32 {
+        return self.x + self.y
+    }
+}
+
+impl Comparable for Point {
+    func compare(self, other: int32): int32 {
+        let sum: int32 = self.x + self.y
+        if sum > other {
+            return 1
+        }
+        if sum < other {
+            return -1
+        }
+        return 0
+    }
+}
+
+func process<T is Printable & Comparable>(item: T, threshold: int32): int32 {
+    let val: int32 = item.print_value()
+    let cmp: int32 = item.compare(threshold)
+    return val + cmp
+}
+
+external func main(): int32 {
+    let p: Point = Point::new(10, 20)
+
+    // print_value returns 30, compare(25) returns 1 (30 > 25)
+    // Result: 30 + 1 = 31
+    let result: int32 = process<Point>(p, 25)
+
+    return result
+}

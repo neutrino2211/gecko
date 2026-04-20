@@ -372,12 +372,11 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 
 		base = mem
 	} else if p.Literal.ArrayIndex != nil {
-		index := *p.Literal.ArrayIndex
+		indexExpr := p.Literal.ArrayIndex
 		p.Literal.ArrayIndex = nil
 		val := impl.PrimaryToLLIRValue(p, scope, expressionType)
 
-		arrayIndexVal := &tokens.Primary{Literal: &index}
-		arrayIndex := impl.PrimaryToLLIRValue(arrayIndexVal, scope, &tokens.TypeRef{Type: "uint64"})
+		arrayIndex := impl.ExpressionToLLIRValue(indexExpr, scope, &tokens.TypeRef{Type: "uint64"})
 
 		if val == nil {
 			scope.ErrorScope.NewCompileTimeError("Parse Error", "unable to parse the expression", p.Literal.Pos)
@@ -400,7 +399,8 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 		}
 
 	} else if p.Literal.Symbol != "" {
-		symbolVariable := scope.ResolveSymbolAsVariable(p.Literal.Symbol)
+		symbolName := p.Literal.Symbol
+		symbolVariable := scope.ResolveSymbolAsVariable(symbolName)
 
 		if !symbolVariable.IsNil() {
 			variable := symbolVariable.Unwrap()
@@ -409,7 +409,7 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 			repr.Println(variable.GetFullName(), base)
 			// repr.Println(symbolVariable.Unwrap().GetLLIRType(scope))
 		} else {
-			scope.ErrorScope.NewCompileTimeError("Variable Resolution Error", "Unable to resolve the variable '"+p.Literal.Symbol+"'", p.Pos)
+			scope.ErrorScope.NewCompileTimeError("Variable Resolution Error", "Unable to resolve the variable '"+symbolName+"'", p.Pos)
 		}
 	} else if p.Literal.FuncCall != nil {
 		// base = p.FuncCall.(scope)

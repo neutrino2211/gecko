@@ -1,0 +1,19 @@
+package main
+
+trait Counter {
+    func increment(self)
+
+    func get_count(self): int32 {
+        return 0
+    }
+}
+
+class MyCounter {
+    let count: int32
+}
+
+default impl Counter for MyCounter
+
+external func main(): int32 {
+    return 0
+}

@@ -19,7 +19,7 @@ func test_valid_calls(): void {
     x = add(1, 2)
 }
 
-func main(): int {
+external func main(): int32 {
     test_valid_calls()
     return 0
 }

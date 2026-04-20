@@ -1,0 +1,21 @@
+package main
+
+@drop_hook(.drop)
+trait Drop {
+    func drop(self): void
+}
+
+class Resource {
+    let value: int32
+}
+
+impl Drop for Resource {
+    func drop(self): void {
+        // Cleanup code would go here
+    }
+}
+
+external func main(): int32 {
+    let r: Resource = Resource { value: 42 }
+    return r.value
+}

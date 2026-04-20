@@ -7,6 +7,6 @@ class MultibootHeader {
     let checksum: uint32
 }
 
-func main(): int {
+external func main(): int32 {
     return 0
 }

@@ -1,0 +1,27 @@
+package slice
+
+declare external func malloc(size: uint64): void*
+declare external func free(ptr: void*): void
+
+public class Slice<T> {
+    let data: T*
+    let len: uint64
+}
+
+impl<T> Slice<T> {
+    func from_raw(ptr: T*, length: uint64): Slice<T> {
+        let s: Slice<T>
+        s.data = ptr
+        s.len = length
+        return s
+    }
+
+    func len(self): uint64 {
+        return self.len
+    }
+
+    func get(self, index: uint64): T {
+        let ptr: T* = self.data + index
+        return @deref(ptr)
+    }
+}

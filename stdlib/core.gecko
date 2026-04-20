@@ -13,32 +13,32 @@ package core
 // -----------------------------------------------------------------------------
 
 /// Add<T> - Trait for the `+` operator.
-trait Add<T> {
+public trait Add<T> {
     func add(self, other: T): T
 }
 
 /// Sub<T> - Trait for the `-` operator.
-trait Sub<T> {
+public trait Sub<T> {
     func sub(self, other: T): T
 }
 
 /// Mul<T> - Trait for the `*` operator.
-trait Mul<T> {
+public trait Mul<T> {
     func mul(self, other: T): T
 }
 
 /// Div<T> - Trait for the `/` operator.
-trait Div<T> {
+public trait Div<T> {
     func div(self, other: T): T
 }
 
 /// Neg - Trait for unary `-` operator.
-trait Neg {
+public trait Neg {
     func neg(self): Self
 }
 
 /// Not - Trait for unary `!` operator.
-trait Not {
+public trait Not {
     func not(self): Self
 }
 
@@ -47,27 +47,27 @@ trait Not {
 // -----------------------------------------------------------------------------
 
 /// BitAnd<T> - Trait for the `&` operator.
-trait BitAnd<T> {
+public trait BitAnd<T> {
     func bitand(self, other: T): T
 }
 
 /// BitOr<T> - Trait for the `|` operator.
-trait BitOr<T> {
+public trait BitOr<T> {
     func bitor(self, other: T): T
 }
 
 /// BitXor<T> - Trait for the `^` operator.
-trait BitXor<T> {
+public trait BitXor<T> {
     func bitxor(self, other: T): T
 }
 
 /// Shl<T> - Trait for the `<<` operator.
-trait Shl<T> {
+public trait Shl<T> {
     func shl(self, other: T): T
 }
 
 /// Shr<T> - Trait for the `>>` operator.
-trait Shr<T> {
+public trait Shr<T> {
     func shr(self, other: T): T
 }
 
@@ -76,32 +76,32 @@ trait Shr<T> {
 // -----------------------------------------------------------------------------
 
 /// Eq<T> - Trait for the `==` operator.
-trait Eq<T> {
+public trait Eq<T> {
     func eq(self, other: T): bool
 }
 
 /// Ne<T> - Trait for the `!=` operator.
-trait Ne<T> {
+public trait Ne<T> {
     func ne(self, other: T): bool
 }
 
 /// Lt<T> - Trait for the `<` operator.
-trait Lt<T> {
+public trait Lt<T> {
     func lt(self, other: T): bool
 }
 
 /// Gt<T> - Trait for the `>` operator.
-trait Gt<T> {
+public trait Gt<T> {
     func gt(self, other: T): bool
 }
 
 /// Le<T> - Trait for the `<=` operator.
-trait Le<T> {
+public trait Le<T> {
     func le(self, other: T): bool
 }
 
 /// Ge<T> - Trait for the `>=` operator.
-trait Ge<T> {
+public trait Ge<T> {
     func ge(self, other: T): bool
 }
 
@@ -111,26 +111,26 @@ trait Ge<T> {
 
 /// Clone - Trait for types that can be duplicated.
 /// For freestanding: implementors must handle their own allocation.
-trait Clone {
+public trait Clone {
     func clone(self): Self
 }
 
 /// Copy - Marker trait for types that can be copied bitwise.
 /// Types implementing Copy are implicitly cloned on assignment.
-trait Copy {
+public trait Copy {
     func copy(self): Self
 }
 
 /// Default - Trait for types with a default value.
 /// Static trait methods (without `self`) are supported.
 /// Call via Type::method_name() syntax.
-trait Default {
+public trait Default {
     func default_val(): Self
 }
 
 /// Drop - Trait for types that need cleanup when going out of scope.
 /// Called automatically when a value is no longer needed.
-trait Drop {
+public trait Drop {
     func drop(self): void
 }
 
@@ -139,18 +139,18 @@ trait Drop {
 // -----------------------------------------------------------------------------
 
 /// From<T> - Trait for converting from type T.
-trait From<T> {
+public trait From<T> {
     func from(value: T): Self
 }
 
 /// Into<T> - Trait for converting into type T.
-trait Into<T> {
+public trait Into<T> {
     func into(self): T
 }
 
 /// TryFrom<T> - Fallible conversion from type T.
 /// Returns an error indicator (0 = success, non-zero = error code).
-trait TryFrom<T> {
+public trait TryFrom<T> {
     func try_from(value: T, out: Self*): int32
 }
 
@@ -159,7 +159,7 @@ trait TryFrom<T> {
 // -----------------------------------------------------------------------------
 
 /// Sized - Trait for types with a known size at compile time.
-trait Sized {
+public trait Sized {
     func size(): uint64
     func align(): uint64
 }
@@ -169,7 +169,7 @@ trait Sized {
 // -----------------------------------------------------------------------------
 
 /// Hash - Trait for types that can be hashed.
-trait Hash {
+public trait Hash {
     func hash(self): uint64
 }
 
@@ -179,13 +179,13 @@ trait Hash {
 
 /// Debug - Trait for debug formatting.
 /// Writes debug representation to a buffer, returns bytes written.
-trait Debug {
+public trait Debug {
     func debug_fmt(self, buf: uint8*, len: uint64): uint64
 }
 
 /// Display - Trait for user-facing formatting.
 /// Writes display representation to a buffer, returns bytes written.
-trait Display {
+public trait Display {
     func display_fmt(self, buf: uint8*, len: uint64): uint64
 }
 
@@ -194,13 +194,15 @@ trait Display {
 // -----------------------------------------------------------------------------
 
 /// Iterator<T> - Trait for types that can produce a sequence of values.
-trait Iterator<T> {
+/// Use `for let x in iterator { ... }` to iterate over values.
+@iterator_hook(.next, .has_next)
+public trait Iterator<T> {
     func next(self): T
     func has_next(self): bool
 }
 
 /// IntoIterator<T> - Trait for types that can be converted into an iterator.
-trait IntoIterator<T> {
+public trait IntoIterator<T> {
     func iter(self): Iterator<T>
 }
 
@@ -209,12 +211,12 @@ trait IntoIterator<T> {
 // -----------------------------------------------------------------------------
 
 /// Index<I, T> - Trait for indexing operations (read).
-trait Index<I, T> {
+public trait Index<I, T> {
     func index(self, idx: I): T
 }
 
 /// IndexMut<I, T> - Trait for mutable indexing operations (write).
-trait IndexMut<I, T> {
+public trait IndexMut<I, T> {
     func index_mut(self, idx: I, value: T): void
 }
 
@@ -223,11 +225,11 @@ trait IndexMut<I, T> {
 // -----------------------------------------------------------------------------
 
 /// FnOnce<A, R> - Trait for callable types (consumed on call).
-trait FnOnce<A, R> {
+public trait FnOnce<A, R> {
     func call_once(self, arg: A): R
 }
 
 /// Fn<A, R> - Trait for callable types (can be called multiple times).
-trait Fn<A, R> {
+public trait Fn<A, R> {
     func call(self, arg: A): R
 }

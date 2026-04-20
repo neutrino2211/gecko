@@ -1,0 +1,53 @@
+package main
+
+declare external func puts(s: string): int32
+declare external func printf(fmt: string, val: int32): int32
+
+trait Area {
+    func area(self): int
+}
+
+class Rectangle {
+    let width: int
+    let height: int
+
+    func new(w: int, h: int): Rectangle {
+        let r: Rectangle
+        r.width = w
+        r.height = h
+        return r
+    }
+}
+
+impl Area for Rectangle {
+    func area(self): int {
+        return self.width * self.height
+    }
+}
+
+external func main(): int32 {
+    // Static method call inference: Rectangle::new() -> Rectangle
+    let rect = Rectangle::new(10, 5)
+
+    // Field access after static method inference
+    let w = rect.width
+    printf(&"Width: %d\n", w as int32)
+
+    // Method call on variable inference: rect.area() -> int
+    let a = rect.area()
+    printf(&"Area: %d\n", a as int32)
+
+    // Address-of operator inference: &rect -> Rectangle*
+    let ptr = &rect
+    let ptrArea = ptr.area()
+    printf(&"Ptr Area: %d\n", ptrArea as int32)
+
+    // Struct literal inference
+    let rect2 = Rectangle { width: 3, height: 4 }
+    let a2 = rect2.area()
+    printf(&"Area2: %d\n", a2 as int32)
+
+    // Return the combined value for test verification
+    // 10 + 50 + 50 + 12 = 122
+    return (w + a + ptrArea + a2) as int32
+}

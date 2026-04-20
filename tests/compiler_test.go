@@ -52,6 +52,7 @@ var compileTests = []compileTest{
 
 	// Type inference
 	{"type_inference", "test_sources/compile_tests/type_inference/main.gecko", 0, false},
+	{"type_inference_advanced", "test_sources/compile_tests/type_inference_advanced/main.gecko", 122, false},
 
 	// Stdlib types
 	{"stdlib_string", "test_sources/compile_tests/stdlib_string/main.gecko", 0, false},
@@ -67,9 +68,73 @@ var compileTests = []compileTest{
 	// Freestanding traits
 	{"freestanding_traits", "test_sources/compile_tests/freestanding_traits/main.gecko", 0, false},
 
+	// Inherent implementations
+	{"inherent_impl", "test_sources/compile_tests/inherent_impl/main.gecko", 35, false},
+
+	// Directory imports with lazy resolution
+	{"directory_imports", "test_sources/compile_tests/directory_imports/main.gecko", 35, false},
+
+	// Qualified type syntax (module.Type)
+	{"qualified_types", "test_sources/compile_tests/qualified_types/main.gecko", 75, false},
+
+	// Hooks
+	{"hooks_drop", "test_sources/compile_tests/hooks/drop_hook.gecko", 42, false},
+	{"hooks_operator_add", "test_sources/compile_tests/hooks/operator_add.gecko", 42, false},
+	{"hooks_operators_arithmetic", "test_sources/compile_tests/hooks/operators_arithmetic.gecko", 44, false},
+	{"hooks_operators_comparison", "test_sources/compile_tests/hooks/operators_comparison.gecko", 63, false},
+	{"hooks_operators_bitwise", "test_sources/compile_tests/hooks/operators_bitwise.gecko", 79, false},
+	{"hooks_operators_unary", "test_sources/compile_tests/hooks/operators_unary.gecko", 42, false},
+
 	// Examples
 	{"example_traits", "examples/traits/shapes.gecko", 93, false},
 	{"example_stdlib", "examples/stdlib/demo.gecko", 80, false},
+	{"example_c_interop", "examples/c_interop/main.gecko", 105, false},
+	{"example_string_builder", "examples/string_builder/demo.gecko", 0, false},
+
+	// Visibility tests
+	{"visibility_public_access", "test_sources/compile_tests/visibility/public_access.gecko", 42, false},
+
+	// Index hook tests
+	{"index_hook", "test_sources/compile_tests/index_hook/main.gecko", 42, false},
+
+	// Iterator / for-in loop tests
+	{"for_in_loop", "test_sources/compile_tests/for_in_loop/main.gecko", 0, false},
+
+	// Lazy resolution tests
+	{"lazy_method_resolution", "test_sources/compile_tests/lazy_method_resolution/main.gecko", 0, false},
+
+	// Narrowing tests
+	{"narrowing_test", "test_sources/compile_tests/narrowing_test/main.gecko", 0, false},
+
+	// Type checking runtime tests
+	{"type_checking_default_impl_generic", "test_sources/compile_tests/type_checking/default_impl_generic.gecko", 0, false},
+	{"type_checking_default_impl_valid", "test_sources/compile_tests/type_checking/default_impl_valid.gecko", 42, false},
+	{"type_checking_generic_valid", "test_sources/compile_tests/type_checking/generic_valid.gecko", 0, false},
+
+	// C import tests
+	{"cimport", "test_sources/compile_tests/cimport/main.gecko", 0, false},
+
+	// Packed structs
+	{"packed", "test_sources/compile_tests/packed/packed.gecko", 0, false},
+
+	// Struct literals
+	{"struct_literal", "test_sources/compile_tests/struct_literal/struct_literal.gecko", 0, false},
+	{"struct_inline", "test_sources/compile_tests/struct_literal/struct_inline.gecko", 0, false},
+
+	// Fixed-size arrays
+	{"fixed_arrays", "test_sources/compile_tests/fixed_arrays/fixed_arrays.gecko", 0, false},
+
+	// Type checking valid code
+	{"typecheck_valid", "test_sources/compile_tests/typecheck/typecheck_valid.gecko", 0, false},
+
+	// Enums
+	{"enums", "test_sources/compile_tests/enums/main.gecko", 2, false},
+
+	// Nested generics (3+ levels)
+	{"nested_generics", "test_sources/compile_tests/nested_generics/main.gecko", 42, false},
+
+	// Multiple trait constraints (T is A & B)
+	{"multiple_constraints", "test_sources/compile_tests/multiple_constraints/main.gecko", 31, false},
 
 	// TODO: Fix these tests
 	// {"integers", "test_sources/compile_tests/ints/int.gecko", 0, false}, // printf declaration issues
@@ -186,5 +251,120 @@ func TestTraitConstraintError(t *testing.T) {
 
 	if !strings.Contains(outputStr, "NotAddable") || !strings.Contains(outputStr, "Addable") {
 		t.Errorf("Error message should mention NotAddable and Addable trait:\n%s", outputStr)
+	}
+}
+
+func TestTypeCheckingErrors(t *testing.T) {
+	geckoPath := buildGecko(t)
+
+	wd, _ := os.Getwd()
+	projectRoot := filepath.Dir(wd)
+	if filepath.Base(wd) != "tests" {
+		projectRoot = wd
+	}
+
+	tests := []struct {
+		name          string
+		file          string
+		expectedError string
+		expectedMsg   string
+	}{
+		{
+			name:          "field_type_mismatch",
+			file:          "test_sources/compile_tests/type_checking/field_mismatch.gecko",
+			expectedError: "Type Mismatch",
+			expectedMsg:   "Cannot assign 'string' to 'c.radius' of type 'int'",
+		},
+		{
+			name:          "variable_type_mismatch",
+			file:          "test_sources/compile_tests/type_checking/var_mismatch.gecko",
+			expectedError: "Type Mismatch",
+			expectedMsg:   "Cannot assign 'string' to 'x' of type 'int'",
+		},
+		{
+			name:          "const_reassignment",
+			file:          "test_sources/compile_tests/type_checking/const_reassign.gecko",
+			expectedError: "Constant Reassignment",
+			expectedMsg:   "Cannot reassign constant 'x'",
+		},
+		{
+			name:          "duplicate_method_in_extension",
+			file:          "test_sources/compile_tests/inherent_impl/duplicate_error.gecko",
+			expectedError: "Duplicate Method",
+			expectedMsg:   "Extensions can only add new methods",
+		},
+		{
+			name:          "type_suggestion",
+			file:          "test_sources/compile_tests/type_suggestions/missing_type.gecko",
+			expectedError: "Type Check Error",
+			expectedMsg:   "std.string",
+		},
+		{
+			name:          "hook_invalid_method",
+			file:          "test_sources/compile_tests/hooks/invalid_hook.gecko",
+			expectedError: "Hook Signature Error",
+			expectedMsg:   "not found in trait",
+		},
+		{
+			name:          "hook_duplicate",
+			file:          "test_sources/compile_tests/hooks/duplicate_hook.gecko",
+			expectedError: "Duplicate Hook",
+			expectedMsg:   "already registered",
+		},
+		{
+			name:          "hook_wrong_signature",
+			file:          "test_sources/compile_tests/hooks/wrong_signature.gecko",
+			expectedError: "Hook Signature Error",
+			expectedMsg:   "wrong return type",
+		},
+		{
+			name:          "visibility_private_access",
+			file:          "test_sources/compile_tests/visibility/private_access.gecko",
+			expectedError: "Visibility Error",
+			expectedMsg:   "private (default)",
+		},
+		{
+			name:          "visibility_private_method",
+			file:          "test_sources/compile_tests/visibility/private_method_access.gecko",
+			expectedError: "Visibility Error",
+			expectedMsg:   "method 'private_method' is private (default)",
+		},
+		{
+			name:          "generic_type_mismatch",
+			file:          "test_sources/compile_tests/type_checking/generic_mismatch.gecko",
+			expectedError: "Type Mismatch",
+			expectedMsg:   "expects type 'int32', got 'string'",
+		},
+		{
+			name:          "return_type_mismatch",
+			file:          "test_sources/compile_tests/type_checking/return_mismatch.gecko",
+			expectedError: "Return Type Mismatch",
+			expectedMsg:   "Cannot return 'string' from function expecting 'int32'",
+		},
+		{
+			name:          "trait_method_conflict",
+			file:          "test_sources/compile_tests/trait_conflicts/conflict.gecko",
+			expectedError: "Trait Method Conflict",
+			expectedMsg:   "do_thing",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sourcePath := filepath.Join(projectRoot, tc.file)
+
+			cmd := exec.Command(geckoPath, "compile", "--backend", "c", "--ir-only", sourcePath)
+			cmd.Dir = projectRoot
+			output, _ := cmd.CombinedOutput()
+
+			outputStr := string(output)
+			if !strings.Contains(outputStr, tc.expectedError) {
+				t.Errorf("Expected error '%s', got:\n%s", tc.expectedError, outputStr)
+			}
+
+			if !strings.Contains(outputStr, tc.expectedMsg) {
+				t.Errorf("Expected message '%s', got:\n%s", tc.expectedMsg, outputStr)
+			}
+		})
 	}
 }

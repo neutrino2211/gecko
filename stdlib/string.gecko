@@ -7,7 +7,7 @@ declare external func memcpy(dest: void*, src: void*, n: uint64): void*
 declare external func strlen(s: string): uint64
 
 /// Add<T> - Trait for the `+` operator.
-trait Add<T> {
+public trait Add<T> {
     func add(self, other: T): T
 }
 
@@ -16,7 +16,7 @@ trait Add<T> {
 /// Unlike string literals (string type), String owns its data
 /// and can be modified. Use this when you need to build strings
 /// dynamically or concatenate multiple strings.
-class String {
+public class String {
     /// Pointer to the character data (null-terminated).
     let data: uint64
     /// Number of bytes in the string (excluding null terminator).

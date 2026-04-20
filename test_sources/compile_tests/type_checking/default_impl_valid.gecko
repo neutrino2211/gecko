@@ -1,0 +1,31 @@
+package main
+
+trait Counter {
+    func get_value(self): int32
+
+    func double_value(self): int32 {
+        return self.get_value() * 2
+    }
+}
+
+class MyCounter {
+    let count: int32
+}
+
+impl MyCounter {
+    func new(initial: int32): MyCounter {
+        return MyCounter { count: initial }
+    }
+
+    func get_value(self): int32 {
+        return self.count
+    }
+}
+
+default impl Counter for MyCounter
+
+external func main(): int32 {
+    let c = MyCounter::new(21)
+    let doubled: int32 = c.double_value()
+    return doubled
+}

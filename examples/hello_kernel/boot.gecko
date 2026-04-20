@@ -1,0 +1,41 @@
+package boot
+
+// =============================================================================
+// Multiboot Header - emitted via inline asm to control section placement
+// =============================================================================
+
+@naked
+func __multiboot_header(): void {
+    asm { ".section .multiboot, \"a\"" }
+    asm { ".align 4" }
+    asm { ".long 0x1BADB002" }  // MULTIBOOT_MAGIC
+    asm { ".long 0x00000000" }  // MULTIBOOT_FLAGS
+    asm { ".long 0xE4524FFE" }  // MULTIBOOT_CHECKSUM = -(MAGIC + FLAGS)
+    asm { ".text" }
+}
+
+// =============================================================================
+// Kernel Stack - 16KB
+// External so the asm can reference it by name
+// =============================================================================
+
+external let stack_bottom: [16384]uint8
+
+// =============================================================================
+// Entry Point - called by bootloader
+// =============================================================================
+
+declare external func kmain(): void
+
+@naked
+@noreturn
+external func _start(): void {
+    asm { "lea stack_bottom + 16384, %esp" }
+    asm { "pushl $0" }
+    asm { "popf" }
+    asm { "call kmain" }
+    asm { "cli" }
+    asm { ".hang:" }
+    asm { "hlt" }
+    asm { "jmp .hang" }
+}

@@ -1,0 +1,13 @@
+package main
+
+declare external func printf(fmt: string, val: int32): int32
+
+func identity<T>(x: T): T {
+    return x
+}
+
+external func main(): int32 {
+    let result: int32 = identity<int32>(42)
+    printf("Result: %d\n", result)
+    return 0
+}

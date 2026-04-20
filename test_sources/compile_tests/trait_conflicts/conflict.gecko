@@ -1,0 +1,29 @@
+package main
+
+trait TraitA {
+    func do_thing(self): int32
+}
+
+trait TraitB {
+    func do_thing(self): int32
+}
+
+class MyClass {
+    let value: int32
+}
+
+impl TraitA for MyClass {
+    func do_thing(self): int32 {
+        return self.value
+    }
+}
+
+impl TraitB for MyClass {
+    func do_thing(self): int32 {
+        return self.value * 2
+    }
+}
+
+external func main(): int32 {
+    return 0
+}

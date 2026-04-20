@@ -39,7 +39,7 @@ func clear(color: uint8): void {
     let buffer: uint16 volatile* = ADDRESS as uint16 volatile*
     let space: uint16 = entry(32, color)
     let i: int = 0
-    while i < 2000 {
+    while i < WIDTH * HEIGHT {
         buffer[i] = space
         i = i + 1
     }

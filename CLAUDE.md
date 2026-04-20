@@ -113,9 +113,62 @@ Source (.gecko) -> Lexer/Parser (Participle) -> tokens.File -> Backend -> C/LLVM
 - Address-of operator: `&variable`
 - Function pointers: `func(T, T): T`
 - Break/continue in loops
+- For-in loops with `@iterator_hook` trait: `for let x in collection { }`
+
+### Type Checking
+
+The compiler performs type checking at compile time:
+
+- **Variable assignments**: `let x: int = "hello"` errors with type mismatch
+- **Field assignments**: `circle.radius = "hello"` errors when assigning wrong type to field
+- **Function arguments**: Type mismatches in function calls are caught
+- **Return types**: Return statements are validated against function return type
+
+Type inference works for:
+- Literals: `let x = 42` infers `int32`
+- Static method calls: `let r = Rectangle::new(10, 5)` infers `Rectangle`
+- Method calls: `let a = shape.area()` infers return type from trait/class method
+- Address-of: `let p = &variable` infers pointer type
+
+### LSP Support
+
+The `lsp/` package provides Language Server Protocol support:
+
+- **Hover**: Shows type information for variables, expressions, and function calls
+- **Completions**: 
+  - Class instance members: `rect.` shows fields and methods
+  - Trait methods: Shows methods from `impl Trait for Class` blocks
+  - Keywords and local variables
+- **Go to Definition**: Navigate to symbol definitions
+- **Diagnostics**: Compile errors shown in editor
+
+Build and run LSP:
+```bash
+go build -o gecko-lsp ./lsp
+```
 
 ### Not Yet Implemented
 
-- String iteration
+- String iteration (for-in loop infrastructure exists, strings need Iterator impl)
 - Default trait implementations
 - Trait inheritance
+- Full module completion (shows placeholder, needs module resolution)
+
+## Ground Rules for Development
+
+These rules govern how Claude should approach problems in this codebase:
+
+1. **HALT on complex problems with easy workarounds**: When encountering a problem that would be complex to solve properly but has an easy shortcut (symlinks, hardcoding, copy-paste), STOP and communicate the issue. Never take shortcuts that mask underlying design problems.
+
+2. **Spec requirements over convenience**: When encountering a loophole or gap that prevents safe implementation, mark it as a **spec requirement** and HALT. The language spec should be extended rather than working around gaps with clever code.
+
+3. **Types over algorithms**: Prefer solving safety issues through the type system rather than runtime checks or algorithms. If you find yourself writing algorithmic safety checks, flag it so we can ideate a type system feature instead.
+
+4. **Verify with LSP and tests**: Never assume code works. Always:
+   - Run relevant tests (`go test ./tests/... -v`)
+   - Check LSP behavior for editor features
+   - Test examples end-to-end (`go run . run <file>`)
+
+5. **Be a language user**: Approach Gecko as a user would. If something feels wrong or unsafe from a user perspective, that's a language design issue to discuss, not a compiler bug to hack around.
+
+6. **Check existing features before adding new ones**: Before implementing a new feature, verify how it interacts with existing features. Ask questions like: "Does this conflict with X?", "What happens if both Y and Z are used together?". Add tests for edge cases and interactions, not just the happy path.

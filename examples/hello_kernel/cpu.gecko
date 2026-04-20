@@ -15,6 +15,7 @@ func enable_interrupts(): void {
 @noreturn
 func hang(): void {
     disable_interrupts()
-    halt()
-    halt()
+    while true {
+        halt()
+    }
 }

@@ -1,5 +1,9 @@
 package shapes
 
+import std.slice use { Slice }
+
+declare external variardic func printf(format: string): void
+
 trait Area {
     func area(self): int
 }
@@ -8,9 +12,24 @@ trait Perimeter {
     func perimeter(self): int
 }
 
+trait Display {
+    func display(self): void
+}
+
+trait Scalable<T> {
+    func scale(self, factor: T): void
+}
+
 class Rectangle {
     let width: int
     let height: int
+
+    func new(width: int, height: int): Rectangle {
+        let r: Rectangle
+        r.width = width
+        r.height = height
+        return r
+    }
 }
 
 class Square {
@@ -24,6 +43,12 @@ class Circle {
 impl Area for Rectangle {
     func area(self): int {
         return self.width * self.height
+    }
+}
+
+impl Display for Rectangle {
+    func display(self): void {
+        printf("Rectangle(width: %d, height: %d)\n", self.width, self.height)
     }
 }
 
@@ -57,24 +82,48 @@ impl Perimeter for Circle {
     }
 }
 
+impl Scalable<int> for Rectangle {
+    func scale(self, factor: int): void {
+        self.width = self.width * factor
+        self.height = self.height * factor
+    }
+}
+
+impl Scalable<int> for Square {
+    func scale(self, factor: int): void {
+        self.side = self.side * factor
+    }
+}
+
+impl Scalable<int> for Circle {
+    func scale(self, factor: int): void {
+        self.radius = self.radius * factor
+    }
+}
+
 func double_area<T is Area>(shape: T): int {
     return shape.area() * 2
 }
 
-func sum_dimensions<T is Area>(a: T, b: T): int {
-    return a.area() + b.area()
+func sum_areas<T is Area>(shapes: Slice<T>): int {
+    let total: int = 0
+    let i: uint64 = 0
+    while i < shapes.len() {
+        let shape: T = shapes.get(i)
+        total = total + shape.area()
+        i = i + 1
+    }
+    return total
 }
 
 external func main(): int32 {
-    let rect: Rectangle
-    rect.width = 10
-    rect.height = 5
+    let rect = Rectangle::new(10, 5)
+    let rect2 = Rectangle::new(3, 4)
+    let rect3 = Rectangle::new(2, 2)
 
-    let sq: Square
-    sq.side = 4
+    let sq = Square { side: 4 }
 
-    let circ: Circle
-    circ.radius = 3
+    let circ = Circle { radius: 3 }
 
     let rect_area: int = rect.area()
     let rect_perim: int = rect.perimeter()
@@ -87,7 +136,26 @@ external func main(): int32 {
 
     let doubled: int = double_area<Rectangle>(rect)
 
+    let rects: [3]Rectangle
+    rects[0] = rect
+    rects[1] = rect2
+    rects[2] = rect3
+
+    let rects_ptr: Rectangle* = &rects as Rectangle*
+    let rects_slice: Slice<Rectangle> = Slice::from_raw<Rectangle>(rects_ptr, 3)
+    let rect_sum: int = sum_areas<Rectangle>(rects_slice)
+
     let total: int = rect_area + sq_area + circ_area
 
-    return total
+    printf("Rectangle area: %d\n", rect_area)
+    printf("Rectangle perimeter: %d\n", rect_perim)
+    printf("Square area: %d\n", sq_area)
+    printf("Square perimeter: %d\n", sq_perim)
+    printf("Circle area: %d\n", circ_area)
+    printf("Circle perimeter: %d\n", circ_perim)
+    printf("Doubled area: %d\n", doubled)
+    printf("Sum of rectangle areas: %d\n", rect_sum)
+    printf("Total: %d\n", total)
+
+    return total as int32
 }

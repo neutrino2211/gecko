@@ -1,0 +1,16 @@
+[package]
+name = "traits_example"
+version = "0.1.0"
+
+[build]
+backend = "c"
+default_target = "x86_64-apple-darwin"
+
+[build.entries]
+shapes = "shapes.gecko"
+
+[build.profiles.debug]
+optimize = false
+
+[build.profiles.release]
+optimize = true

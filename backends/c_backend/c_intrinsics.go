@@ -21,6 +21,8 @@ func (impl *CBackendImplementation) IntrinsicToCString(i *tokens.Intrinsic, scop
 		return impl.intrinsicDeref(i, scope)
 	case "is_null":
 		return impl.intrinsicIsNull(i, scope)
+	case "is_not_null":
+		return impl.intrinsicIsNotNull(i, scope)
 	case "size_of":
 		return impl.intrinsicSizeOf(i, scope)
 	case "align_of":
@@ -103,7 +105,17 @@ func (impl *CBackendImplementation) intrinsicIsNull(i *tokens.Intrinsic, scope *
 		return "0"
 	}
 	ptr := impl.ExpressionToCString(i.Args[0], scope)
-	return fmt.Sprintf("(%s == (void*)0)", ptr)
+	return fmt.Sprintf("(%s == NULL)", ptr)
+}
+
+// @is_not_null(ptr) - check if pointer is not null (enables type narrowing)
+func (impl *CBackendImplementation) intrinsicIsNotNull(i *tokens.Intrinsic, scope *ast.Ast) string {
+	if len(i.Args) != 1 {
+		scope.ErrorScope.NewCompileTimeError("Intrinsic Error", "@is_not_null requires exactly 1 argument", i.Pos)
+		return "0"
+	}
+	ptr := impl.ExpressionToCString(i.Args[0], scope)
+	return fmt.Sprintf("(%s != NULL)", ptr)
 }
 
 // @size_of<T>() - size of type in bytes

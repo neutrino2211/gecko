@@ -1,0 +1,26 @@
+package main
+
+@add_hook(.add)
+trait Add<T> {
+    func add(self, other: T): T
+}
+
+class Counter {
+    let value: int32
+}
+
+impl Add<Counter> for Counter {
+    func add(self, other: Counter): Counter {
+        return Counter { value: self.value + other.value }
+    }
+}
+
+external func main(): int32 {
+    let a: Counter = Counter { value: 10 }
+    let b: Counter = Counter { value: 32 }
+
+    // This should use the add hook: a.add(b)
+    let c: Counter = a + b
+
+    return c.value  // Expected: 42
+}

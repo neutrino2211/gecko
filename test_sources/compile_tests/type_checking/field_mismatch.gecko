@@ -1,0 +1,11 @@
+package type_check
+
+class Circle {
+    let radius: int
+}
+
+func main(): int {
+    let c = Circle { radius: 5 }
+    c.radius = "hello"
+    return 0
+}

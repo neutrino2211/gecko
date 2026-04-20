@@ -1,0 +1,23 @@
+package enums
+
+enum Color {
+    Red
+    Green
+    Blue
+}
+
+enum Status {
+    Pending
+    Running
+    Complete
+    Failed
+}
+
+func get_color(): Color {
+    return Color.Red
+}
+
+external func main(): int32 {
+    let c: Color = Color.Blue
+    return c as int32
+}

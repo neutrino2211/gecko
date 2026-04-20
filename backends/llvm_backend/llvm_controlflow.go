@@ -429,6 +429,12 @@ func (impl *LLVMBackendImplementation) NewContinue(scope *ast.Ast) {
 	// TODO: Implement proper LLVM continue with basic block jumps
 }
 
+// NewCImport handles cimport statements (no-op for LLVM - linking handled externally)
+func (impl *LLVMBackendImplementation) NewCImport(scope *ast.Ast, cimport *tokens.CImport) {
+	// LLVM backend handles C interop through extern declarations, not includes
+	// The WithObject/WithLibrary info can be used by the linker stage
+}
+
 // IntrinsicStatement handles intrinsic calls as statements
 func (impl *LLVMBackendImplementation) IntrinsicStatement(scope *ast.Ast, i *tokens.Intrinsic) {
 	// TODO: Implement LLVM intrinsics

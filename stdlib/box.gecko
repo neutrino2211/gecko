@@ -17,7 +17,7 @@ declare external func free(ptr: void*): void
 /// let val: int32 = b.get()
 /// b.drop()  // Manual cleanup (automatic in future)
 /// ```
-class Box<T> {
+public class Box<T> {
     /// Internal pointer to heap-allocated memory.
     let ptr: uint64
 

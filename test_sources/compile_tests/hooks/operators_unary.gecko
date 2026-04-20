@@ -1,0 +1,30 @@
+package main
+
+// Unary operator traits with hooks
+@neg_hook(.neg)
+trait Neg {
+    func neg(self): Neg
+}
+
+class SignedValue {
+    let n: int32
+}
+
+impl Neg for SignedValue {
+    func neg(self): SignedValue {
+        return SignedValue { n: 0 - self.n }
+    }
+}
+
+external func main(): int32 {
+    let positive: SignedValue = SignedValue { n: 42 }
+
+    // Negate: -42
+    let negative: SignedValue = -positive
+
+    // Return absolute value of negated (should be 42)
+    if negative.n < 0 {
+        return 0 - negative.n
+    }
+    return negative.n
+}

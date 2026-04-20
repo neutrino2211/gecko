@@ -2,32 +2,83 @@
 package tokens
 
 import (
-	"github.com/alecthomas/participle/lexer"
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/neutrino2211/gecko/config"
 )
 
 type baseToken struct {
-	Pos   lexer.Position
-	RefID string
+	Pos    lexer.Position
+	EndPos lexer.Position
+	RefID  string
 }
 
-// Attribute represents a compile-time attribute like @packed or @section(".text")
+// Attribute represents a compile-time attribute like @packed, @section(".text"), or @drop_hook(.drop)
 type Attribute struct {
 	baseToken
-	Name  string `parser:"'@' @Ident"`
-	Value string `parser:"[ '(' @String ')' ]"`
+	Name string          `parser:"'@' @Ident"`
+	Args []*AttributeArg `parser:"[ '(' [ @@ { ',' @@ } ] ')' ]"`
+}
+
+// AttributeArg represents an argument to an attribute - either a string or a method reference
+type AttributeArg struct {
+	baseToken
+	String string `parser:"@String"`
+	Method string `parser:"| '.' @Ident"`
+}
+
+// GetStringValue returns the first string argument value (for backwards compat with @section(".text"))
+func (a *Attribute) GetStringValue() string {
+	if len(a.Args) > 0 && a.Args[0].String != "" {
+		v := a.Args[0].String
+		// Remove quotes from the value
+		if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+			v = v[1 : len(v)-1]
+		}
+		return v
+	}
+	return ""
+}
+
+// GetHookMethods returns all method references (for hook attributes like @drop_hook(.drop))
+func (a *Attribute) GetHookMethods() []string {
+	var methods []string
+	for _, arg := range a.Args {
+		if arg.Method != "" {
+			methods = append(methods, arg.Method)
+		}
+	}
+	return methods
 }
 
 // File tokens
 
+// DirectoryImport represents a lazily-resolved directory import
+type DirectoryImport struct {
+	Path       string   // Full import path (e.g., "std.collections")
+	DirPath    string   // Filesystem path to the directory
+	UseObjects []string // Specific symbols to import (empty = all public)
+}
+
 type File struct {
-	PackageName string   `parser:"['package' @Ident]"`
-	Entries     []*Entry `parser:"@@*"`
-	Imports     []*File
-	Config      *config.CompileCfg
-	Name        string
-	Path        string
-	Content     string
+	Attributes       []*Attribute `parser:"{ @@ }"`
+	PackageName      string       `parser:"['package' @Ident]"`
+	Entries          []*Entry     `parser:"@@*"`
+	Imports          []*File
+	DirectoryImports []*DirectoryImport // Lazily resolved directory imports
+	Config           *config.CompileCfg
+	Name             string
+	Path             string
+	Content          string
+}
+
+// GetBackend returns the backend specified by @backend attribute, or empty string if not specified
+func (f *File) GetBackend() string {
+	for _, attr := range f.Attributes {
+		if attr.Name == "backend" {
+			return attr.GetStringValue()
+		}
+	}
+	return ""
 }
 
 type CImport struct {
@@ -39,8 +90,28 @@ type CImport struct {
 
 type Import struct {
 	baseToken
-	Package string   `parser:"'import' @Ident"`
+	Path    []string `parser:"'import' @Ident { '.' @Ident }"`
 	Objects []string `parser:"['use' '{' [ @Ident { ',' @Ident } ] '}']"`
+}
+
+// Package returns the full dot-separated import path as a string
+func (i *Import) Package() string {
+	if len(i.Path) == 0 {
+		return ""
+	}
+	result := i.Path[0]
+	for _, p := range i.Path[1:] {
+		result += "." + p
+	}
+	return result
+}
+
+// ModuleName returns the last component of the import path (the module name)
+func (i *Import) ModuleName() string {
+	if len(i.Path) == 0 {
+		return ""
+	}
+	return i.Path[len(i.Path)-1]
 }
 
 type Entry struct {
@@ -49,21 +120,27 @@ type Entry struct {
 	VoidReturn     *bool           `parser:"| @'return'"`
 	Break          *bool           `parser:"| @'break'"`
 	Continue       *bool           `parser:"| @'continue'"`
+	// Implementation must come before Assignment to prevent 'impl' being parsed as identifier
+	Implementation *Implementation `parser:"| @@"`
 	Assignment     *Assignment     `parser:"| @@"`
 	ElseIf         *ElseIf         `parser:"| @@"`
 	Else           *Else           `parser:"| @@"`
 	If             *If             `parser:"| @@"`
-	Intrinsic      *Intrinsic      `parser:"| @@"`
-	FuncCall       *FuncCall       `parser:"| @@"`
+	// Declarations with optional attributes must come before Intrinsic
+	// so @attr func/class/trait is parsed as declaration, not intrinsic
 	Class          *Class          `parser:"| @@"`
 	Trait          *Trait          `parser:"| @@"`
-	Field          *Field          `parser:"| @@"`
 	Method         *Method         `parser:"| @@"`
-	Implementation *Implementation `parser:"| @@"`
+	Field          *Field          `parser:"| @@"`
+	Declaration    *Declaration    `parser:"| @@"`
 	Enum           *Enum           `parser:"| @@"`
+	// Intrinsic, MethodCall, and FuncCall must come after declarations
+	// MethodCall handles chained calls like self.field.method()
+	Intrinsic      *Intrinsic      `parser:"| @@"`
+	MethodCall     *MethodCall     `parser:"| @@"`
+	FuncCall       *FuncCall       `parser:"| @@"`
 	Loop           *Loop           `parser:"| @@"`
 	CImport        *CImport        `parser:"| @@"`
-	Declaration    *Declaration    `parser:"| @@"`
 	Import         *Import         `parser:"| @@"`
 	Asm            *Asm            `parser:"| @@"`
 }
@@ -72,8 +149,17 @@ type Entry struct {
 
 type TypeParam struct {
 	baseToken
-	Name  string `parser:"@Ident"`
-	Trait string `parser:"[ 'is' @Ident ]"`
+	Name   string   `parser:"@Ident"`
+	Trait  string   `parser:"[ 'is' @Ident"` // First trait (kept for backwards compatibility)
+	Traits []string `parser:"    { '&' @Ident } ]"`
+}
+
+// AllTraits returns all trait constraints (Trait + Traits)
+func (t *TypeParam) AllTraits() []string {
+	if t.Trait == "" {
+		return nil
+	}
+	return append([]string{t.Trait}, t.Traits...)
 }
 
 // Class tokens
@@ -187,10 +273,12 @@ type Unary struct {
 }
 
 // Cast represents a type cast expression using the 'as' keyword
-// Example: 0xB8000 as *uint16, or ptr as uint64
+// Example: 0xB8000 as uint16*, or ptr as uint64
+// Use 'as!' for trusted casts that bypass refinement checking
 type Cast struct {
 	baseToken
-	Type *TypeRef `parser:"'as' @@"`
+	Trusted bool     `parser:"'as' @'!'?"`
+	Type    *TypeRef `parser:"@@"`
 }
 
 type Primary struct {
@@ -217,6 +305,8 @@ type Enum struct {
 type Trait struct {
 	baseToken
 	DocComment []string               `parser:"{ @DocComment }"`
+	Attributes []*Attribute           `parser:"{ @@ }"`
+	Visibility string                 `parser:"[ @'private' | @'public' | @'protected' ]"`
 	Name       string                 `parser:"'trait' @Ident"`
 	TypeParams []*TypeParam           `parser:"[ '<' @@ { ',' @@ } '>' ]"`
 	Fields     []*ImplementationField `parser:"'{' { @@ } '}'"`
@@ -224,12 +314,90 @@ type Trait struct {
 
 type Implementation struct {
 	baseToken
-	Visibility string                 `parser:"[ @'private' | @'public' | @'protected' ]"`
-	Default    bool                   `parser:"[ @'default' ]"`
-	Name       string                 `parser:"'impl' @Ident"`
-	TypeArgs   []*TypeRef             `parser:"[ '<' @@ { ',' @@ } '>' ]"`
-	For        string                 `parser:"['for' @Ident]"`
-	Fields     []*ImplementationField `parser:"[ '{' { @@ } '}' ]"`
+	Visibility  string                 `parser:"[ @'private' | @'public' | @'protected' ]"`
+	Default     bool                   `parser:"[ @'default' ]"`
+	Generic     *GenericImpl           `parser:"'impl' ( @@"`
+	NonGeneric  *NonGenericImpl        `parser:"       | @@ )"`
+}
+
+// GenericImpl handles impl<T> Trait<Args> for Class<Args>
+type GenericImpl struct {
+	baseToken
+	TypeParams  []*TypeParam           `parser:"'<' @@ { ',' @@ } '>'"`
+	Name        string                 `parser:"@Ident"`
+	TypeArgs    []*TypeRef             `parser:"[ '<' @@ { ',' @@ } '>' ]"`
+	For         string                 `parser:"[ 'for' @Ident"`
+	ForTypeArgs []*TypeRef             `parser:"  [ '<' @@ { ',' @@ } '>' ] ]"`
+	Fields      []*ImplementationField `parser:"[ '{' { @@ } '}' ]"`
+}
+
+// NonGenericImpl handles impl Trait<Args> for Class<Args> (no impl-level type params)
+type NonGenericImpl struct {
+	baseToken
+	Name        string                 `parser:"@Ident"`
+	TypeArgs    []*TypeRef             `parser:"[ '<' @@ { ',' @@ } '>' ]"`
+	For         string                 `parser:"[ 'for' @Ident"`
+	ForTypeArgs []*TypeRef             `parser:"  [ '<' @@ { ',' @@ } '>' ] ]"`
+	Fields      []*ImplementationField `parser:"[ '{' { @@ } '}' ]"`
+}
+
+// Accessor methods for Implementation to work with either Generic or NonGeneric
+
+func (i *Implementation) GetTypeParams() []*TypeParam {
+	if i.Generic != nil {
+		return i.Generic.TypeParams
+	}
+	return nil
+}
+
+func (i *Implementation) GetName() string {
+	if i.Generic != nil {
+		return i.Generic.Name
+	}
+	if i.NonGeneric != nil {
+		return i.NonGeneric.Name
+	}
+	return ""
+}
+
+func (i *Implementation) GetTypeArgs() []*TypeRef {
+	if i.Generic != nil {
+		return i.Generic.TypeArgs
+	}
+	if i.NonGeneric != nil {
+		return i.NonGeneric.TypeArgs
+	}
+	return nil
+}
+
+func (i *Implementation) GetFor() string {
+	if i.Generic != nil {
+		return i.Generic.For
+	}
+	if i.NonGeneric != nil {
+		return i.NonGeneric.For
+	}
+	return ""
+}
+
+func (i *Implementation) GetForTypeArgs() []*TypeRef {
+	if i.Generic != nil {
+		return i.Generic.ForTypeArgs
+	}
+	if i.NonGeneric != nil {
+		return i.NonGeneric.ForTypeArgs
+	}
+	return nil
+}
+
+func (i *Implementation) GetFields() []*ImplementationField {
+	if i.Generic != nil {
+		return i.Generic.Fields
+	}
+	if i.NonGeneric != nil {
+		return i.NonGeneric.Fields
+	}
+	return nil
 }
 
 type Field struct {
@@ -267,10 +435,12 @@ type ExternalType struct {
 
 type ImplementationField struct {
 	baseToken
-	Name      string   `parser:"'func' @Ident"`
-	Arguments []*Value `parser:"[ '(' [ @@ { ',' @@ } ] ')' ]"`
-	Type      *TypeRef `parser:"[ ':' @@ ]"`
-	Value     []*Entry `parser:"[ '{' @@* '}' ]"`
+	DocComment []string `parser:"{ @DocComment }"`
+	Visibility string   `parser:"[ @'private' | @'public' | @'protected' ]"`
+	Name       string   `parser:"'func' @Ident"`
+	Arguments  []*Value `parser:"[ '(' [ @@ { ',' @@ } ] ')' ]"`
+	Type       *TypeRef `parser:"[ ':' @@ ]"`
+	Value      []*Entry `parser:"[ '{' @@* '}' ]"`
 }
 
 type Method struct {
@@ -283,6 +453,7 @@ type Method struct {
 	TypeParams []*TypeParam `parser:"[ '<' @@ { ',' @@ } '>' ]"`
 	Arguments  []*Value     `parser:"'(' [ @@ { ',' @@ } ] ')'"`
 	Type       *TypeRef     `parser:"[ ':' @@ ]"`
+	Throws     *TypeRef     `parser:"[ 'throws' @@ ]"`
 	Value      []*Entry     `parser:"[ '{' @@* '}' ]"`
 }
 
@@ -312,7 +483,8 @@ type TypeRef struct {
 	Array    *TypeRef   `parser:"( '[' @@ ']'"`
 	Size     *SizeDef   `parser:" | @@"`
 	FuncType *FuncType  `parser:" | @@"`
-	Type     string     `parser:" | @Ident)"`
+	Module   string     `parser:" | ( @Ident '.'"`
+	Type     string     `parser:"     @Ident ) | @Ident)"`
 	TypeArgs []*TypeRef `parser:"[ '<' @@ { ',' @@ } '>' ]"`
 	Trait    string     `parser:"[ 'is' @Ident ]"`
 	Const    bool       `parser:"[ @'!' ]"`
@@ -325,6 +497,7 @@ type FuncType struct {
 	baseToken
 	ParamTypes []*TypeRef `parser:"'func' '(' [ @@ { ',' @@ } ] ')'"`
 	ReturnType *TypeRef   `parser:"[ ':' @@ ]"`
+	Throws     *TypeRef   `parser:"[ 'throws' @@ ]"`
 }
 
 type Literal struct {
@@ -334,29 +507,35 @@ type Literal struct {
 	FuncCall     *FuncCall         `parser:" | @@"`
 	Bool         string            `parser:" | @( 'true' | 'false' )"`
 	String       string            `parser:" | @String"`
-	StructType   string            `parser:" | ( @Ident"`
-	StructFields []*ObjectKeyValue `parser:"     '{' [ @@ { ',' @@ } ] '}' )"`
-	SymbolModule string            `parser:" | ( @Ident '.'"`
-	Symbol       string            `parser:"     @Ident ) | @Ident"`
+	StructType     string            `parser:" | ( @Ident"`
+	StructTypeArgs []*TypeRef       `parser:"     [ '<' @@ { ',' @@ } '>' ]"`
+	StructFields   []*ObjectKeyValue `parser:"     '{' [ @@ { ',' @@ } ] '}' )"`
+	SymbolModule string            // Populated during semantic analysis for module.symbol patterns
+	Symbol       string            `parser:" | @Ident"`
 	Number       string            `parser:" | @Number"`
 	Object       []*ObjectKeyValue `parser:" | '{' [ @@ { ',' @@ } ] '}'"`
 	Array        []*Literal        `parser:" | '[' [ @@ { ',' @@ } ] ']' )"`
-	ArrayIndex   *Literal          `parser:"[ '[' @@ ']' ]"`
 	Chain        []*ChainAccess    `parser:"{ @@ }"`
+	ArrayIndex   *Expression       `parser:"[ '[' @@ ']' ]"`
 }
 
 // ChainAccess represents a chained field or method access: .field or .method()
 type ChainAccess struct {
 	baseToken
-	Name       string      `parser:"'.' @Ident"`
-	TypeArgs   []*TypeRef  `parser:"[ '<' @@ { ',' @@ } '>' ]"`
-	HasParens  bool        `parser:"[ @'('"`
-	Args       []*Argument `parser:"  [ @@ { ',' @@ } ] ')' ]"`
+	Name      string      `parser:"'.' @Ident"`
+	TypeArgs  []*TypeRef  `parser:"[ '<' @@ { ',' @@ } '>' ]"`
+	HasParens bool        `parser:"[ @'('"`
+	Args      []*Argument `parser:"  [ @@ { ',' @@ } ] ')' ]"`
 }
 
 // IsMethodCall returns true if this chain access is a method call (has parentheses)
 func (c *ChainAccess) IsMethodCall() bool {
 	return c.HasParens
+}
+
+// GetArgs returns the method call arguments
+func (c *ChainAccess) GetArgs() []*Argument {
+	return c.Args
 }
 
 // Intrinsic represents a compiler intrinsic call: @name(args) or @name<T>(args)
@@ -367,10 +546,27 @@ type Intrinsic struct {
 	Args     []*Expression `parser:"'(' [ @@ { ',' @@ } ] ')'"`
 }
 
+// MethodCall represents a chained method call as a statement: base.field.method()
+// The last chain element must be a method call (with parentheses)
+type MethodCall struct {
+	baseToken
+	Base  string         `parser:"@Ident"`
+	Chain []*ChainAccess `parser:"@@ { @@ }"`
+}
+
+// IsValid returns true if the method call is valid (last chain element is a method call)
+func (m *MethodCall) IsValid() bool {
+	if len(m.Chain) == 0 {
+		return false
+	}
+	return m.Chain[len(m.Chain)-1].IsMethodCall()
+}
+
 type FuncCall struct {
 	baseToken
-	// Static type call: Type<Args>::function() or Type::function()
-	StaticType     string     `parser:"[ @Ident"`
+	// Static type call: module.Type<Args>::function() or Type::function()
+	StaticModule   string     `parser:"[ ( @Ident '.')?"`
+	StaticType     string     `parser:"    @Ident"`
 	StaticTypeArgs []*TypeRef `parser:"  [ '<' @@ { ',' @@ } '>' ] '::' ]"`
 	// Module/instance call: module.function()
 	Module    string      `parser:"[ @Ident '.' ]"`

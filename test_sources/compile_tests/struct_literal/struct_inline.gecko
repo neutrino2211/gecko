@@ -1,9 +1,11 @@
+package struct_inline
+
 class Point {
     let x: int32
     let y: int32
 }
 
-func main(): int {
+external func main(): int32 {
     let p: Point = Point {
         x: 10,
         y: 20

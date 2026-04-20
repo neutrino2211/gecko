@@ -1,0 +1,15 @@
+package shapes
+
+public class Circle {
+    let radius: int32
+}
+
+impl Circle {
+    public func new(r: int32): Circle {
+        return Circle { radius: r }
+    }
+
+    public func area(self): int32 {
+        return self.radius * self.radius * 3
+    }
+}

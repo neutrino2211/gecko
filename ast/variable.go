@@ -11,6 +11,7 @@ type Variable struct {
 	IsVolatile bool
 	IsExternal bool
 	IsArgument bool
+	IsGlobal   bool // Explicit flag for global variables (vs inferred from scope)
 	Parent     *Ast
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "gecko-lang",
   "displayName": "Gecko",
-  "description": "Syntax highlighting for the Gecko programming language",
+  "description": "Language support for the Gecko programming language",
   "version": "0.1.0",
   "publisher": "neutrino2211",
   "repository": {
@@ -14,7 +14,17 @@
   "categories": [
     "Programming Languages"
   ],
+  "activationEvents": [
+    "onLanguage:gecko"
+  ],
+  "main": "./out/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "gecko.restartLsp",
+        "title": "Gecko: Restart Language Server"
+      }
+    ],
     "languages": [
       {
         "id": "gecko",
@@ -25,11 +35,7 @@
         "extensions": [
           ".gecko"
         ],
-        "configuration": "./language-configuration.json",
-        "icon": {
-          "light": "./icons/gecko.png",
-          "dark": "./icons/gecko.png"
-        }
+        "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
@@ -38,6 +44,36 @@
         "scopeName": "source.gecko",
         "path": "./syntaxes/gecko.tmLanguage.json"
       }
-    ]
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Gecko",
+      "properties": {
+        "gecko.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the Gecko language server"
+        },
+        "gecko.lsp.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the gecko-lsp binary (leave empty to use PATH)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.0.0",
+    "@vscode/vsce": "^2.22.0"
   }
 }

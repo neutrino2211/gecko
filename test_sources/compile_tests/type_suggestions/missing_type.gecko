@@ -1,0 +1,9 @@
+package main
+
+func get_string(): String {
+    return String::new()
+}
+
+external func main(): int32 {
+    return 0
+}

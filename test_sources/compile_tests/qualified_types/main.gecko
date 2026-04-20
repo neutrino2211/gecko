@@ -1,0 +1,8 @@
+package main
+
+import shapes
+
+external func main(): int32 {
+    let c: shapes.Circle = shapes.Circle::new(5)
+    return c.area()
+}

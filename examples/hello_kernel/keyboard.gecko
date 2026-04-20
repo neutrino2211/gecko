@@ -1,0 +1,96 @@
+package keyboard
+
+import io
+
+const DATA_PORT: uint16 = 0x60
+const STATUS_PORT: uint16 = 0x64
+
+const KEY_RELEASED: uint8 = 0x80
+
+public func has_key(): bool {
+    let status: uint8 = io.inb(STATUS_PORT)
+    return (status & 1) != 0
+}
+
+public func read_scancode(): uint8 {
+    return io.inb(DATA_PORT)
+}
+
+public func scancode_to_char(scancode: uint8): uint8 {
+    if scancode >= KEY_RELEASED {
+        return 0
+    }
+
+    if scancode == 0x1C { return 10 }  // Enter -> newline
+    if scancode == 0x0E { return 8 }   // Backspace
+    if scancode == 0x39 { return 32 }  // Space
+
+    // Number row: 1-9, 0
+    if scancode == 0x02 { return 49 }  // 1
+    if scancode == 0x03 { return 50 }  // 2
+    if scancode == 0x04 { return 51 }  // 3
+    if scancode == 0x05 { return 52 }  // 4
+    if scancode == 0x06 { return 53 }  // 5
+    if scancode == 0x07 { return 54 }  // 6
+    if scancode == 0x08 { return 55 }  // 7
+    if scancode == 0x09 { return 56 }  // 8
+    if scancode == 0x0A { return 57 }  // 9
+    if scancode == 0x0B { return 48 }  // 0
+
+    // Letters (lowercase)
+    if scancode == 0x10 { return 113 } // q
+    if scancode == 0x11 { return 119 } // w
+    if scancode == 0x12 { return 101 } // e
+    if scancode == 0x13 { return 114 } // r
+    if scancode == 0x14 { return 116 } // t
+    if scancode == 0x15 { return 121 } // y
+    if scancode == 0x16 { return 117 } // u
+    if scancode == 0x17 { return 105 } // i
+    if scancode == 0x18 { return 111 } // o
+    if scancode == 0x19 { return 112 } // p
+    if scancode == 0x1E { return 97 }  // a
+    if scancode == 0x1F { return 115 } // s
+    if scancode == 0x20 { return 100 } // d
+    if scancode == 0x21 { return 102 } // f
+    if scancode == 0x22 { return 103 } // g
+    if scancode == 0x23 { return 104 } // h
+    if scancode == 0x24 { return 106 } // j
+    if scancode == 0x25 { return 107 } // k
+    if scancode == 0x26 { return 108 } // l
+    if scancode == 0x2C { return 122 } // z
+    if scancode == 0x2D { return 120 } // x
+    if scancode == 0x2E { return 99 }  // c
+    if scancode == 0x2F { return 118 } // v
+    if scancode == 0x30 { return 98 }  // b
+    if scancode == 0x31 { return 110 } // n
+    if scancode == 0x32 { return 109 } // m
+
+    // Punctuation
+    if scancode == 0x0C { return 45 }  // -
+    if scancode == 0x0D { return 61 }  // =
+    if scancode == 0x1A { return 91 }  // [
+    if scancode == 0x1B { return 93 }  // ]
+    if scancode == 0x27 { return 59 }  // ;
+    if scancode == 0x28 { return 39 }  // '
+    if scancode == 0x33 { return 44 }  // ,
+    if scancode == 0x34 { return 46 }  // .
+    if scancode == 0x35 { return 47 }  // /
+
+    return 0
+}
+
+public func poll_char(): uint8 {
+    if has_key() {
+        let sc: uint8 = read_scancode()
+        return scancode_to_char(sc)
+    }
+    return 0
+}
+
+public func wait_char(): uint8 {
+    let c: uint8 = 0
+    while c == 0 {
+        c = poll_char()
+    }
+    return c
+}

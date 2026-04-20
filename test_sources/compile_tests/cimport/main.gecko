@@ -1,0 +1,7 @@
+package cimport_test
+
+cimport "<stdio.h>"
+
+external func main(): int32 {
+    return 0
+}

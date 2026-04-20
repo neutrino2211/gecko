@@ -19,7 +19,7 @@ declare external func memcpy(dest: void*, src: void*, n: uint64): void*
 /// let sum = v.get(0) + v.get(1) + v.get(2)  // 60
 /// v.drop()
 /// ```
-class Vec<T> {
+public class Vec<T> {
     /// Pointer to the element data.
     let data: uint64
     /// Number of elements in the vector.

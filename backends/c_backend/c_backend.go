@@ -364,6 +364,7 @@ func (impls *CBackendImplementation) GenerateClassDef(scope *ast.Ast, c *tokens.
 
 	var structDef string
 	dependencies := []string{}
+	valueDependencies := []string{}
 
 	// Check for packed attribute
 	isPacked := tokens.IsPacked(c.Attributes)
@@ -391,6 +392,10 @@ func (impls *CBackendImplementation) GenerateClassDef(scope *ast.Ast, c *tokens.
 				if depType := extractDependencyType(elemType); depType != "" {
 					dependencies = append(dependencies, depType)
 				}
+				// Arrays of values create value dependencies
+				if valDepType := extractValueDependencyType(elemType); valDepType != "" {
+					valueDependencies = append(valueDependencies, valDepType)
+				}
 			} else {
 				fieldType := TypeRefToCType(f.Field.Type, scope)
 				// Substitute type parameters if this is a generic instantiation
@@ -402,6 +407,10 @@ func (impls *CBackendImplementation) GenerateClassDef(scope *ast.Ast, c *tokens.
 				// Track dependency on field type (including pointer types, since we use typedefs)
 				if depType := extractDependencyType(fieldType); depType != "" {
 					dependencies = append(dependencies, depType)
+				}
+				// Track value dependencies (non-pointer) for cycle detection
+				if valDepType := extractValueDependencyType(fieldType); valDepType != "" {
+					valueDependencies = append(valueDependencies, valDepType)
 				}
 			}
 			structDef += fieldDecl
@@ -428,14 +437,16 @@ func (impls *CBackendImplementation) GenerateClassDef(scope *ast.Ast, c *tokens.
 	// Add to both Types (for backward compat) and StructDefs (for sorting)
 	info.Types = append(info.Types, structDef)
 	info.StructDefs = append(info.StructDefs, &StructDefinition{
-		Name:         name,
-		Code:         structDef,
-		Dependencies: dependencies,
+		Name:              name,
+		Code:              structDef,
+		Dependencies:      dependencies,
+		ValueDependencies: valueDependencies,
+		Pos:               c.Pos,
 	})
 }
 
 // extractDependencyType extracts a type name from a C type string that we depend on.
-// Returns empty string for primitives or pointer types.
+// Returns empty string for primitives. Strips pointer suffixes since typedefs need to exist.
 func extractDependencyType(cType string) string {
 	// Skip primitive C types
 	primitives := map[string]bool{
@@ -452,6 +463,32 @@ func extractDependencyType(cType string) string {
 	for strings.HasSuffix(cleanType, "*") {
 		cleanType = strings.TrimSuffix(cleanType, "*")
 		cleanType = strings.TrimSpace(cleanType)
+	}
+
+	if primitives[cleanType] {
+		return ""
+	}
+
+	return cleanType
+}
+
+// extractValueDependencyType extracts a type name only for VALUE (non-pointer) dependencies.
+// Returns empty string for primitives and pointer types.
+// Used for circular dependency detection - pointer cycles are allowed, value cycles are not.
+func extractValueDependencyType(cType string) string {
+	// Skip primitive C types
+	primitives := map[string]bool{
+		"void": true, "int": true, "int8_t": true, "int16_t": true, "int32_t": true, "int64_t": true,
+		"uint8_t": true, "uint16_t": true, "uint32_t": true, "uint64_t": true,
+		"float": true, "double": true, "const char*": true, "char": true,
+	}
+
+	// Remove volatile qualifier
+	cleanType := strings.TrimPrefix(cType, "volatile ")
+
+	// Pointers don't create value dependencies (they have fixed size)
+	if strings.HasSuffix(cleanType, "*") {
+		return ""
 	}
 
 	if primitives[cleanType] {

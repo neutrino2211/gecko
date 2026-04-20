@@ -3,6 +3,7 @@ package cbackend
 import (
 	"strings"
 
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/interfaces"
 	"github.com/neutrino2211/gecko/tokens"
@@ -14,9 +15,11 @@ var CurrentTypeState *ast.TypeState
 
 // StructDefinition holds a struct definition with its dependencies
 type StructDefinition struct {
-	Name         string   // The struct name (e.g., "Shell")
-	Code         string   // The full typedef struct code
-	Dependencies []string // Types this struct depends on (e.g., ["Console"])
+	Name              string         // The struct name (e.g., "Shell")
+	Code              string         // The full typedef struct code
+	Dependencies      []string       // All types this struct depends on, including pointers (for ordering)
+	ValueDependencies []string       // Non-pointer dependencies only (for cycle detection - these cause infinite size)
+	Pos               lexer.Position // Source position for error reporting
 }
 
 // CScopeInformation holds per-scope C code generation state
@@ -293,6 +296,80 @@ func TopologicalSortStructs(structs []*StructDefinition) []*StructDefinition {
 	}
 
 	return result
+}
+
+// CircularDependency represents a cycle in type dependencies
+type CircularDependency struct {
+	Types []*StructDefinition // Types involved in the cycle
+}
+
+// DetectCircularValueDependencies checks for cycles in non-pointer (value) dependencies.
+// These cycles cause infinite struct sizes and are compile errors.
+// Returns a list of cycles found, empty if no cycles.
+func DetectCircularValueDependencies(structs []*StructDefinition) []CircularDependency {
+	if len(structs) == 0 {
+		return nil
+	}
+
+	// Build maps for quick lookup
+	nameToStruct := make(map[string]*StructDefinition)
+	for _, s := range structs {
+		nameToStruct[s.Name] = s
+	}
+
+	// Build adjacency list from VALUE dependencies only
+	adj := make(map[string][]string)
+	for _, s := range structs {
+		for _, dep := range s.ValueDependencies {
+			if _, exists := nameToStruct[dep]; exists {
+				adj[s.Name] = append(adj[s.Name], dep)
+			}
+		}
+	}
+
+	// Track visited state for cycle detection
+	// 0 = unvisited, 1 = in current path (gray), 2 = fully visited (black)
+	color := make(map[string]int)
+	parent := make(map[string]string)
+	var cycles []CircularDependency
+
+	// DFS to find cycles
+	var dfs func(node string) bool
+	dfs = func(node string) bool {
+		color[node] = 1 // Mark as being visited
+
+		for _, neighbor := range adj[node] {
+			if color[neighbor] == 1 {
+				// Found a cycle - reconstruct it
+				cycle := []*StructDefinition{nameToStruct[neighbor]}
+				curr := node
+				for curr != neighbor {
+					cycle = append([]*StructDefinition{nameToStruct[curr]}, cycle...)
+					curr = parent[curr]
+				}
+				cycles = append(cycles, CircularDependency{Types: cycle})
+				return true
+			}
+			if color[neighbor] == 0 {
+				parent[neighbor] = node
+				if dfs(neighbor) {
+					return true
+				}
+			}
+		}
+
+		color[node] = 2 // Mark as fully visited
+		return false
+	}
+
+	// Run DFS from each unvisited node
+	for _, s := range structs {
+		if color[s.Name] == 0 {
+			dfs(s.Name)
+		}
+	}
+
+	return cycles
 }
 
 // FormatFuncPointerDecl formats a function pointer declaration with variable name

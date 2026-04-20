@@ -136,6 +136,9 @@ var compileTests = []compileTest{
 	// Multiple trait constraints (T is A & B)
 	{"multiple_constraints", "test_sources/compile_tests/multiple_constraints/main.gecko", 31, false},
 
+	// Circular dependencies - pointer cycles are allowed
+	{"circular_deps_pointer", "test_sources/compile_tests/circular_deps/pointer_cycle.gecko", 0, false},
+
 	// TODO: Fix these tests
 	// {"integers", "test_sources/compile_tests/ints/int.gecko", 0, false}, // printf declaration issues
 }
@@ -346,6 +349,18 @@ func TestTypeCheckingErrors(t *testing.T) {
 			file:          "test_sources/compile_tests/trait_conflicts/conflict.gecko",
 			expectedError: "Trait Method Conflict",
 			expectedMsg:   "do_thing",
+		},
+		{
+			name:          "circular_type_dependency",
+			file:          "test_sources/compile_tests/circular_deps/value_cycle_error.gecko",
+			expectedError: "Circular Type Dependency",
+			expectedMsg:   "infinite size",
+		},
+		{
+			name:          "circular_type_dependency_three_way",
+			file:          "test_sources/compile_tests/circular_deps/three_way_cycle.gecko",
+			expectedError: "Circular Type Dependency",
+			expectedMsg:   "infinite size",
 		},
 	}
 

@@ -1,0 +1,18 @@
+package main
+
+// ERROR: Circular value dependencies cause infinite struct size
+// This file should fail to compile with "Circular Type Dependency" error
+
+class A {
+    let b: B
+}
+
+class B {
+    let a: A
+}
+
+// This creates infinite size: A contains B contains A contains B...
+
+external func main(): int32 {
+    return 0
+}

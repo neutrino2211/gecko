@@ -1,0 +1,20 @@
+package main
+
+// ERROR: Three-way circular value dependencies
+// A -> B -> C -> A creates infinite size
+
+class A {
+    let b: B
+}
+
+class B {
+    let c: C
+}
+
+class C {
+    let a: A
+}
+
+external func main(): int32 {
+    return 0
+}

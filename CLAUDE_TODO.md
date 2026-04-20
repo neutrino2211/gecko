@@ -232,8 +232,13 @@ These issues allowed incorrect code to compile silently:
   - C codegen: typedef uses simple name (`Circle`), methods use scoped name (`shapes__Circle__new`)
   - Test: `test_sources/compile_tests/qualified_types/main.gecko`
 
-- [ ] **Pointer arithmetic overflow** - Low priority for systems language
-- [ ] **Circular type dependencies** - Not detected
+- [ ] **Pointer arithmetic overflow** - Low priority for systems language (intrinsics-only currently)
+
+- [x] **Circular type dependencies** ✅
+  - Detects cycles in non-pointer (value) field dependencies
+  - Reports "Circular Type Dependency" error with cycle path
+  - Pointer cycles are allowed (they have fixed size)
+  - Tests: `test_sources/compile_tests/circular_deps/`
 
 ---
 

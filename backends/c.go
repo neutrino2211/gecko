@@ -354,6 +354,26 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	info.Functions = append(allImportFuncs, info.Functions...)
 	info.Includes = append(allImportIncludes, info.Includes...)
 
+	// Check for circular value dependencies (infinite size cycles)
+	cycles := cbackend.DetectCircularValueDependencies(info.StructDefs)
+	for _, cycle := range cycles {
+		if len(cycle.Types) > 0 {
+			// Build list of type names in the cycle
+			typeNames := make([]string, len(cycle.Types))
+			for i, t := range cycle.Types {
+				typeNames[i] = t.Name
+			}
+			cycleDesc := strings.Join(typeNames, " -> ") + " -> " + typeNames[0]
+
+			file.ErrorScope.NewCompileTimeError(
+				"Circular Type Dependency",
+				"Types have circular value dependencies causing infinite size: "+cycleDesc+
+					". Use pointers to break the cycle.",
+				cycle.Types[0].Pos,
+			)
+		}
+	}
+
 	// Topologically sort struct definitions so dependencies come first
 	info.StructDefs = cbackend.TopologicalSortStructs(info.StructDefs)
 

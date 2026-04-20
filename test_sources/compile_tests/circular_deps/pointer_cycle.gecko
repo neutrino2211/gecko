@@ -1,0 +1,23 @@
+package main
+
+// Non-cyclic pointer reference - Parent points to Child
+// (not a cycle since Child doesn't point back to Parent)
+class Child {
+    let age: int32
+    let data: int32
+}
+
+class Parent {
+    let name: int32
+    let child: Child*
+}
+
+external func main(): int32 {
+    let child: Child = Child { age: 5, data: 10 }
+    let parent: Parent = Parent { name: 1, child: &child }
+
+    // Dereference to test the pointer works
+    let childPtr: Child* = parent.child
+
+    return parent.name + child.age + child.data - 16
+}

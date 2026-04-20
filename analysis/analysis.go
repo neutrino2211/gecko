@@ -242,6 +242,10 @@ func FormatTypeRef(t *tokens.TypeRef) string {
 		return sb.String()
 	}
 
+	if t.Module != "" {
+		sb.WriteString(t.Module)
+		sb.WriteString(".")
+	}
 	sb.WriteString(t.Type)
 
 	if len(t.TypeArgs) > 0 {

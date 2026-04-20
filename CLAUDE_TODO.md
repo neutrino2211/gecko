@@ -106,15 +106,20 @@ Tracking implementation of the new module system per specs in `spec/modules.md`,
 
 - [x] **Deleted old `std/` directory**
 
-## Phase 4: LSP Updates
+## Phase 4: LSP Updates ✅ COMPLETE
 
-- [ ] **Import suggestions for unknown types**
-  - Search stdlib and project for matching type names
-  - Show in diagnostic hints
+- [x] **Import suggestions for unknown types** ✅
+  - Already implemented via `TypeRegistry` and `SuggestionProvider`
+  - Scans stdlib and project directories for type definitions
+  - Shows suggestions in diagnostic error messages
+  - Test: `test_sources/compile_tests/type_suggestions/missing_type.gecko`
 
-- [ ] **Respect visibility in completions**
-  - Only show `pub` items from other modules
-  - Show all items from current module
+- [x] **Respect visibility in completions** ✅
+  - Module-qualified type completions filter by visibility
+  - Imported class member completions filter by visibility
+  - Inherent impl methods now correctly detected
+  - Fixed `FormatTypeRef` to include module prefix
+  - Added test fixtures: `lsp/testdata/`
 
 ## Phase 5: Documentation ✅ COMPLETE
 

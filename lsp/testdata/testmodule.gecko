@@ -1,0 +1,31 @@
+package testmodule
+
+public const WIDTH: int = 80
+public const HEIGHT: int = 25
+
+public func color(fg: uint8, bg: uint8): uint8 {
+    return fg | (bg << 4)
+}
+
+public func helper(): void {
+    return
+}
+
+public class Point {
+    public let x: int
+    public let y: int
+}
+
+impl Point {
+    public func new(x: int, y: int): Point {
+        return Point { x: x, y: y }
+    }
+
+    public func distance(self): int {
+        return self.x + self.y
+    }
+
+    func privateMethod(self): void {
+        return
+    }
+}

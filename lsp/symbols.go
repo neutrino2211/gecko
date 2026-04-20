@@ -593,7 +593,19 @@ func getMemberCompletionsWithScope(file *tokens.File, filePath, objName, prefix 
 	// Remove pointer suffix for class lookup
 	baseType := strings.TrimSuffix(typeName, "*")
 
-	// Find the class with this type name and return its members
+	// Check if the type is module-qualified (e.g., "shapes.Circle")
+	if strings.Contains(baseType, ".") {
+		parts := strings.SplitN(baseType, ".", 2)
+		moduleName := parts[0]
+		className := parts[1]
+
+		// Get completions from imported module with visibility filtering
+		items = append(items, getImportedClassMemberCompletions(filePath, moduleName, className, prefix)...)
+		items = append(items, getImportedTraitMethodCompletions(filePath, moduleName, className, prefix)...)
+		return items
+	}
+
+	// Find the class with this type name and return its members (same module - no visibility filter)
 	items = append(items, getClassMemberCompletions(file, baseType, prefix)...)
 
 	// Also add trait methods implemented for this class
@@ -732,20 +744,35 @@ func getClassMemberCompletions(file *tokens.File, className, prefix string) []pr
 	return items
 }
 
+// isImplForClass checks if an implementation is for a given class name.
+// Handles both trait impls (impl Trait for Class) and inherent impls (impl Class).
+func isImplForClass(impl *tokens.Implementation, className string) bool {
+	// Trait impl: impl Trait for Class
+	if impl.GetFor() == className {
+		return true
+	}
+	// Inherent impl: impl Class (no 'for' clause, Name is the class name)
+	if impl.GetFor() == "" && impl.GetName() == className {
+		return true
+	}
+	return false
+}
+
 // getTraitMethodCompletions returns completions for trait methods implemented for a class
 func getTraitMethodCompletions(file *tokens.File, className, prefix string) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 	addedMethods := make(map[string]bool)
 
 	for _, entry := range file.Entries {
-		if entry.Implementation != nil && entry.Implementation.GetFor() == className {
+		if entry.Implementation != nil && isImplForClass(entry.Implementation, className) {
 			// This is an impl block for the class
 			for _, field := range entry.Implementation.GetFields() {
 				name := field.Name
 				if strings.HasPrefix(name, prefix) && !addedMethods[name] {
 					addedMethods[name] = true
 					detail := formatImplMethodSignature(field)
-					if entry.Implementation.GetName() != "" {
+					// Only show trait name if this is a trait impl (not inherent)
+					if entry.Implementation.GetFor() != "" && entry.Implementation.GetName() != "" {
 						detail = fmt.Sprintf("(%s) %s", entry.Implementation.GetName(), detail)
 					}
 					items = append(items, protocol.CompletionItem{
@@ -783,30 +810,133 @@ func formatImplMethodSignature(f *tokens.ImplementationField) string {
 	return sb.String()
 }
 
-// getImportedModuleCompletions returns completions for an imported module's exports
-func getImportedModuleCompletions(filePath, moduleName, prefix string) []protocol.CompletionItem {
-	var items []protocol.CompletionItem
-
-	// Resolve the module file path
+// resolveModuleFile resolves a module name to its file path
+func resolveModuleFile(filePath, moduleName string) string {
 	baseDir := filepath.Dir(filePath)
 	candidates := []string{
 		filepath.Join(baseDir, moduleName+".gecko"),
 		filepath.Join(baseDir, moduleName, "mod.gecko"),
 	}
 
-	var modulePath string
 	for _, candidate := range candidates {
 		if _, err := os.Stat(candidate); err == nil {
-			modulePath = candidate
-			break
+			return candidate
 		}
 	}
+	return ""
+}
 
+// getImportedClassMemberCompletions returns completions for a class from an imported module
+// Only returns public members since the class is from a different module
+func getImportedClassMemberCompletions(filePath, moduleName, className, prefix string) []protocol.CompletionItem {
+	var items []protocol.CompletionItem
+
+	modulePath := resolveModuleFile(filePath, moduleName)
 	if modulePath == "" {
 		return items
 	}
 
-	// Parse the module file
+	moduleContents, err := os.ReadFile(modulePath)
+	if err != nil {
+		return items
+	}
+
+	moduleFile, err := parser.Parser.ParseString(modulePath, string(moduleContents))
+	if err != nil {
+		return items
+	}
+
+	for _, entry := range moduleFile.Entries {
+		if entry.Class != nil && entry.Class.Name == className {
+			for _, field := range entry.Class.Fields {
+				// Methods - only show public ones
+				if field.Method != nil {
+					name := field.Method.Name
+					if strings.HasPrefix(name, prefix) && analysis.IsPublic(field.Method.Visibility) {
+						items = append(items, protocol.CompletionItem{
+							Label:  name,
+							Kind:   protocol.CompletionItemKindMethod,
+							Detail: analysis.FormatMethodSignature(field.Method),
+						})
+					}
+				}
+				// Fields - only show public ones
+				if field.Field != nil {
+					name := field.Field.Name
+					if strings.HasPrefix(name, prefix) && analysis.IsPublic(field.Field.Visibility) {
+						typeStr := "unknown"
+						if field.Field.Type != nil {
+							typeStr = analysis.FormatTypeRef(field.Field.Type)
+						}
+						items = append(items, protocol.CompletionItem{
+							Label:  name,
+							Kind:   protocol.CompletionItemKindField,
+							Detail: typeStr,
+						})
+					}
+				}
+			}
+		}
+	}
+
+	return items
+}
+
+// getImportedTraitMethodCompletions returns trait method completions for a class from an imported module
+// Only returns public methods since the class is from a different module
+func getImportedTraitMethodCompletions(filePath, moduleName, className, prefix string) []protocol.CompletionItem {
+	var items []protocol.CompletionItem
+	addedMethods := make(map[string]bool)
+
+	modulePath := resolveModuleFile(filePath, moduleName)
+	if modulePath == "" {
+		return items
+	}
+
+	moduleContents, err := os.ReadFile(modulePath)
+	if err != nil {
+		return items
+	}
+
+	moduleFile, err := parser.Parser.ParseString(modulePath, string(moduleContents))
+	if err != nil {
+		return items
+	}
+
+	for _, entry := range moduleFile.Entries {
+		if entry.Implementation != nil && isImplForClass(entry.Implementation, className) {
+			for _, field := range entry.Implementation.GetFields() {
+				name := field.Name
+				// Only show public methods from other modules
+				if strings.HasPrefix(name, prefix) && !addedMethods[name] && analysis.IsPublic(field.Visibility) {
+					addedMethods[name] = true
+					detail := formatImplMethodSignature(field)
+					// Only show trait name if this is a trait impl (not inherent)
+					if entry.Implementation.GetFor() != "" && entry.Implementation.GetName() != "" {
+						detail = fmt.Sprintf("(%s) %s", entry.Implementation.GetName(), detail)
+					}
+					items = append(items, protocol.CompletionItem{
+						Label:  name,
+						Kind:   protocol.CompletionItemKindMethod,
+						Detail: detail,
+					})
+				}
+			}
+		}
+	}
+
+	return items
+}
+
+// getImportedModuleCompletions returns completions for an imported module's exports
+func getImportedModuleCompletions(filePath, moduleName, prefix string) []protocol.CompletionItem {
+	var items []protocol.CompletionItem
+
+	modulePath := resolveModuleFile(filePath, moduleName)
+	if modulePath == "" {
+		return items
+	}
+
 	moduleContents, err := os.ReadFile(modulePath)
 	if err != nil {
 		return items

@@ -1,0 +1,80 @@
+package main
+
+declare external func printf(fmt: string, val: int32): int32
+declare external func puts(s: string): int32
+
+// Generic Orable trait
+@or_hook(.unwrap_or)
+trait Orable<T> {
+    func unwrap_or(self, default_val: T): T
+}
+
+// Generic Option type
+class Option<T> {
+    let value: T
+    let has_value: bool
+
+    func some(val: T): Option<T> {
+        let opt: Option<T>
+        opt.value = val
+        opt.has_value = true
+        return opt
+    }
+
+    func none(): Option<T> {
+        let opt: Option<T>
+        opt.has_value = false
+        return opt
+    }
+
+    func is_some(self): bool {
+        return self.has_value
+    }
+
+    func is_none(self): bool {
+        return !self.has_value
+    }
+
+    func unwrap(self): T {
+        return self.value
+    }
+}
+
+impl<T> Orable<T> for Option<T> {
+    func unwrap_or(self, default_val: T): T {
+        if (self.has_value) {
+            return self.value
+        }
+        return default_val
+    }
+}
+
+func find_value(should_find: bool): Option<int32> {
+    if (should_find) {
+        return Option<int32>::some(42)
+    }
+    return Option<int32>::none()
+}
+
+external func main(): int32 {
+    let found: Option<int32> = find_value(true)
+    let not_found: Option<int32> = find_value(false)
+
+    // Using 'or' to provide default values with generic Option<T>
+    let val1: int32 = found or 0
+    let val2: int32 = not_found or 100
+
+    printf("val1 (should be 42): %d\n", val1)
+    printf("val2 (should be 100): %d\n", val2)
+
+    // Verify values are correct
+    if (val1 == 42) {
+        if (val2 == 100) {
+            puts("All tests passed!")
+            return 0
+        }
+    }
+
+    puts("Test failed!")
+    return 1
+}

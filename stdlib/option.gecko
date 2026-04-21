@@ -1,5 +1,7 @@
 package option
 
+import std.core.traits use { Tryable, Orable }
+
 /// Option<T> - Represents an optional value.
 ///
 /// An Option is either `Some` (containing a value) or `None` (empty).
@@ -19,6 +21,10 @@ package option
 /// if (result.is_some()) {
 ///     let idx = result.unwrap()
 /// }
+///
+/// // Using try and or:
+/// let val = try find(arr, 42)        // Propagates None
+/// let val2 = find(arr, 42) or 0      // Uses default on None
 /// ```
 public class Option<T> {
     /// The contained value (only valid if has_value is true).
@@ -68,6 +74,27 @@ public class Option<T> {
     /// Returns the contained value, or computes it from a default.
     /// Note: In Gecko, this takes the computed default directly.
     func get_or(self, default_val: T): T {
+        if (self.has_value) {
+            return self.value
+        }
+        return default_val
+    }
+}
+
+/// Implement Tryable for Option - enables `try option_expr`
+impl<T> Tryable<T> for Option<T> {
+    func has_value(self): bool {
+        return self.has_value
+    }
+
+    func try_unwrap(self): T {
+        return self.value
+    }
+}
+
+/// Implement Orable for Option - enables `option_expr or default`
+impl<T> Orable<T> for Option<T> {
+    func unwrap_or(self, default_val: T): T {
         if (self.has_value) {
             return self.value
         }

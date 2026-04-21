@@ -44,6 +44,10 @@ const (
 	// Iterator hooks
 	HookIterator     HookType = "iterator_hook"
 	HookIntoIterator HookType = "into_iterator_hook"
+
+	// Error handling hooks
+	HookTry HookType = "try_hook"
+	HookOr  HookType = "or_hook"
 )
 
 // HookSignature describes the expected signature for a hook
@@ -88,6 +92,10 @@ var hookSignatures = map[HookType]HookSignature{
 	// Iterator (special: has 2 methods)
 	HookIterator:     {MethodCount: 2, HasSelf: true, ParamCount: 0, ReturnType: "any"},
 	HookIntoIterator: {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "any"},
+
+	// Error handling
+	HookTry: {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "T"},
+	HookOr:  {MethodCount: 1, HasSelf: true, ParamCount: 1, ReturnType: "T"},
 }
 
 // RegisteredHook represents a trait registered as a hook

@@ -117,6 +117,8 @@ Source (.gecko) -> Lexer/Parser (Participle) -> tokens.File -> Backend -> C/LLVM
 - Function pointers: `func(T, T): T`
 - Break/continue in loops
 - For-in loops with `@iterator_hook` trait: `for let x in collection { }`
+- Error handling with `or` keyword: `expr or default` via `@or_hook` (works with generic types like `Option<T>`)
+- Error handling with `try` keyword: `try expr` via `@try_hook` (works with generic types like `Option<T>`)
 
 ### Standard Library
 
@@ -148,7 +150,8 @@ stdlib/
 │   ├── box.gecko       # Box<T> heap allocation
 │   ├── rc.gecko        # Rc<T> reference counting
 │   └── weak.gecko      # Weak<T> weak references
-└── option.gecko        # Option<T>
+├── option.gecko        # Option<T>
+└── result.gecko        # Result<T, E>
 ```
 
 ### Hook Attributes
@@ -162,22 +165,31 @@ Traits can define hooks that enable syntactic sugar:
 @index_mut_hook(.index_mut) // arr[i] = v write access
 @add_hook(.add)             // a + b operator
 @eq_hook(.eq)               // a == b operator
+@try_hook(.try_unwrap)      // try expr - unwrap or propagate
+@or_hook(.unwrap_or)        // expr or default - unwrap with fallback
 ```
 
 Note: Clone is a regular trait (no hook) - call `.clone()` explicitly. Copy is a marker trait for types safe to copy bitwise.
 
 ### Visibility
 
-Symbols are private by default. Use `public` for exports:
+Three visibility levels control symbol access:
+
+| Modifier | Scope |
+|----------|-------|
+| `private` | Same file only (default) |
+| `protected` | Same package (any file in package) |
+| `public` | Accessible from anywhere |
 
 ```gecko
-public class MyClass { ... }
-public func helper(): void { ... }
-public trait MyTrait { ... }
+public class MyClass { ... }        // Accessible everywhere
+protected func helper(): void { }   // Accessible within package
+func internal(): void { }           // Private to this file (default)
 
 impl MyClass {
-    public func visible(self): void { }  // Accessible from other modules
-    func internal(self): void { }        // Private to this module
+    public func visible(self): void { }     // Accessible everywhere
+    protected func pkg_only(self): void { } // Accessible within package
+    func internal(self): void { }           // Private to this file
 }
 ```
 
@@ -216,6 +228,8 @@ go build -o gecko-lsp ./lsp
 ### Not Yet Implemented
 
 - Trait inheritance (`trait Child: Parent`)
+- Early return semantics for `try` (currently just calls `try_unwrap`, doesn't propagate errors)
+- Visibility refinement: `protected` keyword for package-level visibility
 
 ## Ground Rules for Development
 

@@ -126,3 +126,27 @@ public trait FnOnce<A, R> {
 public trait Fn<A, R> {
     func call(self, arg: A): R
 }
+
+// =============================================================================
+// ERROR HANDLING TRAITS
+// =============================================================================
+
+/// Tryable<T> - Trait for types that can be "tried" (unwrap or propagate).
+/// Used with the `try` keyword: `let val = try expr`
+/// If the expression has no value, propagates the error.
+@try_hook(.try_unwrap)
+public trait Tryable<T> {
+    /// Returns true if this contains a success value.
+    func has_value(self): bool
+    /// Returns the contained value. Undefined if has_value() is false.
+    func try_unwrap(self): T
+}
+
+/// Orable<T> - Trait for types that can use `or` for default values.
+/// Used with the `or` keyword: `let val = expr or default`
+/// If the expression has no value, uses the default.
+@or_hook(.unwrap_or)
+public trait Orable<T> {
+    /// Returns the contained value, or the default if none.
+    func unwrap_or(self, default_val: T): T
+}

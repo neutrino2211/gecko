@@ -1,6 +1,8 @@
 package cbackend
 
 import (
+	"strings"
+
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/tokens"
 )
@@ -443,7 +445,7 @@ func (impl *CBackendImplementation) GetTypeOfExpression(e *tokens.Expression, sc
 	if e == nil {
 		return nil
 	}
-	return impl.GetTypeOfLogicalOr(e.LogicalOr, scope)
+	return impl.GetTypeOfLogicalOr(e.GetLogicalOr(), scope)
 }
 
 // HasOperatorTrait checks if a type has an operator trait implemented
@@ -477,6 +479,16 @@ func (impl *CBackendImplementation) HasOperatorTrait(typeName string, traitName 
 func (impl *CBackendImplementation) GetOperatorTraitName(typeName string, traitName string, scope *ast.Ast) (string, bool) {
 	rootScope := scope.GetRoot()
 	classOpt := rootScope.ResolveClass(typeName)
+
+	// If not found and the type name looks like a monomorphized generic (contains "__"),
+	// try looking up the base generic class instead
+	if classOpt.IsNil() {
+		if idx := strings.Index(typeName, "__"); idx > 0 {
+			baseTypeName := typeName[:idx]
+			classOpt = rootScope.ResolveClass(baseTypeName)
+		}
+	}
+
 	if classOpt.IsNil() {
 		return "", false
 	}

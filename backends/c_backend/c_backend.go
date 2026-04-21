@@ -293,6 +293,7 @@ func (impls *CBackendImplementation) NewClass(scope *ast.Ast, c *tokens.Class) {
 		Parent:       scope,
 		Visibility:   c.Visibility,
 		OriginModule: scope.GetRoot().Scope,
+		SourceFile:   scope.GetSourceFile(),
 	}
 
 	classAst.Init(scope.ErrorScope)
@@ -368,6 +369,7 @@ func (impls *CBackendImplementation) GenerateClassDef(scope *ast.Ast, c *tokens.
 			Scope:        name,
 			Parent:       scope,
 			OriginModule: scope.GetRoot().Scope,
+		SourceFile:   scope.GetSourceFile(),
 		}
 		classAst.Init(scope.ErrorScope)
 		scope.Classes[name] = classAst
@@ -548,6 +550,7 @@ func (impl *CBackendImplementation) GenerateMethodDef(scope *ast.Ast, m *tokens.
 		Scope:        name,
 		Parent:       scope,
 		OriginModule: scope.GetRoot().Scope,
+		SourceFile:   scope.GetSourceFile(),
 	}
 	methodScope.Init(scope.ErrorScope)
 	methodScope.Config = scope.Config
@@ -656,6 +659,7 @@ func (impl *CBackendImplementation) GenerateClassMethodDef(scope *ast.Ast, class
 		Scope:        methodName,
 		Parent:       scope,
 		OriginModule: scope.GetRoot().Scope,
+		SourceFile:   scope.GetSourceFile(),
 	}
 	methodScope.Init(scope.ErrorScope)
 	methodScope.Config = scope.Config
@@ -836,6 +840,7 @@ func (impl *CBackendImplementation) NewEnum(scope *ast.Ast, e *tokens.Enum) {
 		Scope:        e.Name,
 		Parent:       scope,
 		OriginModule: scope.GetRoot().Scope,
+		SourceFile:   scope.GetSourceFile(),
 	}
 	enumAst.Init(scope.ErrorScope)
 
@@ -917,6 +922,7 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 		Scope:        mangledName,
 		Parent:       scope,
 		OriginModule: scope.GetRoot().Scope,
+		SourceFile:   scope.GetSourceFile(),
 	}
 
 	methodScope.Init(scope.ErrorScope)
@@ -1066,6 +1072,7 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 		Scope:        m.Name,
 		Parent:       scope,
 		OriginModule: scope.GetRoot().Scope,
+		SourceFile:   scope.GetSourceFile(),
 	}
 
 	methodScope.Init(scope.ErrorScope)
@@ -1425,6 +1432,26 @@ func (impl *CBackendImplementation) CImplementationForClass(scope *ast.Ast, i *t
 		classToken := Generics.GenericClasses[className]
 		if classToken != nil {
 			classToken.Implementations = append(classToken.Implementations, i)
+		}
+
+		// Also register the trait name on the base class so trait lookups work
+		// This is needed for `or`/`try` expressions to find the trait before instantiation
+		classOpt := scope.ResolveClass(className)
+		if !classOpt.IsNil() {
+			class := classOpt.Unwrap()
+			traitName := i.GetName()
+			mangledTraitName := traitName
+			if len(i.GetTypeArgs()) > 0 {
+				for _, typeArg := range i.GetTypeArgs() {
+					mangledTraitName += "__" + typeArg.Type
+				}
+			}
+			if class.Traits == nil {
+				class.Traits = make(map[string]*[]*ast.Method)
+			}
+			if _, exists := class.Traits[mangledTraitName]; !exists {
+				class.Traits[mangledTraitName] = nil // Placeholder - methods generated during instantiation
+			}
 		}
 		return
 	}
@@ -1853,12 +1880,12 @@ func (impl *CBackendImplementation) NewLoop(scope *ast.Ast, l *tokens.Loop) {
 
 // inferMethodCallType infers the return type of a method call expression like s.iter()
 func (impl *CBackendImplementation) inferMethodCallType(expr *tokens.Expression, scope *ast.Ast) *tokens.TypeRef {
-	if expr == nil || expr.LogicalOr == nil {
+	if expr == nil || expr.GetLogicalOr() == nil {
 		return nil
 	}
 
 	// Navigate to the literal
-	lo := expr.LogicalOr
+	lo := expr.GetLogicalOr()
 	if lo.LogicalAnd == nil {
 		return nil
 	}

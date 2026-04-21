@@ -1,0 +1,120 @@
+package result
+
+import std.core.traits use { Tryable, Orable }
+
+/// Result<T, E> - Represents either a success (Ok) or failure (Err).
+///
+/// Use Result for operations that can fail with a meaningful error type.
+///
+/// Example:
+/// ```
+/// func divide(a: int32, b: int32): Result<int32, string> {
+///     if (b == 0) {
+///         return Result<int32, string>::err("division by zero")
+///     }
+///     return Result<int32, string>::ok(a / b)
+/// }
+///
+/// // Using try - propagates errors automatically
+/// func calculate(x: int32): Result<int32, string> {
+///     let val = try divide(x, 2)  // Returns early if error
+///     return Result<int32, string>::ok(val * 10)
+/// }
+///
+/// // Using or - provides default on error
+/// let val = divide(10, 0) or 0  // Returns 0 on error
+/// ```
+public class Result<T, E> {
+    let value: T
+    let error: E
+    let is_ok: bool
+
+    /// Creates a success Result containing a value.
+    func ok(val: T): Result<T, E> {
+        let res: Result<T, E>
+        res.value = val
+        res.is_ok = true
+        return res
+    }
+
+    /// Creates an error Result containing an error.
+    func err(e: E): Result<T, E> {
+        let res: Result<T, E>
+        res.error = e
+        res.is_ok = false
+        return res
+    }
+
+    /// Returns true if this Result is Ok.
+    func is_success(self): bool {
+        return self.is_ok
+    }
+
+    /// Returns true if this Result is Err.
+    func is_error(self): bool {
+        return !self.is_ok
+    }
+
+    /// Returns the contained value.
+    /// Behavior is undefined if the Result is Err.
+    func unwrap(self): T {
+        return self.value
+    }
+
+    /// Returns the contained error.
+    /// Behavior is undefined if the Result is Ok.
+    func unwrap_err(self): E {
+        return self.error
+    }
+
+    /// Returns the contained value, or a default if Err.
+    func unwrap_or(self, default_val: T): T {
+        if (self.is_ok) {
+            return self.value
+        }
+        return default_val
+    }
+
+    /// Maps the success value with a function.
+    func map<U>(self, mapper: func(T): U): Result<U, E> {
+        if (self.is_ok) {
+            return Result<U, E>::ok(mapper(self.value))
+        }
+        let res: Result<U, E>
+        res.error = self.error
+        res.is_ok = false
+        return res
+    }
+
+    /// Maps the error value with a function.
+    func map_err<F>(self, mapper: func(E): F): Result<T, F> {
+        if (!self.is_ok) {
+            return Result<T, F>::err(mapper(self.error))
+        }
+        let res: Result<T, F>
+        res.value = self.value
+        res.is_ok = true
+        return res
+    }
+}
+
+/// Implement Tryable for Result - enables `try result_expr`
+impl<T, E> Tryable<T> for Result<T, E> {
+    func has_value(self): bool {
+        return self.is_ok
+    }
+
+    func try_unwrap(self): T {
+        return self.value
+    }
+}
+
+/// Implement Orable for Result - enables `result_expr or default`
+impl<T, E> Orable<T> for Result<T, E> {
+    func unwrap_or(self, default_val: T): T {
+        if (self.is_ok) {
+            return self.value
+        }
+        return default_val
+    }
+}

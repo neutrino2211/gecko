@@ -5,12 +5,26 @@ import (
 )
 
 func (e *Expression) ToCString(scope *ast.Ast) string {
+	if e.OrExpr == nil {
+		return ""
+	}
+	return e.OrExpr.ToCString(scope)
+}
+
+// GetLogicalOr returns the LogicalOr part of the expression (for backwards compatibility)
+func (e *Expression) GetLogicalOr() *LogicalOr {
+	if e.OrExpr == nil {
+		return nil
+	}
+	return e.OrExpr.LogicalOr
+}
+
+func (o *OrExpression) ToCString(scope *ast.Ast) string {
 	base := ""
-
-	lo := e.LogicalOr
-
-	base += lo.ToCString(scope)
-
+	if o.LogicalOr != nil {
+		base += o.LogicalOr.ToCString(scope)
+	}
+	// Note: 'or' handling is done in c_expressions.go, not here
 	return base
 }
 

@@ -1,0 +1,63 @@
+package main
+
+declare external func printf(fmt: string, val: int32): int32
+declare external func puts(s: string): int32
+
+// Generic Tryable trait
+@try_hook(.try_unwrap)
+trait Tryable<T> {
+    func has_value(self): bool
+    func try_unwrap(self): T
+}
+
+// Generic Option type
+class Option<T> {
+    let value: T
+    let has_value: bool
+
+    func some(val: T): Option<T> {
+        let opt: Option<T>
+        opt.value = val
+        opt.has_value = true
+        return opt
+    }
+
+    func none(): Option<T> {
+        let opt: Option<T>
+        opt.has_value = false
+        return opt
+    }
+
+    func is_some(self): bool {
+        return self.has_value
+    }
+}
+
+impl<T> Tryable<T> for Option<T> {
+    func has_value(self): bool {
+        return self.has_value
+    }
+
+    func try_unwrap(self): T {
+        return self.value
+    }
+}
+
+external func main(): int32 {
+    let found: Option<int32> = Option<int32>::some(42)
+
+    // Using 'try' to unwrap the value
+    // Note: try currently only calls try_unwrap, it doesn't handle early return
+    let val1: int32 = try found
+
+    printf("val1 (should be 42): %d\n", val1)
+
+    // Verify value is correct
+    if (val1 == 42) {
+        puts("All tests passed!")
+        return 0
+    }
+
+    puts("Test failed!")
+    return 1
+}

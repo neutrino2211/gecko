@@ -14,7 +14,76 @@ func (impl *CBackendImplementation) ExpressionToCString(e *tokens.Expression, sc
 	if e == nil {
 		return ""
 	}
-	return impl.LogicalOrToCString(e.LogicalOr, scope)
+	return impl.OrExpressionToCString(e.OrExpr, scope)
+}
+
+// OrExpressionToCString handles the 'or' keyword for error handling
+func (impl *CBackendImplementation) OrExpressionToCString(o *tokens.OrExpression, scope *ast.Ast) string {
+	if o == nil {
+		return ""
+	}
+
+	base := impl.LogicalOrToCString(o.LogicalOr, scope)
+
+	// Handle 'or' keyword for fallback values
+	if o.Or != nil {
+		leftType := impl.GetTypeOfLogicalOr(o.LogicalOr, scope)
+		defaultValue := impl.OrExpressionToCString(o.Or, scope)
+
+		// Check if this type implements @or_hook (Orable trait)
+		if leftType != nil && leftType.Type != "" {
+			baseTypeName := leftType.Type
+			typeName := baseTypeName
+
+			// Collect C type args for mangling
+			var typeArgStrs []string
+			if len(leftType.TypeArgs) > 0 {
+				typeArgStrs = make([]string, len(leftType.TypeArgs))
+				for i, arg := range leftType.TypeArgs {
+					if cType, ok := GeckoToCType[arg.Type]; ok {
+						typeArgStrs[i] = cType
+					} else {
+						typeArgStrs[i] = arg.Type
+					}
+				}
+				typeName = mangleName(baseTypeName, typeArgStrs)
+			}
+
+			orHook := hooks.GetHookRegistry().GetHookFromAnyModule(hooks.HookOr)
+			if orHook != nil {
+				_, found := impl.GetOperatorTraitName(typeName, orHook.TraitName, scope)
+				if found && len(orHook.Methods) > 0 {
+					methodName := orHook.Methods[0]
+
+					// Build the substituted trait name (e.g., Orable__T -> Orable__int32_t)
+					mangledTraitName := orHook.TraitName
+					if len(typeArgStrs) > 0 {
+						for _, arg := range typeArgStrs {
+							mangledTraitName += "__" + arg
+						}
+					}
+
+					// Only add module prefix for generic types (detected by having type args)
+					var fullMethodName string
+					if len(typeArgStrs) > 0 {
+						modulePrefix := scope.GetRoot().Scope
+						if modulePrefix != "" {
+							modulePrefix += "__"
+						}
+						fullMethodName = modulePrefix + typeName + "__" + mangledTraitName + "__" + methodName
+					} else {
+						fullMethodName = typeName + "__" + mangledTraitName + "__" + methodName
+					}
+					return fullMethodName + "(&(" + base + "), " + defaultValue + ")"
+				}
+			}
+		}
+
+		// Fallback: just use C's ternary (for simple cases like pointers)
+		return "(" + base + " ? " + base + " : " + defaultValue + ")"
+	}
+
+	return base
 }
 
 // LogicalOrToCString converts logical OR expressions
@@ -155,8 +224,16 @@ func (impl *CBackendImplementation) UnaryToCString(u *tokens.Unary, scope *ast.A
 		innerCode := impl.UnaryToCString(u.Unary, scope)
 		innerType := impl.GetTypeOfUnary(u.Unary, scope)
 
-		// Try operator overloading for unary operators
-		if traitCall, ok := impl.GetUnaryOperatorTraitMethodCall(innerCode, innerType, u.Op, scope); ok {
+		// Handle 'try' operator for error handling
+		if u.Op == "try" {
+			if traitCall, ok := impl.GetTryOperatorCall(innerCode, innerType, scope); ok {
+				base = traitCall
+			} else {
+				// Fallback: just return the inner expression (for types without @try_hook)
+				base = innerCode
+			}
+		} else if traitCall, ok := impl.GetUnaryOperatorTraitMethodCall(innerCode, innerType, u.Op, scope); ok {
+			// Try operator overloading for other unary operators
 			base = traitCall
 		} else {
 			base = u.Op + innerCode
@@ -176,6 +253,63 @@ func (impl *CBackendImplementation) UnaryToCString(u *tokens.Unary, scope *ast.A
 	}
 
 	return base
+}
+
+// GetTryOperatorCall generates code for the 'try' operator
+func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, operandType *tokens.TypeRef, scope *ast.Ast) (string, bool) {
+	if operandType == nil || operandType.Type == "" {
+		return "", false
+	}
+
+	baseTypeName := operandType.Type
+	typeName := baseTypeName
+
+	// Collect C type args for mangling
+	var typeArgStrs []string
+	if len(operandType.TypeArgs) > 0 {
+		typeArgStrs = make([]string, len(operandType.TypeArgs))
+		for i, arg := range operandType.TypeArgs {
+			if cType, ok := GeckoToCType[arg.Type]; ok {
+				typeArgStrs[i] = cType
+			} else {
+				typeArgStrs[i] = arg.Type
+			}
+		}
+		typeName = mangleName(baseTypeName, typeArgStrs)
+	}
+
+	tryHook := hooks.GetHookRegistry().GetHookFromAnyModule(hooks.HookTry)
+	if tryHook == nil {
+		return "", false
+	}
+
+	_, found := impl.GetOperatorTraitName(typeName, tryHook.TraitName, scope)
+	if !found || len(tryHook.Methods) == 0 {
+		return "", false
+	}
+
+	methodName := tryHook.Methods[0]
+
+	// Build the substituted trait name (e.g., Tryable__T -> Tryable__int32_t)
+	mangledTraitName := tryHook.TraitName
+	if len(typeArgStrs) > 0 {
+		for _, arg := range typeArgStrs {
+			mangledTraitName += "__" + arg
+		}
+	}
+
+	// Only add module prefix for generic types (detected by having type args)
+	var fullMethodName string
+	if len(typeArgStrs) > 0 {
+		modulePrefix := scope.GetRoot().Scope
+		if modulePrefix != "" {
+			modulePrefix += "__"
+		}
+		fullMethodName = modulePrefix + typeName + "__" + mangledTraitName + "__" + methodName
+	} else {
+		fullMethodName = typeName + "__" + mangledTraitName + "__" + methodName
+	}
+	return fullMethodName + "(&(" + operandCode + "))", true
 }
 
 // PrimaryToCString converts primary expressions

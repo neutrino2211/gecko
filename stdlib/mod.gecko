@@ -5,12 +5,15 @@ package std
 // Import patterns:
 //   import std.core use { Drop, Clone }
 //   import std.core.ops use { Add, Eq }
+//   import std.core.traits use { Tryable, Orable }
 //   import std.collections use { Vec, Slice }
 //   import std.collections.string use { StringBuilder }
 //   import std.memory use { Box, Rc, Weak }
 //   import std.option use { Option }
+//   import std.result use { Result }
 
 import core
 import collections
 import memory
 import option
+import result

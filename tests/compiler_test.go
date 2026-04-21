@@ -145,6 +145,11 @@ var compileTests = []compileTest{
 	// Circular dependencies - pointer cycles are allowed
 	{"circular_deps_pointer", "test_sources/compile_tests/circular_deps/pointer_cycle.gecko", 0, false},
 
+	// Error handling - try and or expressions
+	{"error_handling_or_simple", "test_sources/compile_tests/error_handling_simple/main.gecko", 0, false},
+	{"error_handling_or_generic", "test_sources/compile_tests/error_handling_generic/main.gecko", 0, false},
+	{"error_handling_try_generic", "test_sources/compile_tests/error_handling_try_generic/main.gecko", 0, false},
+
 	// TODO: Fix these tests
 	// {"integers", "test_sources/compile_tests/ints/int.gecko", 0, false}, // printf declaration issues
 }

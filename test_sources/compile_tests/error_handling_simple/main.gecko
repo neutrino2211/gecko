@@ -1,0 +1,68 @@
+package main
+
+declare external func printf(fmt: string, val: int32): int32
+declare external func puts(s: string): int32
+
+// Simple Orable trait - non-generic
+@or_hook(.unwrap_or)
+trait Orable {
+    func unwrap_or(self, default_val: int32): int32
+}
+
+// Simple MaybeInt type - non-generic
+class MaybeInt {
+    let value: int32
+    let has_value: bool
+
+    func some(val: int32): MaybeInt {
+        let opt: MaybeInt
+        opt.value = val
+        opt.has_value = true
+        return opt
+    }
+
+    func none(): MaybeInt {
+        let opt: MaybeInt
+        opt.has_value = false
+        return opt
+    }
+}
+
+impl Orable for MaybeInt {
+    func unwrap_or(self, default_val: int32): int32 {
+        if (self.has_value) {
+            return self.value
+        }
+        return default_val
+    }
+}
+
+func find_value(should_find: bool): MaybeInt {
+    if (should_find) {
+        return MaybeInt::some(42)
+    }
+    return MaybeInt::none()
+}
+
+external func main(): int32 {
+    let found: MaybeInt = find_value(true)
+    let not_found: MaybeInt = find_value(false)
+
+    // Using 'or' to provide default values
+    let val1: int32 = found or 0
+    let val2: int32 = not_found or 100
+
+    printf("val1 (should be 42): %d\n", val1)
+    printf("val2 (should be 100): %d\n", val2)
+
+    // Verify values are correct
+    if (val1 == 42) {
+        if (val2 == 100) {
+            puts("All tests passed!")
+            return 0
+        }
+    }
+
+    puts("Test failed!")
+    return 1
+}

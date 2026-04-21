@@ -219,7 +219,14 @@ type Else struct {
 
 type Expression struct {
 	baseToken
-	LogicalOr *LogicalOr `parser:"@@"`
+	OrExpr *OrExpression `parser:"@@"`
+}
+
+// OrExpression handles the 'or' keyword for default values: expr or default
+type OrExpression struct {
+	baseToken
+	LogicalOr *LogicalOr    `parser:"@@"`
+	Or        *OrExpression `parser:"[ 'or' @@ ]"`
 }
 
 type LogicalOr struct {
@@ -266,7 +273,7 @@ type Multiplication struct {
 
 type Unary struct {
 	baseToken
-	Op      string   `parser:"  ( @( '!' | '-' | '+' )"`
+	Op      string   `parser:"  ( @( '!' | '-' | '+' | 'try' )"`
 	Unary   *Unary   `parser:"    @@ )"`
 	Primary *Primary `parser:"| @@"`
 	Cast    *Cast    `parser:"[ @@ ]"`

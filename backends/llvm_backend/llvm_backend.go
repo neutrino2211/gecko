@@ -74,6 +74,7 @@ func (impls *LLVMBackendImplementation) NewClass(scope *ast.Ast, c *tokens.Class
 		Scope:        c.Name,
 		Parent:       scope,
 		OriginModule: scope.GetRoot().Scope,
+		SourceFile:   scope.GetSourceFile(),
 	}
 
 	classAst.Init(scope.ErrorScope)
@@ -219,6 +220,7 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 		Scope:        m.Name,
 		Parent:       scope,
 		OriginModule: scope.GetRoot().Scope,
+		SourceFile:   scope.GetSourceFile(),
 	}
 
 	info := LLVMGetScopeInformation(scope)
@@ -508,12 +510,12 @@ func (impl *LLVMBackendImplementation) NewLocalVariable(scope *ast.Ast, f *token
 
 // ExpressionToLLIRConstant converts an expression to an LLVM constant (for global initializers)
 func (impl *LLVMBackendImplementation) ExpressionToLLIRConstant(e *tokens.Expression, scope *ast.Ast, expectedType *tokens.TypeRef) constant.Constant {
-	if e == nil || e.LogicalOr == nil {
+	if e == nil || e.GetLogicalOr() == nil {
 		return nil
 	}
 
 	// For simple cases, we can evaluate constants
-	return impl.LogicalOrToLLIRConstant(e.LogicalOr, scope, expectedType)
+	return impl.LogicalOrToLLIRConstant(e.GetLogicalOr(), scope, expectedType)
 }
 
 // LogicalOrToLLIRConstant converts logical OR expressions to constants

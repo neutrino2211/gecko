@@ -37,7 +37,8 @@ type Ast struct {
 	Config           *config.CompileCfg
 	IsPacked             bool                   // Set to true if class has @packed attribute
 	Visibility           string                 // "public", "private", "protected", or "" (default private)
-	OriginModule         string                 // Module path where this symbol was defined
+	OriginModule         string                 // Package name where this symbol was defined
+	SourceFile           string                 // Source file path where this symbol was defined
 	IsImportedModule     bool                   // True if this scope is an imported module (not the main file)
 	LazyResolver           LazyTypeResolver       // Called to resolve types from directory imports
 	LazyMethodResolver     LazyMethodResolver     // Called to resolve methods from directory imports
@@ -200,12 +201,22 @@ func (a *Ast) ToCString() string {
 	return r
 }
 
-// IsPublic returns true if this symbol is accessible from other modules
+// IsPublic returns true if this symbol is accessible from anywhere
 func (a *Ast) IsPublic() bool {
 	return a.Visibility == "public" || a.Visibility == "external"
 }
 
-// GetOriginModule returns the module where this symbol was defined
+// IsProtected returns true if this symbol is accessible within the same package
+func (a *Ast) IsProtected() bool {
+	return a.Visibility == "protected"
+}
+
+// IsPrivate returns true if this symbol is only accessible within the same file
+func (a *Ast) IsPrivate() bool {
+	return a.Visibility == "private" || a.Visibility == ""
+}
+
+// GetOriginModule returns the package where this symbol was defined
 func (a *Ast) GetOriginModule() string {
 	if a.OriginModule != "" {
 		return a.OriginModule
@@ -214,30 +225,73 @@ func (a *Ast) GetOriginModule() string {
 	return a.GetRoot().Scope
 }
 
-// IsSameModule checks if two AST nodes are from the same module
-func (a *Ast) IsSameModule(other *Ast) bool {
+// GetSourceFile returns the source file where this symbol was defined
+func (a *Ast) GetSourceFile() string {
+	if a.SourceFile != "" {
+		return a.SourceFile
+	}
+	// Fall back to parent's source file
+	if a.Parent != nil {
+		return a.Parent.GetSourceFile()
+	}
+	return ""
+}
+
+// IsSameFile checks if two AST nodes are from the same source file
+func (a *Ast) IsSameFile(other *Ast) bool {
+	if a == nil || other == nil {
+		return false
+	}
+	aFile := a.GetSourceFile()
+	otherFile := other.GetSourceFile()
+	// If either file is empty, fall back to module comparison
+	if aFile == "" || otherFile == "" {
+		return a.IsSamePackage(other)
+	}
+	return aFile == otherFile
+}
+
+// IsSamePackage checks if two AST nodes are from the same package
+func (a *Ast) IsSamePackage(other *Ast) bool {
 	if a == nil || other == nil {
 		return false
 	}
 	return a.GetOriginModule() == other.GetOriginModule()
 }
 
+// IsSameModule checks if two AST nodes are from the same module (alias for IsSamePackage)
+func (a *Ast) IsSameModule(other *Ast) bool {
+	return a.IsSamePackage(other)
+}
+
 // CheckVisibility validates that a symbol can be accessed from the given scope.
 // Returns an error message if access is denied, empty string if allowed.
+// Visibility levels:
+//   - private (default): same file only
+//   - protected: same package (any file in package)
+//   - public: accessible from anywhere
 func (a *Ast) CheckVisibility(fromScope *Ast, symbolName string) string {
-	// Same module access is always allowed
-	if a.IsSameModule(fromScope) {
+	// Public symbols are always accessible
+	if a.IsPublic() {
 		return ""
 	}
 
-	// Cross-module access requires public visibility
-	if !a.IsPublic() {
-		visibility := a.Visibility
-		if visibility == "" {
-			visibility = "private (default)"
+	// Protected symbols are accessible within the same package
+	if a.IsProtected() {
+		if a.IsSamePackage(fromScope) {
+			return ""
 		}
-		return "'" + symbolName + "' is " + visibility + " and cannot be accessed from module '" + fromScope.GetOriginModule() + "'"
+		return "'" + symbolName + "' is protected and can only be accessed within package '" + a.GetOriginModule() + "'"
 	}
 
-	return ""
+	// Private symbols (default) are only accessible within the same file
+	if a.IsSameFile(fromScope) {
+		return ""
+	}
+
+	visibility := a.Visibility
+	if visibility == "" {
+		visibility = "private (default)"
+	}
+	return "'" + symbolName + "' is " + visibility + " and can only be accessed within the same file"
 }

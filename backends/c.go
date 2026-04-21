@@ -126,7 +126,8 @@ func (b *CBackend) Features() interfaces.FeatureChecker {
 
 func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	file := &ast.Ast{
-		Scope: c.SourceFile.PackageName,
+		Scope:      c.SourceFile.PackageName,
+		SourceFile: c.SourceFile.Path,
 	}
 
 	file.Init(errors.NewErrorScope(c.SourceFile.Name, c.SourceFile.Path, c.SourceFile.Content))
@@ -156,6 +157,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 			Scope:            resolvedFile.PackageName,
 			Parent:           nil,
 			IsImportedModule: true, // Mark as imported module for scoped typedef names
+			SourceFile:       resolvedFile.Path,
 		}
 		resolvedScope.Init(errors.NewErrorScope(resolvedFile.Name, resolvedFile.Path, resolvedFile.Content))
 		resolvedScope.Config = resolvedFile.Config
@@ -262,6 +264,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 			Scope:            importedFile.PackageName,
 			Parent:           nil, // No parent so names are module__symbol, not main__module__symbol
 			IsImportedModule: true, // Mark as imported module for scoped typedef names
+			SourceFile:       importedFile.Path,
 		}
 		importScope.Init(errors.NewErrorScope(importedFile.Name, importedFile.Path, importedFile.Content))
 		importScope.Config = importedFile.Config
@@ -457,13 +460,30 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	}
 
 	// Compile with gcc
-	gccArgs := []string{"-c", "-ffreestanding", "-nostdlib"}
+	gccArgs := []string{"-c"}
+
+	// Only add freestanding flags if no project config or explicit target
+	if file.Config.Project == nil || (file.Config.Vendor != "" || file.Config.Arch != "") {
+		gccArgs = append(gccArgs, "-ffreestanding", "-nostdlib")
+	}
 
 	// Add architecture-specific flags
 	if file.Config.Arch == "arm64" && file.Config.Platform == "darwin" {
 		gccArgs = append(gccArgs, "-target", "arm64-apple-darwin")
 	} else if file.Config.Vendor != "" {
 		gccArgs = append(gccArgs, "-target", file.Config.Arch+"-"+file.Config.Vendor+"-"+file.Config.Platform)
+	}
+
+	// Add user-specified CFlags from config
+	if len(file.Config.CFlags) > 0 {
+		gccArgs = append(gccArgs, file.Config.CFlags...)
+	}
+
+	// Add CFlags from project config (includes pkg-config)
+	if file.Config.Project != nil {
+		if cflags, err := file.Config.Project.GetCFlags(); err == nil {
+			gccArgs = append(gccArgs, cflags...)
+		}
 	}
 
 	// Output object file

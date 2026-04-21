@@ -34,6 +34,12 @@ gecko compile --target-arch=amd64 --target-platform=linux <file>
 gecko compile --log-level debug <file>
 # Or via environment variable
 GECKO_DEBUG=1 gecko compile <file>
+
+# Build with external libraries (pkg-config)
+gecko build --pkg-config gtk4 --pkg-config libadwaita-1 main.gecko -o myapp
+
+# Custom compiler/linker flags
+gecko build --cflags "-I/opt/include" --ldflags "-L/opt/lib -lmylib" main.gecko
 ```
 
 ## Examples

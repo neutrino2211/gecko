@@ -243,19 +243,43 @@ var commonFlags = []cli.Flag{
 		Value: "silent",
 		Usage: "Log level (silent | error | warn | info | debug | trace)",
 	},
+	&cli.StringSliceFlag{
+		Name:  "cflags",
+		Usage: "Additional C compiler flags (can be specified multiple times)",
+	},
+	&cli.StringSliceFlag{
+		Name:  "ldflags",
+		Usage: "Additional linker flags (can be specified multiple times)",
+	},
+	&cli.StringSliceFlag{
+		Name:  "pkg-config",
+		Usage: "pkg-config packages to include (can be specified multiple times)",
+	},
 }
 
 // compileToC compiles a gecko file to C and returns the C file path
-func compileToC(ctx *cli.Context, source string) (string, error) {
+func compileToC(ctx *cli.Context, source string, projectCfg *config.ProjectConfig) (string, error) {
+	// Collect CFlags from CLI
+	cflags := ctx.StringSlice("cflags")
+
+	// Add pkg-config --cflags if specified via CLI
+	pkgConfigPkgs := ctx.StringSlice("pkg-config")
+	if len(pkgConfigPkgs) > 0 {
+		if pkgCFlags, err := runPkgConfig("--cflags", pkgConfigPkgs); err == nil {
+			cflags = append(cflags, pkgCFlags...)
+		}
+	}
+
 	// Create a modified context with ir-only set
 	compiler.Compile(source, &config.CompileCfg{
 		Arch:     ctx.String("target-arch"),
 		Platform: ctx.String("target-platform"),
 		Vendor:   ctx.String("target-vendor"),
-		CFlags:   []string{},
-		CLFlags:  []string{},
+		CFlags:   cflags,
+		CLFlags:  ctx.StringSlice("ldflags"),
 		CObjects: []string{},
 		Ctx:      ctx,
+		Project:  projectCfg,
 	})
 
 	// The C file is generated next to the source
@@ -264,6 +288,21 @@ func compileToC(ctx *cli.Context, source string) (string, error) {
 	cFile := filepath.Join(sourceDir, sourceName+".c")
 
 	return cFile, nil
+}
+
+// runPkgConfig executes pkg-config and returns the flags
+func runPkgConfig(flag string, packages []string) ([]string, error) {
+	args := append([]string{flag}, packages...)
+	cmd := exec.Command("pkg-config", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	flagStr := strings.TrimSpace(string(output))
+	if flagStr == "" {
+		return nil, nil
+	}
+	return strings.Fields(flagStr), nil
 }
 
 // BuildCommand compiles gecko to an executable
@@ -315,7 +354,7 @@ var BuildCommand = &cli.Command{
 		}
 
 		// Compile to C
-		cFile, err := compileToC(ctx, source)
+		cFile, err := compileToC(ctx, source, projectCfg)
 		if err != nil {
 			return err
 		}
@@ -341,12 +380,33 @@ var BuildCommand = &cli.Command{
 			gccArgs = append([]string{"-O2"}, gccArgs...)
 		}
 
+		// Add linker flags from CLI
+		ldflags := ctx.StringSlice("ldflags")
+
+		// Add pkg-config --libs if specified via CLI
+		pkgConfigPkgs := ctx.StringSlice("pkg-config")
+		if len(pkgConfigPkgs) > 0 {
+			if pkgLibs, err := runPkgConfig("--libs", pkgConfigPkgs); err == nil {
+				ldflags = append(ldflags, pkgLibs...)
+			}
+		}
+
+		// Add linker flags from project config
+		if projectCfg != nil {
+			if projLdFlags, err := projectCfg.GetLdFlags(); err == nil {
+				ldflags = append(ldflags, projLdFlags...)
+			}
+		}
+
+		// Append linker flags after the source file
+		gccArgs = append(gccArgs, ldflags...)
+
 		cmd := exec.Command("gcc", gccArgs...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("gcc compilation failed: %w", err)
+			return fmt.Errorf("gcc linking failed: %w", err)
 		}
 
 		fmt.Printf("Built: %s\n", output)
@@ -405,8 +465,12 @@ var RunCommand = &cli.Command{
 
 		source := ctx.Args().First()
 
+		// Try to load project config
+		wd, _ := os.Getwd()
+		projectCfg, _ := config.LoadProjectConfig(wd)
+
 		// Compile to C
-		cFile, err := compileToC(ctx, source)
+		cFile, err := compileToC(ctx, source, projectCfg)
 		if err != nil {
 			return err
 		}
@@ -417,11 +481,34 @@ var RunCommand = &cli.Command{
 		exeName := strings.TrimSuffix(base, filepath.Ext(base))
 		tmpExe := filepath.Join(tmpDir, "gecko_"+exeName)
 
+		// Build gcc args with linker flags
+		gccArgs := []string{"-o", tmpExe, cFile}
+
+		// Add linker flags from CLI
+		ldflags := ctx.StringSlice("ldflags")
+
+		// Add pkg-config --libs if specified via CLI
+		pkgConfigPkgs := ctx.StringSlice("pkg-config")
+		if len(pkgConfigPkgs) > 0 {
+			if pkgLibs, err := runPkgConfig("--libs", pkgConfigPkgs); err == nil {
+				ldflags = append(ldflags, pkgLibs...)
+			}
+		}
+
+		// Add linker flags from project config
+		if projectCfg != nil {
+			if projLdFlags, err := projectCfg.GetLdFlags(); err == nil {
+				ldflags = append(ldflags, projLdFlags...)
+			}
+		}
+
+		gccArgs = append(gccArgs, ldflags...)
+
 		// Compile C to executable
-		cmd := exec.Command("gcc", "-o", tmpExe, cFile)
+		cmd := exec.Command("gcc", gccArgs...)
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("gcc compilation failed: %w", err)
+			return fmt.Errorf("gcc linking failed: %w", err)
 		}
 
 		// Clean up C file

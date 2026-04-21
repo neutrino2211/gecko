@@ -3,7 +3,9 @@ package config
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -32,6 +34,9 @@ type BuildConfig struct {
 	DefaultTarget string                   `toml:"default_target"`
 	Entries       map[string]string        `toml:"entries"`
 	Profiles      map[string]*BuildProfile `toml:"profiles"`
+	PkgConfig     []string                 `toml:"pkg_config"` // pkg-config packages to include
+	CFlags        []string                 `toml:"cflags"`     // Additional C compiler flags
+	LdFlags       []string                 `toml:"ldflags"`    // Additional linker flags
 }
 
 // BuildProfile holds profile-specific build settings
@@ -189,4 +194,63 @@ func (c *ProjectConfig) GetModuleSearchPaths() []string {
 	}
 
 	return paths
+}
+
+// GetCFlags returns all C compiler flags including those from pkg-config
+func (c *ProjectConfig) GetCFlags() ([]string, error) {
+	var flags []string
+
+	// Add explicit cflags
+	flags = append(flags, c.Build.CFlags...)
+
+	// Add pkg-config --cflags
+	if len(c.Build.PkgConfig) > 0 {
+		pkgFlags, err := runPkgConfig("--cflags", c.Build.PkgConfig)
+		if err != nil {
+			return nil, err
+		}
+		flags = append(flags, pkgFlags...)
+	}
+
+	return flags, nil
+}
+
+// GetLdFlags returns all linker flags including those from pkg-config
+func (c *ProjectConfig) GetLdFlags() ([]string, error) {
+	var flags []string
+
+	// Add explicit ldflags
+	flags = append(flags, c.Build.LdFlags...)
+
+	// Add pkg-config --libs
+	if len(c.Build.PkgConfig) > 0 {
+		pkgFlags, err := runPkgConfig("--libs", c.Build.PkgConfig)
+		if err != nil {
+			return nil, err
+		}
+		flags = append(flags, pkgFlags...)
+	}
+
+	return flags, nil
+}
+
+// runPkgConfig executes pkg-config with the given flag and packages
+func runPkgConfig(flag string, packages []string) ([]string, error) {
+	args := append([]string{flag}, packages...)
+	cmd := exec.Command("pkg-config", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("pkg-config %s %v failed: %s", flag, packages, string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("pkg-config not found or failed: %w", err)
+	}
+
+	// Split output into individual flags
+	flagStr := strings.TrimSpace(string(output))
+	if flagStr == "" {
+		return nil, nil
+	}
+
+	return strings.Fields(flagStr), nil
 }

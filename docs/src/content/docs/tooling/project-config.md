@@ -73,6 +73,64 @@ optimize = false
 optimize = true    # or "size" for size optimization
 ```
 
+### C Compiler and Linker Flags
+
+Add custom compiler and linker flags:
+
+```toml
+[build]
+cflags = ["-Wall", "-Wextra"]      # C compiler flags
+ldflags = ["-lm", "-lpthread"]     # Linker flags
+```
+
+### pkg-config Integration
+
+Automatically include flags from pkg-config packages:
+
+```toml
+[build]
+pkg_config = ["gtk4", "libadwaita-1"]
+```
+
+This runs `pkg-config --cflags` during compilation and `pkg-config --libs` during linking.
+
+**Example: GTK4 Application**
+
+```toml
+[package]
+name = "myapp"
+version = "0.1.0"
+
+[build]
+backend = "c"
+pkg_config = ["gtk4"]
+
+[build.entries]
+main = "src/main.gecko"
+```
+
+**Example: libadwaita Application**
+
+```toml
+[package]
+name = "adw-app"
+version = "0.1.0"
+
+[build]
+backend = "c"
+pkg_config = ["libadwaita-1"]
+
+[build.entries]
+main = "src/main.gecko"
+```
+
+You can also specify flags via CLI:
+
+```bash
+gecko build main.gecko --pkg-config gtk4 --pkg-config libadwaita-1
+gecko build main.gecko --cflags "-I/usr/include/custom" --ldflags "-L/usr/lib/custom -lmylib"
+```
+
 ## Dependencies
 
 ### Git Dependencies

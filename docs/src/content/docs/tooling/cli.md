@@ -42,6 +42,9 @@ gecko compile --entry <name>
 | `--ir-only` | Only generate IR (no object file) | false |
 | `--llc-args` | Arguments for llc (LLVM backend) | - |
 | `--log-level` | Logging: silent, error, warn, info, debug, trace | `silent` |
+| `--cflags` | Additional C compiler flags (repeatable) | - |
+| `--ldflags` | Additional linker flags (repeatable) | - |
+| `--pkg-config` | pkg-config packages to include (repeatable) | - |
 
 ### Examples
 
@@ -57,6 +60,12 @@ gecko compile --log-level debug src/main.gecko
 
 # Cross-compile for Linux
 gecko compile --target-arch=amd64 --target-platform=linux src/main.gecko
+
+# Compile with pkg-config (e.g., GTK4)
+gecko compile --pkg-config gtk4 src/main.gecko
+
+# Add custom compiler flags
+gecko compile --cflags "-I/opt/include" src/main.gecko
 ```
 
 ## gecko build
@@ -88,6 +97,12 @@ gecko build --release src/main.gecko -o myapp
 
 # Build from gecko.toml entry
 gecko build --entry main -o myapp
+
+# Build with external libraries via pkg-config
+gecko build --pkg-config gtk4 --pkg-config libadwaita-1 src/main.gecko -o myapp
+
+# Build with custom linker flags
+gecko build --ldflags "-L/opt/lib -lmylib" src/main.gecko -o myapp
 ```
 
 ## gecko run

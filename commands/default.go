@@ -5,6 +5,7 @@ import (
 )
 
 var GeckoCommands = []*cli.Command{
+	InitCommand,
 	RunCommand,
 	BuildCommand,
 	CompileCommand,

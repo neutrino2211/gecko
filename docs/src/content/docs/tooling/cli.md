@@ -11,12 +11,61 @@ The Gecko compiler provides several commands for compiling, building, and managi
 
 | Command | Alias | Description |
 |---------|-------|-------------|
+| `gecko init` | `i` | Initialize a new project |
 | `gecko compile` | `c` | Compile to C/LLVM IR |
 | `gecko build` | `b` | Compile to executable |
 | `gecko run` | `r` | Compile and run |
 | `gecko check` | `ck` | Type-check without compiling |
 | `gecko doc` | `d` | Generate documentation |
 | `gecko deps` | - | Manage dependencies |
+
+## gecko init
+
+Creates a new Gecko project with the standard directory structure.
+
+```bash
+gecko init [project-name]
+gecko init --type lib [project-name]
+```
+
+### Options
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--type, -t` | Project type: `exe` or `lib` | `exe` |
+
+### Examples
+
+```bash
+# Create executable project in new directory
+gecko init myapp
+
+# Create library project
+gecko init --type lib mylib
+
+# Initialize in current directory
+gecko init
+```
+
+### Generated Structure
+
+**Executable (`--type exe`):**
+```
+myapp/
+├── gecko.toml
+├── src/
+│   └── main.gecko
+└── .gitignore
+```
+
+**Library (`--type lib`):**
+```
+mylib/
+├── gecko.toml
+├── src/
+│   └── lib.gecko
+└── .gitignore
+```
 
 ## gecko compile
 

@@ -77,6 +77,10 @@ var GeckoToCType = map[string]string{
 // CScopeDataMap holds all scope data
 var CScopeDataMap = &CScopeData{}
 
+// LastCImportLibraries holds libraries from the most recent compilation
+// This allows the build command to access pkg-config libraries from cimport statements
+var LastCImportLibraries []string
+
 // CProgramValues holds all value info
 var CProgramValues = &CValuesMap{}
 

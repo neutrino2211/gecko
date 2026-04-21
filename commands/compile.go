@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	cbackend "github.com/neutrino2211/gecko/backends/c_backend"
 	"github.com/neutrino2211/gecko/compiler"
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/logger"
@@ -380,6 +381,20 @@ var BuildCommand = &cli.Command{
 			gccArgs = append([]string{"-O2"}, gccArgs...)
 		}
 
+		// Add pkg-config --cflags for cimport libraries (for include paths)
+		if len(cbackend.LastCImportLibraries) > 0 {
+			// Deduplicate libraries
+			libSet := make(map[string]bool)
+			for _, lib := range cbackend.LastCImportLibraries {
+				libSet[lib] = true
+			}
+			for lib := range libSet {
+				if pkgCFlags, err := runPkgConfig("--cflags", []string{lib}); err == nil {
+					gccArgs = append(pkgCFlags, gccArgs...)
+				}
+			}
+		}
+
 		// Add linker flags from CLI
 		ldflags := ctx.StringSlice("ldflags")
 
@@ -395,6 +410,19 @@ var BuildCommand = &cli.Command{
 		if projectCfg != nil {
 			if projLdFlags, err := projectCfg.GetLdFlags(); err == nil {
 				ldflags = append(ldflags, projLdFlags...)
+			}
+		}
+
+		// Add pkg-config --libs for cimport libraries (for linking)
+		if len(cbackend.LastCImportLibraries) > 0 {
+			libSet := make(map[string]bool)
+			for _, lib := range cbackend.LastCImportLibraries {
+				libSet[lib] = true
+			}
+			for lib := range libSet {
+				if pkgLibs, err := runPkgConfig("--libs", []string{lib}); err == nil {
+					ldflags = append(ldflags, pkgLibs...)
+				}
 			}
 		}
 

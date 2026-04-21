@@ -413,6 +413,9 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	// Topologically sort struct definitions so dependencies come first
 	info.StructDefs = cbackend.TopologicalSortStructs(info.StructDefs)
 
+	// Store CImportLibraries for access by build command
+	cbackend.LastCImportLibraries = info.CImportLibraries
+
 	// Generate C code
 	cCode := generateCCode(info)
 

@@ -31,13 +31,13 @@ var comparisonOps map[string]enum.IPred = map[string]enum.IPred{
 }
 
 func (impl *LLVMBackendImplementation) ExpressionToLLIRValue(e *tokens.Expression, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
-	if e == nil || e.LogicalOr == nil {
+	if e == nil || e.GetLogicalOr() == nil {
 		return nil
 	}
 
 	var base value.Value
 
-	lo := e.LogicalOr
+	lo := e.GetLogicalOr()
 
 	base = impl.LogicalOrToLLIRValue(lo, scope, expressionType)
 

@@ -7,10 +7,10 @@ import (
 // InferType attempts to infer the type of an expression.
 // Returns nil if type cannot be inferred.
 func InferType(expr *Expression, resolveSymbol func(string) *TypeRef) *TypeRef {
-	if expr == nil || expr.LogicalOr == nil {
+	if expr == nil || expr.GetLogicalOr() == nil {
 		return nil
 	}
-	return inferFromLogicalOr(expr.LogicalOr, resolveSymbol)
+	return inferFromLogicalOr(expr.GetLogicalOr(), resolveSymbol)
 }
 
 func inferFromLogicalOr(lo *LogicalOr, resolveSymbol func(string) *TypeRef) *TypeRef {

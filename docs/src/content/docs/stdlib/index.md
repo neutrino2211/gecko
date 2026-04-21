@@ -7,9 +7,6 @@ The standard library provides memory management primitives for Gecko programs.
 
 ## Packages
 
-### collections
-
-
 ### traits
 
 - [**Drop** (trait)](/stdlib/traits-drop/) - Drop - Trait for types that need cleanup when going out of scope.
@@ -29,40 +26,27 @@ The standard library provides memory management primitives for Gecko programs.
 - [**Display** (trait)](/stdlib/traits-display/) - Display - Trait for user-facing formatting.
 - [**FnOnce** (trait)](/stdlib/traits-fnonce/) - FnOnce<A, R> - Callable types consumed on call.
 - [**Fn** (trait)](/stdlib/traits-fn/) - Fn<A, R> - Callable types (multiple calls allowed).
-- [**Tryable** (trait)](/stdlib/traits-tryable/) - Tryable<T> - Trait enabling the `try` keyword.
-- [**Orable** (trait)](/stdlib/traits-orable/) - Orable<T> - Trait enabling the `or` keyword.
+- [**Tryable** (trait)](/stdlib/traits-tryable/) - Tryable<T> - Trait for types that can be "tried" (unwrap or propagate).
+- [**Orable** (trait)](/stdlib/traits-orable/) - Orable<T> - Trait for types that can use `or` for default values.
 
 ### memory
 
+
+### raw
+
+- [**Raw**](/stdlib/raw-raw/) - Raw<T> - Unsafe pointer wrapper for low-level memory operations.
 
 ### rc
 
 - [**RcInner**](/stdlib/rc-rcinner/) - Internal structure holding reference counts and value.
 - [**Rc**](/stdlib/rc-rc/) - Rc<T> - Reference Counted Smart Pointer.
 
-### vec
-
-- [**Vec**](/stdlib/vec-vec/) - Vec<T> - A growable, heap-allocated array.
-
-### box
-
-- [**Box**](/stdlib/box-box/) - Box<T> - Unique ownership smart pointer.
-
 ### weak
 
 - [**Weak**](/stdlib/weak-weak/) - Weak<T> - Non-owning reference to `Rc<T>` data.
 
-### option
+### collections
 
-- [**Option**](/stdlib/option-option/) - Option<T> - Represents an optional value.
-
-### result
-
-- [**Result**](/stdlib/result-result/) - Result<T, E> - Represents success or failure.
-
-### slice
-
-- [**Slice**](/stdlib/slice-slice/) - 
 
 ### string
 
@@ -71,9 +55,9 @@ The standard library provides memory management primitives for Gecko programs.
 - [**StringBuilder**](/stdlib/string-stringbuilder/) - StringBuilder - A simple growable byte buffer for building strings.
 - [**Add** (trait)](/stdlib/string-add/) - Add<T> - Trait for the `+` operator.
 
-### raw
+### vec
 
-- [**Raw**](/stdlib/raw-raw/) - Raw<T> - Unsafe pointer wrapper for low-level memory operations.
+- [**Vec**](/stdlib/vec-vec/) - Vec<T> - A growable, heap-allocated array.
 
 ### core
 
@@ -98,6 +82,14 @@ The standard library provides memory management primitives for Gecko programs.
 - [**Le** (trait)](/stdlib/ops-le/) - Le<T> - Trait for the `<=` operator.
 - [**Ge** (trait)](/stdlib/ops-ge/) - Ge<T> - Trait for the `>=` operator.
 
+### box
+
+- [**Box**](/stdlib/box-box/) - Box<T> - Unique ownership smart pointer.
+
 ### std
 
+
+### slice
+
+- [**Slice**](/stdlib/slice-slice/) - 
 

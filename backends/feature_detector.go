@@ -234,10 +234,10 @@ func (d *featureDetector) analyzeTypeRef(t *tokens.TypeRef) {
 }
 
 func (d *featureDetector) analyzeExpression(expr *tokens.Expression) {
-	if expr == nil || expr.LogicalOr == nil {
+	if expr == nil || expr.GetLogicalOr() == nil {
 		return
 	}
-	d.analyzeLogicalOr(expr.LogicalOr)
+	d.analyzeLogicalOr(expr.GetLogicalOr())
 }
 
 func (d *featureDetector) analyzeLogicalOr(lo *tokens.LogicalOr) {

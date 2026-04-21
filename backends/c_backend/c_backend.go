@@ -601,11 +601,15 @@ func (impl *CBackendImplementation) GenerateMethodDef(scope *ast.Ast, m *tokens.
 
 	// Generate function with attributes
 	attrStr := tokens.ToCAttributes(m.Attributes)
+	isStatic := tokens.HasAttribute(m.Attributes, "static")
 	var funcDecl string
 	if attrStr != "" {
 		funcDecl = fmt.Sprintf("%s %s %s(%s)", attrStr, returnType, name, paramStr)
 	} else {
 		funcDecl = fmt.Sprintf("%s %s(%s)", returnType, name, paramStr)
+	}
+	if isStatic {
+		funcDecl = "static " + funcDecl
 	}
 
 	// Always add forward declaration for monomorphized functions
@@ -737,11 +741,15 @@ func (impl *CBackendImplementation) GenerateClassMethodDef(scope *ast.Ast, class
 
 	// Generate function
 	attrStr := tokens.ToCAttributes(m.Attributes)
+	isStatic := tokens.HasAttribute(m.Attributes, "static")
 	var funcDecl string
 	if attrStr != "" {
 		funcDecl = fmt.Sprintf("%s %s %s(%s)", attrStr, returnType, methodName, paramStr)
 	} else {
 		funcDecl = fmt.Sprintf("%s %s(%s)", returnType, methodName, paramStr)
+	}
+	if isStatic {
+		funcDecl = "static " + funcDecl
 	}
 
 	info.Declarations = append(info.Declarations, funcDecl+";")
@@ -1035,7 +1043,11 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 	}
 
 	// Generate function signature
+	isStatic := tokens.HasAttribute(m.Attributes, "static")
 	funcDecl := fmt.Sprintf("%s %s(%s)", returnType, mangledName, paramStr)
+	if isStatic {
+		funcDecl = "static " + funcDecl
+	}
 
 	// Add to parent scope info
 	parentInfo := CGetScopeInformation(scope)
@@ -1211,11 +1223,15 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 	// Generate function signature with attributes
 	funcName := astMth.GetFullName()
 	attrStr := tokens.ToCAttributes(m.Attributes)
+	isStatic := tokens.HasAttribute(m.Attributes, "static")
 	var funcDecl string
 	if attrStr != "" {
 		funcDecl = fmt.Sprintf("%s %s %s(%s)", attrStr, returnType, funcName, paramStr)
 	} else {
 		funcDecl = fmt.Sprintf("%s %s(%s)", returnType, funcName, paramStr)
+	}
+	if isStatic {
+		funcDecl = "static " + funcDecl
 	}
 
 	// Add to root scope info (so class methods end up in the output)

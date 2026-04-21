@@ -9,6 +9,47 @@ Gecko is a compiled systems programming language with TypeScript-like ergonomics
 
 ## Installation
 
+### Quick Install (Recommended)
+
+**macOS / Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/neutrino2211/gecko/main/scripts/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/neutrino2211/gecko/main/scripts/install.ps1 | iex
+```
+
+After installation, restart your terminal and verify:
+```bash
+gecko --help
+```
+
+### Manual Installation
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/neutrino2211/gecko/releases).
+
+| Platform | Architecture | Download |
+|----------|--------------|----------|
+| Linux | x86_64 | `gecko-linux-amd64.tar.gz` |
+| Linux | ARM64 | `gecko-linux-arm64.tar.gz` |
+| macOS | Intel | `gecko-darwin-amd64.tar.gz` |
+| macOS | Apple Silicon | `gecko-darwin-arm64.tar.gz` |
+| Windows | x86_64 | `gecko-windows-amd64.zip` |
+
+Extract and add to your PATH:
+
+```bash
+# Linux/macOS
+tar -xzf gecko-<platform>.tar.gz
+mv gecko ~/.local/bin/
+mv stdlib ~/.gecko/
+export GECKO_HOME=~/.gecko
+```
+
+### Build from Source
+
 ```bash
 # Clone the repository
 git clone https://github.com/neutrino2211/gecko
@@ -28,7 +69,7 @@ go build .
 
 Create a file `hello.gecko`:
 
-```ts
+```gecko
 package main
 
 declare external variardic func printf(format: string): int
@@ -76,7 +117,7 @@ myproject/
 
 Import modules:
 
-```ts
+```gecko
 import math
 
 func main(): int {

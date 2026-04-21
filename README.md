@@ -80,8 +80,17 @@
 
 <!-- ABOUT THE PROJECT -->
 ## About The Project
-Gecko is a programming language that is designed to be very easy to get started with using very familiar syntax an features with the aim of making systems programming very easy to get into, similar to the experience of getting started with Rust or Zig.
- <!-- `neutrino2211`, `gecko`, `neutrino2211`, `linkedin_username`, `email_client`, `email`, `project_title`, `project_description` -->
+
+Gecko is a compiled systems programming language that combines TypeScript-like ergonomics with low-level control. It's designed to make systems programming accessible while maintaining the performance and control needed for OS kernels, embedded systems, and performance-critical applications.
+
+**Key Features:**
+- **Familiar syntax** - If you know TypeScript or Go, you'll feel at home
+- **Traits & generics** - Powerful abstractions without runtime cost
+- **C interoperability** - Seamless integration with existing C libraries
+- **Memory safety tools** - `Box<T>`, `Rc<T>`, and `Drop` for automatic cleanup
+- **Operator overloading** - Custom operators via trait hooks
+- **Low-level control** - Inline assembly, volatile pointers, packed structs
+- **Modern tooling** - LSP support, VS Code extension, cross-compilation
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -135,26 +144,100 @@ Install go>=1.20
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-You can write your own programs or run those already in the test_sources/compile_tests folder, code in test_sources/kitchen_sink is just conceptual and should not compile properly if it compiles at all.
+### Quick Start
+
+```gecko
+// hello.gecko
+package main
+
+import std.collections.string use { String }
+
+func main(): void {
+    let greeting = String::from("Hello, Gecko!")
+    // Print using C interop
+}
+```
+
+### Commands
+
+```sh
+# Compile to C code
+gecko compile hello.gecko
+
+# Build executable
+gecko build hello.gecko -o hello
+
+# Compile and run
+gecko run hello.gecko
+
+# Type-check without building
+gecko check hello.gecko
+
+# Generate documentation
+gecko doc ./src
+```
+
+### Examples
+
+Check out the `examples/` directory for complete projects:
+- `examples/traits/` - Traits, generics, and trait constraints
+- `examples/string_builder/` - Using the standard library
+- `examples/hello_kernel/` - Bare-metal kernel development
+- `examples/c_interop/` - C library integration
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- ROADMAP -->
 ## Roadmap
 
-- [X] Compile a single file
-  - [X] Variables
-  - [X] Primitive types
-  - [X] Function calls
-  - [X] Return values from function calls
-  - [ ] Arrays
-  - [ ] Control flow
-  - [ ] Casting 
-- [ ] Imports
-- [ ] Traits
-- [ ] Type checking
-- [ ] Memory management
-- [ ] ...more I probably haven't thought of yet
+### Core Language
+- [X] Variables (`let`, `const`) with type inference
+- [X] Primitive types (`int`, `uint`, `bool`, `string`, `float`, etc.)
+- [X] Functions with parameters and return types
+- [X] Control flow (`if`/`else`, `while`, `for`, `for-in` loops)
+- [X] Fixed-size arrays (`[N]T`)
+- [X] Type casting (`as` operator)
+- [X] Pointers (including non-null `T*!` and volatile `T volatile*`)
+
+### Type System
+- [X] Classes/structs with fields and methods
+- [X] Traits and trait implementations
+- [X] Generics with type parameters (`<T>`)
+- [X] Trait constraints (`<T is Trait>`, multiple constraints)
+- [X] Enums
+- [X] Type checking and inference
+- [X] Visibility modifiers (`public`, `private`)
+
+### Module System
+- [X] Module imports (`import std.collections.vec`)
+- [X] Selective imports (`use { Vec, String }`)
+- [X] Directory imports
+- [X] C header imports (`cimport`)
+
+### Memory & Ownership
+- [X] `Box<T>` - unique ownership
+- [X] `Rc<T>` / `Weak<T>` - reference counting
+- [X] `Drop` trait for automatic cleanup
+- [X] `Clone` and `Copy` traits
+
+### Operator Overloading
+- [X] Hook attributes for operators (`@add_hook`, `@eq_hook`, etc.)
+- [X] Iterator hooks for `for-in` loops
+- [X] Index hooks for `[]` syntax
+
+### Tooling
+- [X] C backend (recommended)
+- [X] LLVM backend (experimental)
+- [X] Cross-compilation support
+- [X] LSP with completions, hover, diagnostics
+- [X] VS Code extension
+- [X] Project configuration (`gecko.toml`)
+
+### Planned
+- [ ] Trait inheritance
+- [ ] Pattern matching for enums
+- [ ] Async/await
+- [ ] Package manager
 
 See the [open issues](https://github.com/neutrino2211/gecko/issues) for a full list of proposed features (and known issues).
 

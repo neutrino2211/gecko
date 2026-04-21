@@ -11,7 +11,7 @@ sidebar:
 
 Parentheses around conditions are optional:
 
-```ts
+```gecko
 if x > 0 {
     printf("positive\n")
 }
@@ -24,7 +24,7 @@ if (x > 0) {
 
 ### If-Else
 
-```ts
+```gecko
 if x > 0 {
     printf("positive\n")
 } else {
@@ -34,7 +34,7 @@ if x > 0 {
 
 ### Else-If Chains
 
-```ts
+```gecko
 if x > 0 {
     printf("positive\n")
 } else if x < 0 {
@@ -50,7 +50,7 @@ if x > 0 {
 
 The `for` loop is the primary loop construct:
 
-```ts
+```gecko
 let i: int = 0
 for i < 10 {
     printf("%d\n", i)
@@ -60,7 +60,7 @@ for i < 10 {
 
 ### While Loops
 
-```ts
+```gecko
 let i: int = 0
 while i < 10 {
     printf("%d\n", i)
@@ -68,9 +68,66 @@ while i < 10 {
 }
 ```
 
+### For-In Loops
+
+Iterate over any type that implements the `Iterator` trait:
+
+```gecko
+import std.collections.vec use { Vec }
+
+let numbers: Vec<int> = Vec::new()
+numbers.push(1)
+numbers.push(2)
+numbers.push(3)
+
+for let n in numbers {
+    printf("%d\n", n)
+}
+```
+
+The `for-in` loop works with any type implementing `Iterator<T>`:
+
+```gecko
+import std.collections.string use { String }
+
+let s = String::from("hello")
+for let c in s {
+    // c is each byte (uint8) in the string
+}
+```
+
+You can also iterate over custom types by implementing the `Iterator` trait:
+
+```gecko
+import std.core.traits use { Iterator }
+
+class Range {
+    let current: int
+    let end: int
+}
+
+impl Iterator<int> for Range {
+    func next(self): int {
+        let val = self.current
+        self.current = self.current + 1
+        return val
+    }
+
+    func has_next(self): bool {
+        return self.current < self.end
+    }
+}
+
+// Usage
+let r = Range { current: 0, end: 5 }
+for let i in r {
+    printf("%d\n", i)  // Prints 0, 1, 2, 3, 4
+}
+```
+
 ### Break and Continue
 
-```ts
+```gecko
 let i: int = 0
 for i < 100 {
     if i == 10 {
@@ -89,7 +146,7 @@ for i < 100 {
 
 Use `&&` (and) and `||` (or) for compound conditions:
 
-```ts
+```gecko
 if x > 0 && x < 100 {
     printf("x is between 0 and 100\n")
 }
@@ -103,7 +160,7 @@ if x < 0 || x > 100 {
 
 Logical operators short-circuit:
 
-```ts
+```gecko
 // safe_divide is only called if x != 0
 if x != 0 && safe_divide(100, x) > 10 {
     printf("result is large\n")

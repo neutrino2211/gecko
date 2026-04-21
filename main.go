@@ -10,6 +10,9 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// Version is set at build time via -ldflags
+var Version = "dev"
+
 func main() {
 	config.Init()
 	logger.SetDefaultChannel("Gecko")
@@ -20,6 +23,7 @@ func main() {
 		Name:        "gecko",
 		HelpName:    "gecko",
 		Usage:       "A playful new language written in Go",
+		Version:     Version,
 	}
 
 	if err := cmd.Run(os.Args); err != nil {

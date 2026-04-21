@@ -1,5 +1,7 @@
 package vec
 
+import std.core.traits use { Drop, Clone, Index, IndexMut }
+
 declare external func malloc(size: uint64): void*
 declare external func realloc(ptr: void*, size: uint64): void*
 declare external func free(ptr: void*): void
@@ -171,5 +173,48 @@ public class Vec<T> {
             self.len = 0
             self.cap = 0
         }
+    }
+}
+
+// Trait implementations for Vec<T>
+
+impl<T> Drop for Vec<T> {
+    func drop(self): void {
+        if (self.data != 0) {
+            free(self.data as void*)
+            self.data = 0
+            self.len = 0
+            self.cap = 0
+        }
+    }
+}
+
+impl<T> Clone for Vec<T> {
+    func clone(self): Vec<T> {
+        let new_v: Vec<T> = Vec<T>::with_capacity(self.cap)
+
+        if (self.len > 0) {
+            let elem_size: uint64 = @size_of<T>()
+            memcpy(new_v.data as void*, self.data as void*, self.len * elem_size)
+            new_v.len = self.len
+        }
+
+        return new_v
+    }
+}
+
+impl<T> Index<uint64, T> for Vec<T> {
+    func index(self, idx: uint64): T {
+        let elem_size: uint64 = @size_of<T>()
+        let ptr: T* = (self.data + idx * elem_size) as T*
+        return @deref(ptr)
+    }
+}
+
+impl<T> IndexMut<uint64, T> for Vec<T> {
+    func index_mut(self, idx: uint64, value: T): void {
+        let elem_size: uint64 = @size_of<T>()
+        let ptr: T* = (self.data + idx * elem_size) as T*
+        @write_volatile(ptr, value)
     }
 }

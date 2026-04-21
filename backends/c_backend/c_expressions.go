@@ -167,6 +167,10 @@ func (impl *CBackendImplementation) UnaryToCString(u *tokens.Unary, scope *ast.A
 
 	// Handle cast expression (e.g., "value as *uint16" or "ptr as uint64")
 	if u.Cast != nil {
+		// Validate the cast target type
+		if u.Cast.Type != nil {
+			u.Cast.Type.Check(scope)
+		}
 		cType := TypeRefToCType(u.Cast.Type, scope)
 		base = "((" + cType + ")(" + base + "))"
 	}
@@ -352,8 +356,8 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 				// Check for Index trait with any type argument
 				for traitName := range class.Traits {
 					if len(traitName) >= 5 && traitName[:5] == "Index" {
-						// Found Index trait - get the index method
-						indexHook := hooks.GetHookRegistry().GetHook(scope.GetRoot().Scope, hooks.HookIndex)
+						// Found Index trait - get the index method from any module (trait may be imported)
+						indexHook := hooks.GetHookRegistry().GetHookFromAnyModule(hooks.HookIndex)
 						if indexHook != nil && len(indexHook.Methods) > 0 {
 							methodName := indexHook.Methods[0]
 							mangledMethod := indexedTypeName + "__" + traitName + "__" + methodName

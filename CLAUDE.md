@@ -157,13 +157,14 @@ Traits can define hooks that enable syntactic sugar:
 
 ```gecko
 @drop_hook(.drop)           // Called on scope exit
-@clone_hook(.clone)         // Explicit cloning
 @iterator_hook(.next, .has_next)  // for-in loops
 @index_hook(.index)         // arr[i] read access
 @index_mut_hook(.index_mut) // arr[i] = v write access
 @add_hook(.add)             // a + b operator
 @eq_hook(.eq)               // a == b operator
 ```
+
+Note: Clone is a regular trait (no hook) - call `.clone()` explicitly. Copy is a marker trait for types safe to copy bitwise.
 
 ### Visibility
 
@@ -214,11 +215,7 @@ go build -o gecko-lsp ./lsp
 
 ### Not Yet Implemented
 
-- Copy/clone hooks (automatic trigger on assignments)
-- String iteration (strings need Iterator impl)
-- Default trait implementations
-- Trait inheritance
-- LSP import suggestions for unknown types
+- Trait inheritance (`trait Child: Parent`)
 
 ## Ground Rules for Development
 

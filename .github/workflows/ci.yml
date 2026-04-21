@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test ./tests/... -v
+
+  build:
+    name: Build (${{ matrix.os }}-${{ matrix.arch }})
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+            binary: gecko
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            binary: gecko
+          - os: darwin
+            arch: amd64
+            runner: macos-latest
+            binary: gecko
+          - os: darwin
+            arch: arm64
+            runner: macos-latest
+            binary: gecko
+          - os: windows
+            arch: amd64
+            runner: windows-latest
+            binary: gecko.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w -X main.Version=${{ github.sha }}" -o ${{ matrix.binary }} .
+
+      - name: Create archive (Unix)
+        if: matrix.os != 'windows'
+        run: |
+          mkdir -p dist
+          tar -czvf dist/gecko-${{ matrix.os }}-${{ matrix.arch }}.tar.gz ${{ matrix.binary }} stdlib/
+
+      - name: Create archive (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Compress-Archive -Path ${{ matrix.binary }}, stdlib -DestinationPath dist/gecko-${{ matrix.os }}-${{ matrix.arch }}.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gecko-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/
+
+  release:
+    name: Create Prerelease
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec mv {} release/ \;
+          ls -la release/
+
+      - name: Generate release tag
+        id: tag
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          DATE=$(date +'%Y%m%d')
+          TAG="dev-${DATE}-${SHORT_SHA}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Create prerelease
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "Development Build ${{ steps.tag.outputs.short_sha }}"
+          body: |
+            Automated development build from commit ${{ github.sha }}
+
+            **Commit:** [`${{ steps.tag.outputs.short_sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+            **Branch:** `main`
+            **Date:** ${{ github.event.head_commit.timestamp }}
+
+            ## Installation
+
+            ### macOS / Linux
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash
+            ```
+
+            ### Windows (PowerShell)
+            ```powershell
+            iwr -useb https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.ps1 | iex
+            ```
+
+            ## Manual Download
+
+            | Platform | Architecture | Download |
+            |----------|--------------|----------|
+            | Linux | x86_64 | [gecko-linux-amd64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/gecko-linux-amd64.tar.gz) |
+            | Linux | ARM64 | [gecko-linux-arm64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/gecko-linux-arm64.tar.gz) |
+            | macOS | x86_64 | [gecko-darwin-amd64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/gecko-darwin-amd64.tar.gz) |
+            | macOS | ARM64 (Apple Silicon) | [gecko-darwin-arm64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/gecko-darwin-arm64.tar.gz) |
+            | Windows | x86_64 | [gecko-windows-amd64.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/gecko-windows-amd64.zip) |
+          prerelease: true
+          files: release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

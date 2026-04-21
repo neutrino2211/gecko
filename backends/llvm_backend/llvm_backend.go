@@ -90,6 +90,8 @@ func (impls *LLVMBackendImplementation) NewClass(scope *ast.Ast, c *tokens.Class
 
 	for _, f := range c.Fields {
 		if f.Field != nil {
+			// Note: Don't validate field types here - circular dependency detection
+			// needs forward references to work. Field types are validated at usage time.
 			fieldType := impls.TypeRefGetLLIRType(f.Field.Type, scope)
 			if fieldType != nil {
 				fieldTypes = append(fieldTypes, fieldType)
@@ -224,6 +226,10 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 	fnParams := make([]*ir.Param, 0)
 
 	for _, a := range m.Arguments {
+		// Validate parameter type
+		if a.Type != nil {
+			a.Type.Check(scope)
+		}
 		ty := impl.TypeRefGetLLIRType(a.Type, scope)
 
 		fnParams = append(fnParams, ir.NewParam(a.Name, ty))

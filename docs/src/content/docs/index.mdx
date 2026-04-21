@@ -6,73 +6,27 @@ hero:
   tagline: A systems programming language with TypeScript-like ergonomics
   actions:
     - text: Get Started
-      link: /guide/getting-started/
+      link: /stdlib/
       icon: right-arrow
-    - text: Language Reference
-      link: /language/basics/
-      icon: document
-      variant: minimal
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+## Standard Library
 
-## Learn Gecko
+The Gecko standard library provides essential types for memory management:
 
-<CardGrid>
-  <Card title="Getting Started" icon="rocket">
-    [Install Gecko and write your first program](/guide/getting-started/)
-  </Card>
-  <Card title="Language Basics" icon="pencil">
-    [Variables, types, and functions](/language/basics/)
-  </Card>
-  <Card title="Control Flow" icon="random">
-    [Conditionals and loops](/language/control-flow/)
-  </Card>
-  <Card title="Classes" icon="puzzle">
-    [Custom types and methods](/language/classes/)
-  </Card>
-  <Card title="Traits" icon="star">
-    [Interfaces and operator overloading](/language/traits/)
-  </Card>
-  <Card title="Pointers" icon="setting">
-    [Memory and low-level operations](/language/pointers/)
-  </Card>
-  <Card title="C Interop" icon="external">
-    [Calling C functions](/language/c-interop/)
-  </Card>
-  <Card title="Standard Library" icon="open-book">
-    [API reference](/stdlib/)
-  </Card>
-</CardGrid>
+| Type | Description |
+|------|-------------|
+| **Box\<T\>** | Unique ownership heap allocation |
+| **Rc\<T\>** | Reference-counted shared ownership |
+| **Weak\<T\>** | Non-owning references to Rc data |
+| **Raw\<T\>** | Unsafe pointer wrapper for low-level operations |
 
 ## Quick Example
 
-```ts
-package main
+```gecko
+import box
 
-declare external variardic func printf(format: string): int
-
-class Point {
-    let x: int
-    let y: int
-
-    func new(x: int, y: int): Point {
-        let p: Point
-        p.x = x
-        p.y = y
-        return p
-    }
-
-    func add(self, other: Point): Point {
-        return Point::new(self.x + other.x, self.y + other.y)
-    }
-}
-
-func main(): int {
-    let a: Point = Point::new(1, 2)
-    let b: Point = Point::new(3, 4)
-    let c: Point = a.add(b)
-    printf("Result: (%d, %d)\n", c.x, c.y)
-    return 0
-}
+let b: Box<int32> = Box<int32>::new(42)
+let val: int32 = b.get()
+b.drop()
 ```

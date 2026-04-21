@@ -3,19 +3,17 @@ title: Shr (trait)
 description: Shr<T> - Trait for the `>>` operator.
 ---
 
-```ts
+```gecko
 trait Shr<T>
 ```
 
 Shr<T> - Trait for the `>>` operator.
 
-Types implementing this trait support right shift using `>>`.
-
 ## Required Methods
 
 ### shr
 
-```ts
+```gecko
 func shr(self: void, other: T): T
 ```
 

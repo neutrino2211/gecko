@@ -13,9 +13,7 @@ type HookType string
 
 const (
 	// Lifecycle hooks
-	HookDrop  HookType = "drop_hook"
-	HookCopy  HookType = "copy_hook"
-	HookClone HookType = "clone_hook"
+	HookDrop HookType = "drop_hook"
 
 	// Arithmetic operator hooks
 	HookAdd HookType = "add_hook"
@@ -59,9 +57,7 @@ type HookSignature struct {
 // Known hook signatures
 var hookSignatures = map[HookType]HookSignature{
 	// Lifecycle
-	HookDrop:  {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "void"},
-	HookCopy:  {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "Self"},
-	HookClone: {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "Self"},
+	HookDrop: {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "void"},
 
 	// Arithmetic (binary operators return T, unary returns Self)
 	HookAdd: {MethodCount: 1, HasSelf: true, ParamCount: 1, ReturnType: "T"},
@@ -150,6 +146,17 @@ func (r *HookRegistry) Register(modulePath string, hook *RegisteredHook, errorSc
 // GetHook returns the registered hook for a type in the given module (or imported modules)
 func (r *HookRegistry) GetHook(modulePath string, hookType HookType) *RegisteredHook {
 	if moduleHooks, ok := r.hooks[modulePath]; ok {
+		if hook, ok := moduleHooks[hookType]; ok {
+			return hook
+		}
+	}
+	return nil
+}
+
+// GetHookFromAnyModule searches all registered modules for a hook of the given type.
+// Use this when the trait may be defined in an imported module.
+func (r *HookRegistry) GetHookFromAnyModule(hookType HookType) *RegisteredHook {
+	for _, moduleHooks := range r.hooks {
 		if hook, ok := moduleHooks[hookType]; ok {
 			return hook
 		}

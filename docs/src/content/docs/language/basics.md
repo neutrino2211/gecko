@@ -9,7 +9,7 @@ sidebar:
 
 Declare variables with `let` (mutable) or `const` (immutable):
 
-```ts
+```gecko
 let x: int = 42          // Mutable, explicit type
 let y = 42               // Mutable, type inferred as int
 const PI: float64 = 3.14 // Immutable
@@ -30,7 +30,7 @@ const PI: float64 = 3.14 // Immutable
 
 ## Functions
 
-```ts
+```gecko
 func add(a: int, b: int): int {
     return a + b
 }
@@ -42,7 +42,7 @@ func greet(name: string) {
 
 ### Variadic Functions
 
-```ts
+```gecko
 declare external variardic func printf(format: string): int
 ```
 
@@ -64,7 +64,7 @@ declare external variardic func printf(format: string): int
 
 Gecko infers types from context:
 
-```ts
+```gecko
 let x = 42              // int
 let y = 3.14            // float64
 let z = true            // bool
@@ -74,7 +74,7 @@ let result = add(1, 2)  // int (from function return type)
 
 ## Comments
 
-```ts
+```gecko
 // Single line comment
 
 /// Doc comment for the following item
@@ -85,7 +85,7 @@ func documented(): void {}
 
 ### Fixed-size Arrays
 
-```ts
+```gecko
 let arr: [4]int = [1, 2, 3, 4]
 let first: int = arr[0]
 arr[1] = 10
@@ -93,7 +93,7 @@ arr[1] = 10
 
 ### Array Types
 
-```ts
+```gecko
 func sum(data: [4]int): int {
     return data[0] + data[1] + data[2] + data[3]
 }

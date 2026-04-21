@@ -3,7 +3,7 @@ title: Box
 description: Box<T> - Unique ownership smart pointer.
 ---
 
-```ts
+```gecko
 class Box<T>
 ```
 
@@ -30,7 +30,7 @@ b.drop()  // Manual cleanup (automatic in future)
 
 ### ptr
 
-```ts
+```gecko
 let ptr: uint64
 ```
 
@@ -40,7 +40,7 @@ Internal pointer to heap-allocated memory.
 
 ### new
 
-```ts
+```gecko
 func new(value: T): Box<T>
 ```
 
@@ -59,7 +59,7 @@ becomes the sole owner of this memory.
 
 ### from_raw
 
-```ts
+```gecko
 func from_raw(raw_ptr: uint64): Box<T>
 ```
 
@@ -79,7 +79,7 @@ the memory and will free it when dropped.
 
 ### is_valid
 
-```ts
+```gecko
 func is_valid(self: void): bool
 ```
 
@@ -95,7 +95,7 @@ Returns true if this Box contains valid (non-null) memory.
 
 ### get
 
-```ts
+```gecko
 func get(self: void): T
 ```
 
@@ -111,7 +111,7 @@ Returns the value stored in the Box.
 
 ### set
 
-```ts
+```gecko
 func set(self: void, value: T)
 ```
 
@@ -126,7 +126,7 @@ Overwrites the value stored in the Box.
 
 ### as_raw
 
-```ts
+```gecko
 func as_raw(self: void): uint64
 ```
 
@@ -144,7 +144,7 @@ The Box still owns the memory after this call.
 
 ### into_raw
 
-```ts
+```gecko
 func into_raw(self: void): uint64
 ```
 
@@ -163,7 +163,7 @@ is responsible for freeing the memory.
 
 ### drop
 
-```ts
+```gecko
 func drop(self: void)
 ```
 
@@ -181,4 +181,4 @@ the Box goes out of scope.
 
 ---
 
-*Defined in `stdlib/box.gecko:6`*
+*Defined in `stdlib/memory/box.gecko:8`*

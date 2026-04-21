@@ -71,7 +71,7 @@ The Gecko standard library provides essential types for memory management:
 
 ## Quick Example
 
-` + "```ts\n" + `import box
+` + "```gecko\n" + `import box
 
 let b: Box<int32> = Box<int32>::new(42)
 let val: int32 = b.get()
@@ -102,6 +102,10 @@ The standard library provides memory management primitives for Gecko programs.
 			firstLine := getFirstLine(class.DocComment)
 			sb.WriteString(fmt.Sprintf("- [**%s**](/stdlib/%s-%s/) - %s\n", class.Name, pkg.Name, strings.ToLower(class.Name), firstLine))
 		}
+		for _, trait := range pkg.Traits {
+			firstLine := getFirstLine(trait.DocComment)
+			sb.WriteString(fmt.Sprintf("- [**%s** (trait)](/stdlib/%s-%s/) - %s\n", trait.Name, pkg.Name, strings.ToLower(trait.Name), firstLine))
+		}
 		sb.WriteString("\n")
 	}
 
@@ -123,7 +127,7 @@ func writeStarlightClass(dir, pkgName string, item *DocItem) error {
 	sb.WriteString("---\n\n")
 
 	// Signature
-	sb.WriteString("```ts\n")
+	sb.WriteString("```gecko\n")
 	sb.WriteString(item.Signature)
 	sb.WriteString("\n```\n\n")
 
@@ -151,7 +155,7 @@ func writeStarlightClass(dir, pkgName string, item *DocItem) error {
 		sb.WriteString("## Fields\n\n")
 		for _, f := range item.Fields {
 			sb.WriteString(fmt.Sprintf("### %s\n\n", f.Name))
-			sb.WriteString("```ts\n")
+			sb.WriteString("```gecko\n")
 			sb.WriteString(f.Signature)
 			sb.WriteString("\n```\n\n")
 			if f.DocComment != "" {
@@ -166,7 +170,7 @@ func writeStarlightClass(dir, pkgName string, item *DocItem) error {
 		sb.WriteString("## Methods\n\n")
 		for _, m := range item.Methods {
 			sb.WriteString(fmt.Sprintf("### %s\n\n", m.Name))
-			sb.WriteString("```ts\n")
+			sb.WriteString("```gecko\n")
 			sb.WriteString(m.Signature)
 			sb.WriteString("\n```\n\n")
 			if m.DocComment != "" {
@@ -214,7 +218,7 @@ func writeStarlightTrait(dir, pkgName string, item *DocItem) error {
 	}
 	sb.WriteString("---\n\n")
 
-	sb.WriteString("```ts\n")
+	sb.WriteString("```gecko\n")
 	sb.WriteString(item.Signature)
 	sb.WriteString("\n```\n\n")
 
@@ -227,7 +231,7 @@ func writeStarlightTrait(dir, pkgName string, item *DocItem) error {
 		sb.WriteString("## Required Methods\n\n")
 		for _, m := range item.Methods {
 			sb.WriteString(fmt.Sprintf("### %s\n\n", m.Name))
-			sb.WriteString("```ts\n")
+			sb.WriteString("```gecko\n")
 			sb.WriteString(m.Signature)
 			sb.WriteString("\n```\n\n")
 			if m.DocComment != "" {

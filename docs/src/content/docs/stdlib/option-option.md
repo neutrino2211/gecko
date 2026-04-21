@@ -3,7 +3,7 @@ title: Option
 description: Option<T> - Represents an optional value.
 ---
 
-```ts
+```gecko
 class Option<T>
 ```
 
@@ -36,7 +36,7 @@ if (result.is_some()) {
 
 ### value
 
-```ts
+```gecko
 let value: T
 ```
 
@@ -44,7 +44,7 @@ The contained value (only valid if has_value is true).
 
 ### has_value
 
-```ts
+```gecko
 let has_value: bool
 ```
 
@@ -54,7 +54,7 @@ Whether this Option contains a value.
 
 ### some
 
-```ts
+```gecko
 func some(val: T): Option<T>
 ```
 
@@ -70,7 +70,7 @@ Creates an Option containing a value.
 
 ### none
 
-```ts
+```gecko
 func none(): Option<T>
 ```
 
@@ -80,7 +80,7 @@ Creates an empty Option.
 
 ### is_some
 
-```ts
+```gecko
 func is_some(self: void): bool
 ```
 
@@ -96,7 +96,7 @@ Returns true if this Option contains a value.
 
 ### is_none
 
-```ts
+```gecko
 func is_none(self: void): bool
 ```
 
@@ -112,7 +112,7 @@ Returns true if this Option is empty.
 
 ### unwrap
 
-```ts
+```gecko
 func unwrap(self: void): T
 ```
 
@@ -129,7 +129,7 @@ Behavior is undefined if the Option is None.
 
 ### unwrap_or
 
-```ts
+```gecko
 func unwrap_or(self: void, default_val: T): T
 ```
 
@@ -146,7 +146,7 @@ Returns the contained value, or a default if None.
 
 ### get_or
 
-```ts
+```gecko
 func get_or(self: void, default_val: T): T
 ```
 

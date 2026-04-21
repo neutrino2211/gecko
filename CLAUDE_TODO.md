@@ -61,9 +61,24 @@ Tracking implementation of the new module system per specs in `spec/modules.md`,
   - `@iterator_hook`: For-in loops use `next()` and `has_next()` methods
   - Tests: `index_hook/`, `for_in_loop/`, `hooks/`
 
-- [ ] **Copy/clone hooks** (lower priority)
-  - `@copy_hook`: Implicit copy on pass-by-value (not yet triggered)
-  - `@clone_hook`: Explicit `.clone()` calls (not yet triggered)
+- [x] **Generic trait implementations** ✅
+  - `impl<T> Trait for Class<T>` now stores with generic class for later instantiation
+  - Fixed: `use { ... }` clause symbols now properly imported for nested imports
+  - Test: `generic_trait_impl/main.gecko`
+
+- [x] **Stdlib trait implementations** ✅
+  - Added trait impls to stdlib types:
+    - `Vec<T>`: Drop, Clone, Index, IndexMut
+    - `String`: Drop, Clone, Index
+    - `StringBuilder`: Drop, Index
+    - `Box<T>`: Drop
+    - `Rc<T>`: Drop, Clone
+    - `Slice<T>`: Clone, Index
+
+- [x] **Copy/clone hooks** - REMOVED BY DESIGN
+  - Clone works as a regular trait - call `.clone()` explicitly when needed
+  - Copy is a marker trait only (no hook) - Gecko uses C-style implicit bitwise copy
+  - Move semantics not planned - explicit memory management is the intended model
 
 ## Phase 3: Stdlib Consolidation ✅ COMPLETE
 

@@ -3,7 +3,7 @@ title: Raw
 description: Raw<T> - Unsafe pointer wrapper for low-level memory operations.
 ---
 
-```ts
+```gecko
 class Raw<T>
 ```
 
@@ -27,7 +27,7 @@ let val: uint32 = ptr.read()
 
 ### addr
 
-```ts
+```gecko
 let addr: uint64
 ```
 
@@ -37,7 +37,7 @@ The raw memory address stored as a 64-bit unsigned integer.
 
 ### new
 
-```ts
+```gecko
 func new(address: uint64): Raw<T>
 ```
 
@@ -56,7 +56,7 @@ and points to memory of the correct type.
 
 ### null
 
-```ts
+```gecko
 func null(): Raw<T>
 ```
 
@@ -68,7 +68,7 @@ Useful for representing optional pointers or uninitialized state.
 
 ### init
 
-```ts
+```gecko
 func init(self: void, address: uint64)
 ```
 
@@ -83,7 +83,7 @@ Initializes this pointer from a memory address.
 
 ### init_null
 
-```ts
+```gecko
 func init_null(self: void)
 ```
 
@@ -97,7 +97,7 @@ Initializes this pointer as null (address 0).
 
 ### to_address
 
-```ts
+```gecko
 func to_address(self: void): uint64
 ```
 
@@ -113,7 +113,7 @@ Returns the raw memory address as a uint64.
 
 ### is_null
 
-```ts
+```gecko
 func is_null(self: void): bool
 ```
 
@@ -129,7 +129,7 @@ Returns true if this pointer is null (address 0).
 
 ### is_valid
 
-```ts
+```gecko
 func is_valid(self: void): bool
 ```
 
@@ -145,7 +145,7 @@ Returns true if this pointer is not null.
 
 ### read
 
-```ts
+```gecko
 func read(self: void): T
 ```
 
@@ -163,7 +163,7 @@ Does not perform null checking - caller must ensure pointer is valid.
 
 ### write
 
-```ts
+```gecko
 func write(self: void, value: T)
 ```
 
@@ -180,7 +180,7 @@ Does not perform null checking - caller must ensure pointer is valid.
 
 ### add
 
-```ts
+```gecko
 func add(self: void, n: uint64): Raw<T>
 ```
 
@@ -199,7 +199,7 @@ The offset is calculated as `n * sizeof(T)` bytes.
 
 ### sub
 
-```ts
+```gecko
 func sub(self: void, n: uint64): Raw<T>
 ```
 
@@ -218,7 +218,7 @@ The offset is calculated as `n * sizeof(T)` bytes.
 
 ### copy_from
 
-```ts
+```gecko
 func copy_from(self: void, src: Raw<T>, count: uint64)
 ```
 
@@ -234,7 +234,7 @@ Copies `count` elements from source pointer to this pointer.
 
 ### zero
 
-```ts
+```gecko
 func zero(self: void, count: uint64)
 ```
 
@@ -249,4 +249,4 @@ Sets `count` elements at this pointer to zero.
 
 ---
 
-*Defined in `stdlib/raw.gecko:3`*
+*Defined in `stdlib/memory/raw.gecko:3`*

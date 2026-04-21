@@ -3,7 +3,7 @@ title: String
 description: String - A growable, heap-allocated string.
 ---
 
-```ts
+```gecko
 class String
 ```
 
@@ -17,7 +17,7 @@ dynamically or concatenate multiple strings.
 
 ### data
 
-```ts
+```gecko
 let data: uint64
 ```
 
@@ -25,7 +25,7 @@ Pointer to the character data (null-terminated).
 
 ### len
 
-```ts
+```gecko
 let len: uint64
 ```
 
@@ -33,7 +33,7 @@ Number of bytes in the string (excluding null terminator).
 
 ### cap
 
-```ts
+```gecko
 let cap: uint64
 ```
 
@@ -43,7 +43,7 @@ Allocated capacity in bytes (including null terminator).
 
 ### new
 
-```ts
+```gecko
 func new(): String
 ```
 
@@ -53,7 +53,7 @@ Creates a new empty String with default capacity.
 
 ### with_capacity
 
-```ts
+```gecko
 func with_capacity(capacity: uint64): String
 ```
 
@@ -69,7 +69,7 @@ Creates a new String with the specified initial capacity.
 
 ### from
 
-```ts
+```gecko
 func from(literal: string): String
 ```
 
@@ -85,7 +85,7 @@ Creates a String from a string literal.
 
 ### is_empty
 
-```ts
+```gecko
 func is_empty(self: void): bool
 ```
 
@@ -101,7 +101,7 @@ Returns true if the string is empty.
 
 ### length
 
-```ts
+```gecko
 func length(self: void): uint64
 ```
 
@@ -117,7 +117,7 @@ Returns the length of the string in bytes.
 
 ### capacity
 
-```ts
+```gecko
 func capacity(self: void): uint64
 ```
 
@@ -133,7 +133,7 @@ Returns the allocated capacity.
 
 ### as_ptr
 
-```ts
+```gecko
 func as_ptr(self: void): string
 ```
 
@@ -149,7 +149,7 @@ Returns a pointer to the underlying C string.
 
 ### char_at
 
-```ts
+```gecko
 func char_at(self: void, index: uint64): uint8
 ```
 
@@ -166,7 +166,7 @@ Returns the byte at the given index.
 
 ### reserve
 
-```ts
+```gecko
 func reserve(self: void, additional: uint64)
 ```
 
@@ -181,7 +181,7 @@ Ensures the string has at least the specified capacity.
 
 ### push
 
-```ts
+```gecko
 func push(self: void, c: uint8)
 ```
 
@@ -196,7 +196,7 @@ Appends a single byte to the string.
 
 ### push_str
 
-```ts
+```gecko
 func push_str(self: void, s: string)
 ```
 
@@ -211,7 +211,7 @@ Appends a string literal to the string.
 
 ### append
 
-```ts
+```gecko
 func append(self: void, other: String)
 ```
 
@@ -226,7 +226,7 @@ Appends another String to this string.
 
 ### clear
 
-```ts
+```gecko
 func clear(self: void)
 ```
 
@@ -240,7 +240,7 @@ Clears the string, setting length to 0 but keeping capacity.
 
 ### clone
 
-```ts
+```gecko
 func clone(self: void): String
 ```
 
@@ -256,7 +256,7 @@ Creates a copy of this string.
 
 ### equals
 
-```ts
+```gecko
 func equals(self: void, other: String): bool
 ```
 
@@ -273,7 +273,7 @@ Compares two strings for equality.
 
 ### equals_str
 
-```ts
+```gecko
 func equals_str(self: void, s: string): bool
 ```
 
@@ -290,7 +290,7 @@ Compares with a string literal for equality.
 
 ### drop
 
-```ts
+```gecko
 func drop(self: void)
 ```
 
@@ -302,6 +302,22 @@ Frees the memory owned by this string.
 |------|------|
 | `self` | `void` |
 
+### iter
+
+```gecko
+func iter(self: void): StringIterator
+```
+
+Returns an iterator over the bytes of this string.
+
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `self` | `void` |
+
+**Returns:** `StringIterator`
+
 ---
 
-*Defined in `stdlib/string.gecko:14`*
+*Defined in `stdlib/collections/string.gecko:55`*

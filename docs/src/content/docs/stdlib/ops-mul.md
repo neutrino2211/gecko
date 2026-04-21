@@ -3,19 +3,17 @@ title: Mul (trait)
 description: Mul<T> - Trait for the `*` operator.
 ---
 
-```ts
+```gecko
 trait Mul<T>
 ```
 
 Mul<T> - Trait for the `*` operator.
 
-Types implementing this trait can be multiplied using `*`.
-
 ## Required Methods
 
 ### mul
 
-```ts
+```gecko
 func mul(self: void, other: T): T
 ```
 

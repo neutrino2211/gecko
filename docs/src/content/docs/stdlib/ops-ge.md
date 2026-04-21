@@ -3,19 +3,17 @@ title: Ge (trait)
 description: Ge<T> - Trait for the `>=` operator.
 ---
 
-```ts
+```gecko
 trait Ge<T>
 ```
 
 Ge<T> - Trait for the `>=` operator.
 
-Types implementing this trait can be compared using `>=`.
-
 ## Required Methods
 
 ### ge
 
-```ts
+```gecko
 func ge(self: void, other: T): bool
 ```
 

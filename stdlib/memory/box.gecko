@@ -1,5 +1,7 @@
 package box
 
+import std.core.traits use { Drop }
+
 declare external func malloc(size: uint64): void*
 declare external func free(ptr: void*): void
 
@@ -90,6 +92,17 @@ public class Box<T> {
     /// In the future, this will be called automatically when
     /// the Box goes out of scope.
     func drop(self) {
+        if (self.ptr != 0) {
+            free(self.ptr as void*)
+            self.ptr = 0
+        }
+    }
+}
+
+// Trait implementations for Box<T>
+
+impl<T> Drop for Box<T> {
+    func drop(self): void {
         if (self.ptr != 0) {
             free(self.ptr as void*)
             self.ptr = 0

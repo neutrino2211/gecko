@@ -7,7 +7,7 @@ sidebar:
 
 ## Pointer Types
 
-```ts
+```gecko
 let ptr: int*           // Pointer to int
 let vptr: void*         // Void pointer
 let pptr: int**         // Pointer to pointer
@@ -17,14 +17,14 @@ let pptr: int**         // Pointer to pointer
 
 ### Address-of Operator
 
-```ts
+```gecko
 let x: int = 42
 let ptr: int* = &x
 ```
 
 ### Casting
 
-```ts
+```gecko
 let addr: uint64 = 0xB8000
 let ptr: uint16* = addr as uint16*
 ```
@@ -33,7 +33,7 @@ let ptr: uint16* = addr as uint16*
 
 Use the `@deref` intrinsic:
 
-```ts
+```gecko
 let x: int = 42
 let ptr: int* = &x
 let value: int = @deref(ptr)  // 42
@@ -43,7 +43,7 @@ let value: int = @deref(ptr)  // 42
 
 Use `@write_volatile` for safe writes:
 
-```ts
+```gecko
 let x: int = 0
 let ptr: int* = &x
 @write_volatile(ptr, 42)  // x is now 42
@@ -53,7 +53,7 @@ let ptr: int* = &x
 
 Mark pointers as volatile for memory-mapped I/O:
 
-```ts
+```gecko
 let vga: uint16 volatile* = 0xB8000 as uint16 volatile*
 @write_volatile(vga, 0x0F41)  // Write 'A' to VGA buffer
 ```
@@ -62,7 +62,7 @@ let vga: uint16 volatile* = 0xB8000 as uint16 volatile*
 
 Mark pointers that should never be null:
 
-```ts
+```gecko
 let ptr: int*!  // Non-nullable pointer
 
 // Built-in methods
@@ -77,14 +77,14 @@ if ptr.is_not_null() {
 
 ## Pointer Arithmetic
 
-```ts
+```gecko
 let base: uint8* = malloc(100) as uint8*
 let offset: uint8* = base.offset(10)  // base + 10 bytes
 ```
 
 ## Null Checks
 
-```ts
+```gecko
 let ptr: void* = malloc(100)
 if @is_null(ptr) {
     // allocation failed
@@ -97,7 +97,7 @@ The stdlib provides smart pointer types:
 
 ### Box<T> - Unique Ownership
 
-```ts
+```gecko
 import box
 
 let b: Box<int32> = Box<int32>::new(42)
@@ -108,7 +108,7 @@ b.drop()  // Free memory
 
 ### Rc<T> - Reference Counted
 
-```ts
+```gecko
 import rc
 
 let r1: Rc<int32> = Rc<int32>::new(42)
@@ -119,7 +119,7 @@ r2.drop()  // Memory freed when count reaches 0
 
 ### Weak<T> - Non-owning Reference
 
-```ts
+```gecko
 import rc
 import weak
 

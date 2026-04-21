@@ -3,7 +3,7 @@ title: RcInner
 description: Internal structure holding reference counts and value.
 ---
 
-```ts
+```gecko
 class RcInner<T>
 ```
 
@@ -17,22 +17,22 @@ Internal structure holding reference counts and value.
 
 ### strong
 
-```ts
+```gecko
 let strong: uint64
 ```
 
 ### weak
 
-```ts
+```gecko
 let weak: uint64
 ```
 
 ### value
 
-```ts
+```gecko
 let value: T
 ```
 
 ---
 
-*Defined in `stdlib/rc.gecko:6`*
+*Defined in `stdlib/memory/rc.gecko:8`*

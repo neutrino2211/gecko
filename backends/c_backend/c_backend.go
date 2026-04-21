@@ -184,7 +184,8 @@ func (impls *CBackendImplementation) NewDeclaration(scope *ast.Ast, decl *tokens
 func (impls *CBackendImplementation) NewExternalType(scope *ast.Ast, ext *tokens.ExternalType) {
 	rootScope := scope.GetRoot()
 	rootScope.Classes[ext.Name] = &ast.Ast{
-		Scope: ext.Name,
+		Scope:      ext.Name,
+		Visibility: "external", // External types should be accessible from anywhere
 	}
 
 	// Generate C typedef for opaque type
@@ -196,6 +197,11 @@ func (impls *CBackendImplementation) NewExternalType(scope *ast.Ast, ext *tokens
 // NewExternalVariable handles external variable declarations
 func (impls *CBackendImplementation) NewExternalVariable(scope *ast.Ast, f *tokens.Field) {
 	info := CGetScopeInformation(scope)
+
+	// Validate the type before conversion
+	if f.Type != nil {
+		f.Type.Check(scope)
+	}
 
 	cType := TypeRefToCType(f.Type, scope)
 	varName := f.Name
@@ -223,12 +229,17 @@ func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens
 	// Determine return type
 	returnType := "void"
 	if m.Type != nil {
+		m.Type.Check(scope)
 		returnType = TypeRefToCType(m.Type, scope)
 	}
 
 	// Build parameter list
 	params := []string{}
 	for _, arg := range m.Arguments {
+		// Validate parameter type
+		if arg.Type != nil {
+			arg.Type.Check(scope)
+		}
 		paramType := TypeRefToCType(arg.Type, scope)
 		params = append(params, paramType+" "+arg.Name)
 	}
@@ -382,6 +393,8 @@ func (impls *CBackendImplementation) GenerateClassDef(scope *ast.Ast, c *tokens.
 
 			// Handle fixed-size arrays specially: [N]T -> T name[N]
 			if f.Field.Type != nil && f.Field.Type.Size != nil {
+				// Note: Don't validate field types here - circular dependency detection
+				// needs forward references to work. Field types are validated at usage time.
 				elemType := TypeRefToCType(f.Field.Type.Size.Type, scope)
 				if len(typeArgs) > 0 && len(c.TypeParams) > 0 {
 					elemType = SubstituteTypeParams(elemType, c.TypeParams, typeArgs)
@@ -397,6 +410,8 @@ func (impls *CBackendImplementation) GenerateClassDef(scope *ast.Ast, c *tokens.
 					valueDependencies = append(valueDependencies, valDepType)
 				}
 			} else {
+				// Note: Don't validate field types here - circular dependency detection
+				// needs forward references to work. Field types are validated at usage time.
 				fieldType := TypeRefToCType(f.Field.Type, scope)
 				// Substitute type parameters if this is a generic instantiation
 				if len(typeArgs) > 0 && len(c.TypeParams) > 0 {
@@ -845,10 +860,38 @@ func (impl *CBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait) {
 	// Store trait token for default implementations
 	TraitDefinitions[t.Name] = t
 
+	// Set up type parameter checking for traits
+	// Include "Self" and the trait's own name as valid type parameters
+	oldIsTypeParameter := tokens.IsTypeParameter
+	typeParams := map[string]bool{
+		"Self":  true,
+		t.Name: true, // Allow trait to reference itself in method signatures
+	}
+	for _, tp := range t.TypeParams {
+		typeParams[tp.Name] = true
+	}
+	tokens.IsTypeParameter = func(name string) bool {
+		return typeParams[name]
+	}
+	defer func() { tokens.IsTypeParameter = oldIsTypeParameter }()
+
 	// Store trait methods for later implementation
 	mthds := []*ast.Method{}
 	for _, f := range t.Fields {
 		m := f.ToMethodToken()
+
+		// Validate return type
+		if m.Type != nil {
+			m.Type.Check(scope)
+		}
+
+		// Validate argument types
+		for _, arg := range m.Arguments {
+			if arg.Type != nil && arg.Name != "self" {
+				arg.Type.Check(scope)
+			}
+		}
+
 		// Store Gecko type for type checking
 		geckoReturnType := "void"
 		if m.Type != nil {
@@ -896,6 +939,10 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 			// Self parameter becomes pointer to class type
 			paramType = className + "*"
 		} else {
+			// Validate parameter type before conversion
+			if arg.Type != nil {
+				arg.Type.Check(scope)
+			}
 			paramType = TypeRefToCType(arg.Type, scope)
 		}
 
@@ -1059,6 +1106,10 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 				Pointer: true,
 			}
 		} else {
+			// Validate parameter type before conversion
+			if arg.Type != nil {
+				arg.Type.Check(scope)
+			}
 			paramType = TypeRefToCType(arg.Type, scope)
 			geckoType = arg.Type
 		}
@@ -1365,11 +1416,24 @@ func (impl *CBackendImplementation) NewLocalVariable(scope *ast.Ast, f *tokens.F
 // Helper functions for implementations
 
 func (impl *CBackendImplementation) CImplementationForClass(scope *ast.Ast, i *tokens.Implementation) {
-	classOpt := scope.ResolveClass(i.GetFor())
+	className := i.GetFor()
+	typeParams := i.GetTypeParams()
+
+	// Check if this is a generic trait impl (impl<T> Trait for GenericClass<T>)
+	// If so, store it with the generic class for later instantiation
+	if len(typeParams) > 0 && Generics.IsGenericClass(className) {
+		classToken := Generics.GenericClasses[className]
+		if classToken != nil {
+			classToken.Implementations = append(classToken.Implementations, i)
+		}
+		return
+	}
+
+	classOpt := scope.ResolveClass(className)
 	traitOpt := scope.ResolveTrait(i.GetName())
 
 	if classOpt.IsNil() {
-		scope.ErrorScope.NewCompileTimeError("Resolution Error", "Could not resolve the class '"+i.GetFor()+"'", i.Pos)
+		scope.ErrorScope.NewCompileTimeError("Resolution Error", "Could not resolve the class '"+className+"'", i.Pos)
 		return
 	}
 
@@ -1380,7 +1444,6 @@ func (impl *CBackendImplementation) CImplementationForClass(scope *ast.Ast, i *t
 
 	class := classOpt.Unwrap()
 	_ = traitOpt.Unwrap() // Validate trait exists (methods come from TraitDefinitions for default impls)
-	className := i.GetFor()
 	traitName := i.GetName()
 
 	// Build mangled trait name with type arguments (e.g., "Add__Point" for Add<Point>)
@@ -1525,6 +1588,75 @@ func (impl *CBackendImplementation) CImplementationForClass(scope *ast.Ast, i *t
 		}
 	}
 
+	class.Traits[mangledTraitName] = &mthdList
+}
+
+// GenerateGenericTraitImpl handles trait impl instantiation for generic classes
+// Called when we instantiate e.g. Vec<int32> and need to generate impl<T> Index for Vec<T>
+func (impl *CBackendImplementation) GenerateGenericTraitImpl(scope *ast.Ast, classToken *tokens.Class, i *tokens.Implementation, inst *GenericInstantiation) {
+	// Build type substitution map: T -> int32, U -> string, etc.
+	typeMap := make(map[string]string)
+	for idx, param := range classToken.TypeParams {
+		if idx < len(inst.TypeArgs) {
+			typeMap[param.Name] = inst.TypeArgs[idx]
+		}
+	}
+
+	// Substitute type params in the trait type args
+	// e.g., impl<T> Index<uint64, T> -> Index<uint64, int32>
+	mangledTraitName := i.GetName()
+	if len(i.GetTypeArgs()) > 0 {
+		for _, typeArg := range i.GetTypeArgs() {
+			substitutedType := typeArg.Type
+			if concrete, ok := typeMap[substitutedType]; ok {
+				substitutedType = concrete
+			}
+			mangledTraitName += "__" + substitutedType
+		}
+	}
+
+	// Build method name prefix
+	methodPrefix := inst.FullName
+	if inst.OriginModule != "" {
+		methodPrefix = inst.OriginModule + "__" + inst.FullName
+	}
+
+	// Resolve the class AST for the instantiated type
+	classOpt := scope.ResolveClass(inst.FullName)
+	if classOpt.IsNil() {
+		return
+	}
+	class := classOpt.Unwrap()
+
+	var mthdList []*ast.Method
+
+	// Generate each trait method
+	for _, f := range i.GetFields() {
+		m := f.ToMethodToken()
+		mangledName := methodPrefix + "__" + mangledTraitName + "__" + m.Name
+		impl.GenerateClassMethodDef(scope, classToken, m, mangledName, inst.FullName, inst.TypeArgs)
+
+		// Register method in AST
+		geckoReturnType := "void"
+		if m.Type != nil {
+			geckoReturnType = m.Type.Type
+			// Substitute type param in return type
+			if concrete, ok := typeMap[geckoReturnType]; ok {
+				geckoReturnType = concrete
+			}
+		}
+
+		astMth := &ast.Method{
+			Name:       mangledName,
+			Visibility: m.Visibility,
+			Parent:     class,
+			Type:       geckoReturnType,
+		}
+		scope.Methods[mangledName] = astMth
+		mthdList = append(mthdList, astMth)
+	}
+
+	// Register the trait on the class
 	class.Traits[mangledTraitName] = &mthdList
 }
 
@@ -1719,6 +1851,72 @@ func (impl *CBackendImplementation) NewLoop(scope *ast.Ast, l *tokens.Loop) {
 	info.Code += "    }\n"
 }
 
+// inferMethodCallType infers the return type of a method call expression like s.iter()
+func (impl *CBackendImplementation) inferMethodCallType(expr *tokens.Expression, scope *ast.Ast) *tokens.TypeRef {
+	if expr == nil || expr.LogicalOr == nil {
+		return nil
+	}
+
+	// Navigate to the literal
+	lo := expr.LogicalOr
+	if lo.LogicalAnd == nil {
+		return nil
+	}
+	la := lo.LogicalAnd
+	if la.Equality == nil {
+		return nil
+	}
+	eq := la.Equality
+	if eq.Comparison == nil {
+		return nil
+	}
+	cmp := eq.Comparison
+	if cmp.Addition == nil {
+		return nil
+	}
+	add := cmp.Addition
+	if add.Multiplication == nil {
+		return nil
+	}
+	mul := add.Multiplication
+	if mul.Unary == nil {
+		return nil
+	}
+	un := mul.Unary
+	if un.Primary == nil {
+		return nil
+	}
+	prim := un.Primary
+	if prim.Literal == nil {
+		return nil
+	}
+	lit := prim.Literal
+
+	// Check if lit is nil
+	if lit == nil {
+		return nil
+	}
+
+	// Check for FuncCall directly on the literal (e.g., s.iter() parsed as FuncCall)
+	if lit.FuncCall != nil {
+		return impl.GetTypeOfFuncCall(lit.FuncCall, scope)
+	}
+
+	// Check for symbol with method call chain: s.iter()
+	if lit.Symbol != "" && len(lit.Chain) > 0 {
+		lastChain := lit.Chain[len(lit.Chain)-1]
+		if lastChain.IsMethodCall() {
+			funcCall := &tokens.FuncCall{
+				Module:   lit.Symbol,
+				Function: lastChain.Name,
+			}
+			return impl.GetTypeOfFuncCall(funcCall, scope)
+		}
+	}
+
+	return nil
+}
+
 // generateForInLoop handles for-in loop iteration using the Iterator trait
 // for x in collection { ... } desugars to:
 //   {
@@ -1754,6 +1952,11 @@ func (impl *CBackendImplementation) generateForInLoop(scope *ast.Ast, l *tokens.
 		return nil
 	}
 	iterType := tokens.InferType(forIn.SourceArray, resolveSymbol)
+
+	// If basic inference failed, check for method call expressions (e.g., s.iter())
+	if iterType == nil {
+		iterType = impl.inferMethodCallType(forIn.SourceArray, scope)
+	}
 
 	if iterType == nil {
 		scope.ErrorScope.NewCompileTimeError(

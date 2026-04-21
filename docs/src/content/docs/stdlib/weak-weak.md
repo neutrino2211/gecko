@@ -3,7 +3,7 @@ title: Weak
 description: Weak<T> - Non-owning reference to `Rc<T>` data.
 ---
 
-```ts
+```gecko
 class Weak<T>
 ```
 
@@ -34,7 +34,7 @@ if (weak.is_alive()) {
 
 ### ptr
 
-```ts
+```gecko
 let ptr: uint64
 ```
 
@@ -44,7 +44,7 @@ Internal pointer to the same allocation as the `Rc`.
 
 ### from_rc_ptr
 
-```ts
+```gecko
 func from_rc_ptr(rc_ptr: uint64): Weak<T>
 ```
 
@@ -62,7 +62,7 @@ Increments the weak reference count.
 
 ### null
 
-```ts
+```gecko
 func null(): Weak<T>
 ```
 
@@ -72,7 +72,7 @@ Creates a null weak reference.
 
 ### is_valid
 
-```ts
+```gecko
 func is_valid(self: void): bool
 ```
 
@@ -88,7 +88,7 @@ Returns true if this weak reference is not null.
 
 ### strong_count
 
-```ts
+```gecko
 func strong_count(self: void): uint64
 ```
 
@@ -104,7 +104,7 @@ Returns the strong reference count of the underlying allocation.
 
 ### weak_count
 
-```ts
+```gecko
 func weak_count(self: void): uint64
 ```
 
@@ -120,7 +120,7 @@ Returns the weak reference count of the underlying allocation.
 
 ### is_alive
 
-```ts
+```gecko
 func is_alive(self: void): bool
 ```
 
@@ -139,7 +139,7 @@ will return a default value.
 
 ### try_get
 
-```ts
+```gecko
 func try_get(self: void): T
 ```
 
@@ -158,7 +158,7 @@ In the future, this will return `Option<T>`.
 
 ### clone
 
-```ts
+```gecko
 func clone(self: void): Weak<T>
 ```
 
@@ -174,7 +174,7 @@ Creates another weak reference to the same data.
 
 ### drop
 
-```ts
+```gecko
 func drop(self: void)
 ```
 
@@ -191,4 +191,4 @@ the underlying memory allocation is freed.
 
 ---
 
-*Defined in `stdlib/weak.gecko:6`*
+*Defined in `stdlib/memory/weak.gecko:6`*

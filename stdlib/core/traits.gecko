@@ -11,15 +11,16 @@ public trait Drop {
 }
 
 /// Clone - Trait for types that can be explicitly duplicated.
-@clone_hook(.clone)
+/// Call `.clone()` to create a deep copy of a value.
 public trait Clone {
     func clone(self): Self
 }
 
-/// Copy - Marker trait for types that can be copied bitwise.
-@copy_hook(.copy)
+/// Copy - Marker trait for types that are safe to copy bitwise.
+/// This is a marker trait - types implementing Copy are semantically
+/// safe to duplicate via simple memory copy (like integers, pointers).
+/// No method needed since the copy is implicit.
 public trait Copy {
-    func copy(self): Self
 }
 
 /// Default - Trait for types with a default value.

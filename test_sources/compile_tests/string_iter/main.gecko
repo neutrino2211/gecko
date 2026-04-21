@@ -1,0 +1,22 @@
+package main
+
+import std.collections.string use { String, StringIterator }
+
+declare external variardic func printf(fmt: string): int32
+
+external func main(): int32 {
+    let s: String = String::from("Hello")
+    let s2 = String::from(" World!")
+
+    s = s + s2
+
+    printf("Iterating over: %s\n", s.as_ptr())
+
+    for let c in s.iter() {
+        printf("char: %c -> 0x%x\n", c, c)
+    }
+
+    printf("Done! %d\n", s[0])
+    s.drop()
+    return 0
+}

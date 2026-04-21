@@ -9,7 +9,7 @@ sidebar:
 
 Use `declare external` to declare C functions:
 
-```ts
+```gecko
 declare external func malloc(size: uint64): void*
 declare external func free(ptr: void*): void
 declare external func strlen(s: string): uint64
@@ -17,13 +17,13 @@ declare external func strlen(s: string): uint64
 
 ### Variadic Functions
 
-```ts
+```gecko
 declare external variardic func printf(format: string): int
 ```
 
 ## External Variables
 
-```ts
+```gecko
 declare external let errno: int
 ```
 
@@ -50,7 +50,7 @@ declare external let errno: int
 
 Declare types that exist in C but whose internals are hidden:
 
-```ts
+```gecko
 declare external type FILE
 
 declare external func fopen(path: string, mode: string): FILE*
@@ -62,7 +62,7 @@ declare external func fread(buf: void*, size: uint64, count: uint64, file: FILE*
 
 Gecko classes map directly to C structs:
 
-```ts
+```gecko
 // Gecko
 class Point {
     let x: int32
@@ -77,7 +77,7 @@ class Point {
 
 For exact memory layout control:
 
-```ts
+```gecko
 @packed
 class NetworkHeader {
     let version: uint8
@@ -90,7 +90,7 @@ class NetworkHeader {
 
 For direct hardware access:
 
-```ts
+```gecko
 @naked
 @noreturn
 func halt() {
@@ -100,14 +100,14 @@ func halt() {
 
 ## C Import (Planned)
 
-```ts
+```gecko
 cimport "stdio.h"
 cimport "mylib.h" withlibrary "mylib"
 ```
 
 ## Example: File I/O
 
-```ts
+```gecko
 package main
 
 declare external type FILE

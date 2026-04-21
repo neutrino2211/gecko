@@ -9,7 +9,7 @@ sidebar:
 
 Traits define interfaces that types can implement:
 
-```ts
+```gecko
 trait Printable {
     func print(self): void
 }
@@ -19,7 +19,7 @@ trait Printable {
 
 Use `impl` to implement a trait for a class:
 
-```ts
+```gecko
 class Point {
     let x: int
     let y: int
@@ -36,7 +36,7 @@ impl Printable for Point {
 
 Traits can have type parameters:
 
-```ts
+```gecko
 trait Add<T> {
     func add(self, other: T): T
 }
@@ -55,7 +55,7 @@ impl Add<Point> for Point {
 
 Constrain generic types to require trait implementations:
 
-```ts
+```gecko
 func print_twice<T is Printable>(item: T) {
     item.print()
     item.print()
@@ -88,7 +88,7 @@ Implement operator traits for custom operators:
 
 ### Example: Vector Addition
 
-```ts
+```gecko
 import core
 
 class Vec2 {

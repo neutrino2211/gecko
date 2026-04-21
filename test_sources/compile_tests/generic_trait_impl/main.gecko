@@ -1,0 +1,29 @@
+package main
+
+import std.collections.vec use { Vec }
+
+declare external variardic func printf(fmt: string): int32
+
+external func main(): int32 {
+    let v: Vec<int32> = Vec<int32>::new()
+    v.push(15)
+    v.push(20)
+    v.push(30)
+
+    // Test index trait implementation
+    let first: int32 = v.get(0)
+    let second: int32 = v.get(1)
+    let third: int32 = v.get(2)
+
+    printf("Values: %d, %d, %d\n", first, second, third)
+
+    // Test clone trait implementation
+    let v2: Vec<int32> = v.clone()
+    let clone_first: int32 = v2.get(0)
+    printf("Clone first: %d\n", clone_first)
+
+    v.drop()
+    v2.drop()
+
+    return 0
+}

@@ -1,21 +1,19 @@
 ---
 title: Not (trait)
-description: Not - Trait for the unary `!` operator.
+description: Not - Trait for unary `!` operator.
 ---
 
-```ts
+```gecko
 trait Not
 ```
 
-Not - Trait for the unary `!` operator.
-
-Types implementing this trait can be logically negated using `!x`.
+Not - Trait for unary `!` operator.
 
 ## Required Methods
 
 ### not
 
-```ts
+```gecko
 func not(self: void): Self
 ```
 

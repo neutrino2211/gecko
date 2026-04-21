@@ -3,6 +3,12 @@ package testmodule
 public const WIDTH: int = 80
 public const HEIGHT: int = 25
 
+enum Color {
+    Red
+    Green
+    Blue
+}
+
 public func color(fg: uint8, bg: uint8): uint8 {
     return fg | (bg << 4)
 }

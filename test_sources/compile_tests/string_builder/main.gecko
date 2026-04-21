@@ -1,3 +1,5 @@
+package main
+
 import std.collections.string use { StringBuilder, str_len, streq }
 
 declare external func printf(fmt: string): int

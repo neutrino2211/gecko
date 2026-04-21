@@ -47,6 +47,10 @@ func (s *Server) Handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleDefinition(ctx, reply, req)
 	case "textDocument/completion":
 		return s.handleCompletion(ctx, reply, req)
+	case "textDocument/signatureHelp":
+		return s.handleSignatureHelp(ctx, reply, req)
+	case "textDocument/codeAction":
+		return s.handleCodeAction(ctx, reply, req)
 	default:
 		log.Printf("Unhandled method: %s", req.Method())
 		return reply(ctx, nil, nil)
@@ -68,6 +72,11 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 				CompletionProvider: &protocol.CompletionOptions{
 					TriggerCharacters: []string{".", ":"},
 				},
+				SignatureHelpProvider: &protocol.SignatureHelpOptions{
+					TriggerCharacters:   []string{"(", ","},
+					RetriggerCharacters: []string{","},
+				},
+				CodeActionProvider: true,
 		},
 		ServerInfo: &protocol.ServerInfo{
 			Name:    "gecko-lsp",
@@ -269,4 +278,55 @@ func (s *Server) publishDiagnostics(ctx context.Context, uri protocol.DocumentUR
 	} else {
 		log.Printf("Successfully published diagnostics")
 	}
+}
+
+func (s *Server) handleSignatureHelp(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+	var params protocol.SignatureHelpParams
+	if err := json.Unmarshal(req.Params(), &params); err != nil {
+		log.Printf("signatureHelp unmarshal error: %v", err)
+		return reply(ctx, nil, err)
+	}
+
+	uri := params.TextDocument.URI
+	line := int(params.Position.Line)
+	col := int(params.Position.Character)
+
+	log.Printf("SignatureHelp request at %s:%d:%d", uri, line, col)
+
+	doc, ok := s.documents.Get(uri)
+	if !ok {
+		log.Printf("Document not found for signatureHelp: %s", uri)
+		return reply(ctx, nil, nil)
+	}
+
+	result := GetSignatureHelp(doc.Content, uriToPath(string(uri)), line, col)
+	if result == nil {
+		log.Printf("No signature help found")
+		return reply(ctx, nil, nil)
+	}
+
+	log.Printf("Found signature help with %d signatures", len(result.Signatures))
+	return reply(ctx, result, nil)
+}
+
+func (s *Server) handleCodeAction(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+	var params protocol.CodeActionParams
+	if err := json.Unmarshal(req.Params(), &params); err != nil {
+		log.Printf("codeAction unmarshal error: %v", err)
+		return reply(ctx, nil, err)
+	}
+
+	uri := params.TextDocument.URI
+	log.Printf("CodeAction request for %s, range %v", uri, params.Range)
+
+	doc, ok := s.documents.Get(uri)
+	if !ok {
+		log.Printf("Document not found for codeAction: %s", uri)
+		return reply(ctx, []protocol.CodeAction{}, nil)
+	}
+
+	actions := GetCodeActions(doc.Content, uriToPath(string(uri)), params.Range, params.Context.Diagnostics)
+	log.Printf("Found %d code actions", len(actions))
+
+	return reply(ctx, actions, nil)
 }

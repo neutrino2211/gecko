@@ -3,7 +3,7 @@ title: Vec
 description: Vec<T> - A growable, heap-allocated array.
 ---
 
-```ts
+```gecko
 class Vec<T>
 ```
 
@@ -30,7 +30,7 @@ v.drop()
 
 ### data
 
-```ts
+```gecko
 let data: uint64
 ```
 
@@ -38,7 +38,7 @@ Pointer to the element data.
 
 ### len
 
-```ts
+```gecko
 let len: uint64
 ```
 
@@ -46,7 +46,7 @@ Number of elements in the vector.
 
 ### cap
 
-```ts
+```gecko
 let cap: uint64
 ```
 
@@ -56,7 +56,7 @@ Allocated capacity (number of elements).
 
 ### new
 
-```ts
+```gecko
 func new(): Vec<T>
 ```
 
@@ -66,7 +66,7 @@ Creates a new empty Vec with default capacity.
 
 ### with_capacity
 
-```ts
+```gecko
 func with_capacity(capacity: uint64): Vec<T>
 ```
 
@@ -82,7 +82,7 @@ Creates a new Vec with the specified initial capacity.
 
 ### is_empty
 
-```ts
+```gecko
 func is_empty(self: void): bool
 ```
 
@@ -98,7 +98,7 @@ Returns true if the vector is empty.
 
 ### length
 
-```ts
+```gecko
 func length(self: void): uint64
 ```
 
@@ -114,7 +114,7 @@ Returns the number of elements.
 
 ### capacity
 
-```ts
+```gecko
 func capacity(self: void): uint64
 ```
 
@@ -130,7 +130,7 @@ Returns the allocated capacity.
 
 ### get
 
-```ts
+```gecko
 func get(self: void, index: uint64): T
 ```
 
@@ -147,7 +147,7 @@ Returns the element at the given index.
 
 ### set
 
-```ts
+```gecko
 func set(self: void, index: uint64, value: T)
 ```
 
@@ -163,7 +163,7 @@ Sets the element at the given index.
 
 ### reserve
 
-```ts
+```gecko
 func reserve(self: void, additional: uint64)
 ```
 
@@ -178,7 +178,7 @@ Ensures the vector has at least the specified additional capacity.
 
 ### push
 
-```ts
+```gecko
 func push(self: void, value: T)
 ```
 
@@ -193,7 +193,7 @@ Appends an element to the end of the vector.
 
 ### pop
 
-```ts
+```gecko
 func pop(self: void): T
 ```
 
@@ -210,7 +210,7 @@ Returns a default value if empty.
 
 ### first
 
-```ts
+```gecko
 func first(self: void): T
 ```
 
@@ -226,7 +226,7 @@ Returns the first element, or default if empty.
 
 ### last
 
-```ts
+```gecko
 func last(self: void): T
 ```
 
@@ -242,7 +242,7 @@ Returns the last element, or default if empty.
 
 ### clear
 
-```ts
+```gecko
 func clear(self: void)
 ```
 
@@ -256,7 +256,7 @@ Clears the vector, setting length to 0 but keeping capacity.
 
 ### clone
 
-```ts
+```gecko
 func clone(self: void): Vec<T>
 ```
 
@@ -272,7 +272,7 @@ Creates a copy of this vector.
 
 ### as_ptr
 
-```ts
+```gecko
 func as_ptr(self: void): T*
 ```
 
@@ -288,7 +288,7 @@ Returns a raw pointer to the data.
 
 ### drop
 
-```ts
+```gecko
 func drop(self: void)
 ```
 
@@ -302,4 +302,4 @@ Frees the memory owned by this vector.
 
 ---
 
-*Defined in `stdlib/vec.gecko:8`*
+*Defined in `stdlib/collections/vec.gecko:10`*

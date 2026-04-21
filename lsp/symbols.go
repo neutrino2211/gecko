@@ -12,6 +12,80 @@ import (
 	"go.lsp.dev/protocol"
 )
 
+// ParsedGenericType represents a parsed generic type like Vec<int>
+type ParsedGenericType struct {
+	BaseName string   // The base type name (e.g., "Vec")
+	TypeArgs []string // The type arguments (e.g., ["int"])
+}
+
+// parseGenericType parses a type string like "Vec<int>" into its components
+func parseGenericType(typeStr string) ParsedGenericType {
+	// Handle pointer suffix
+	typeStr = strings.TrimSuffix(typeStr, "*")
+	typeStr = strings.TrimSuffix(typeStr, "!")
+
+	// Find the generic brackets
+	ltIdx := strings.Index(typeStr, "<")
+	if ltIdx == -1 {
+		return ParsedGenericType{BaseName: typeStr}
+	}
+
+	baseName := typeStr[:ltIdx]
+
+	// Extract type arguments (simple parsing - doesn't handle nested generics perfectly)
+	gtIdx := strings.LastIndex(typeStr, ">")
+	if gtIdx == -1 || gtIdx <= ltIdx {
+		return ParsedGenericType{BaseName: baseName}
+	}
+
+	argsStr := typeStr[ltIdx+1 : gtIdx]
+	args := strings.Split(argsStr, ",")
+	for i := range args {
+		args[i] = strings.TrimSpace(args[i])
+	}
+
+	return ParsedGenericType{BaseName: baseName, TypeArgs: args}
+}
+
+// substituteTypeParams replaces type parameters with actual type arguments in a type string
+func substituteTypeParams(typeStr string, typeParams []string, typeArgs []string) string {
+	if len(typeParams) == 0 || len(typeArgs) == 0 {
+		return typeStr
+	}
+
+	result := typeStr
+	for i, param := range typeParams {
+		if i < len(typeArgs) {
+			// Replace whole word occurrences only
+			result = replaceTypeParam(result, param, typeArgs[i])
+		}
+	}
+	return result
+}
+
+// replaceTypeParam replaces a type parameter with its argument, handling word boundaries
+func replaceTypeParam(str, param, replacement string) string {
+	// Simple word boundary replacement
+	var result strings.Builder
+	i := 0
+	for i < len(str) {
+		// Check if we're at the start of the parameter
+		if strings.HasPrefix(str[i:], param) {
+			// Check word boundaries
+			before := i == 0 || !isIdentChar(str[i-1])
+			after := i+len(param) >= len(str) || !isIdentChar(str[i+len(param)])
+			if before && after {
+				result.WriteString(replacement)
+				i += len(param)
+				continue
+			}
+		}
+		result.WriteByte(str[i])
+		i++
+	}
+	return result.String()
+}
+
 // HoverInfo contains information for hover tooltips
 type HoverInfo struct {
 	Name    string
@@ -427,6 +501,158 @@ var geckoTypes = []string{
 	"bool", "string", "void", "float32", "float64",
 }
 
+// GetCodeActions returns code actions for the given range and diagnostics
+func GetCodeActions(content, filePath string, rng protocol.Range, diagnostics []protocol.Diagnostic) []protocol.CodeAction {
+	var actions []protocol.CodeAction
+
+	// Parse the file to find import insertion point
+	file, _ := parser.Parser.ParseString(filePath, content)
+	if file == nil {
+		return actions
+	}
+
+	// Find the line after the last import (or after package declaration)
+	importInsertLine := findImportInsertionLine(content, file)
+
+	// Convert file path to URI
+	docURI := pathToURI(filePath)
+
+	// Get stdlib index
+	stdlibIndex := GetStdlibIndex()
+
+	// Look for diagnostics about unresolved types
+	for _, diag := range diagnostics {
+		if isUnresolvedTypeDiagnostic(diag) {
+			typeName := extractTypeNameFromDiagnostic(diag, content)
+			if typeName == "" {
+				continue
+			}
+
+			// Search stdlib for this type
+			exports := stdlibIndex.FindByName(typeName)
+			for _, export := range exports {
+				action := createImportAction(export, importInsertLine, diag, docURI)
+				actions = append(actions, action)
+			}
+		}
+	}
+
+	return actions
+}
+
+// findImportInsertionLine finds the line number where a new import should be inserted
+func findImportInsertionLine(content string, file *tokens.File) int {
+	lastImportLine := 0
+
+	// Find the last import statement
+	for _, entry := range file.Entries {
+		if entry.Import != nil && entry.Import.Pos.Line > lastImportLine {
+			lastImportLine = entry.Import.Pos.Line
+		}
+	}
+
+	// If we found imports, insert after the last one
+	if lastImportLine > 0 {
+		return lastImportLine
+	}
+
+	// Otherwise, find the package declaration line
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "package ") {
+			return i + 1 // Insert after package line (0-indexed, so +1)
+		}
+	}
+
+	return 0
+}
+
+// isUnresolvedTypeDiagnostic checks if a diagnostic indicates an unresolved type
+func isUnresolvedTypeDiagnostic(diag protocol.Diagnostic) bool {
+	msg := strings.ToLower(diag.Message)
+	return strings.Contains(msg, "unknown type") ||
+		strings.Contains(msg, "unresolved type") ||
+		strings.Contains(msg, "undefined type") ||
+		strings.Contains(msg, "not defined") ||
+		strings.Contains(msg, "could not resolve")
+}
+
+// extractTypeNameFromDiagnostic extracts the type name from a diagnostic message or position
+func extractTypeNameFromDiagnostic(diag protocol.Diagnostic, content string) string {
+	// Try to extract from the diagnostic message
+	// Common patterns: "unknown type 'Vec'", "type 'String' not defined"
+	msg := diag.Message
+
+	// Pattern: 'TypeName'
+	start := strings.Index(msg, "'")
+	if start != -1 {
+		end := strings.Index(msg[start+1:], "'")
+		if end != -1 {
+			return msg[start+1 : start+1+end]
+		}
+	}
+
+	// Pattern: "TypeName"
+	start = strings.Index(msg, "\"")
+	if start != -1 {
+		end := strings.Index(msg[start+1:], "\"")
+		if end != -1 {
+			return msg[start+1 : start+1+end]
+		}
+	}
+
+	// Fall back to extracting word at diagnostic position
+	lines := strings.Split(content, "\n")
+	lineIdx := int(diag.Range.Start.Line)
+	if lineIdx < 0 || lineIdx >= len(lines) {
+		return ""
+	}
+	lineText := lines[lineIdx]
+	col := int(diag.Range.Start.Character)
+	if col < 0 || col >= len(lineText) {
+		return ""
+	}
+
+	// Find word at position
+	start = col
+	for start > 0 && isIdentChar(lineText[start-1]) {
+		start--
+	}
+	end := col
+	for end < len(lineText) && isIdentChar(lineText[end]) {
+		end++
+	}
+	if start < end {
+		return lineText[start:end]
+	}
+
+	return ""
+}
+
+// createImportAction creates a code action to add an import
+func createImportAction(export StdlibExport, insertLine int, diag protocol.Diagnostic, docURI protocol.DocumentURI) protocol.CodeAction {
+	importText := fmt.Sprintf("import %s\n", export.UsePath)
+
+	return protocol.CodeAction{
+		Title:       fmt.Sprintf("Import '%s' from %s", export.Name, export.ModulePath),
+		Kind:        protocol.QuickFix,
+		Diagnostics: []protocol.Diagnostic{diag},
+		Edit: &protocol.WorkspaceEdit{
+			Changes: map[protocol.DocumentURI][]protocol.TextEdit{
+				docURI: {
+					{
+						Range: protocol.Range{
+							Start: protocol.Position{Line: uint32(insertLine), Character: 0},
+							End:   protocol.Position{Line: uint32(insertLine), Character: 0},
+						},
+						NewText: importText,
+					},
+				},
+			},
+		},
+	}
+}
+
 // GetCompletions returns completion items for a position
 func GetCompletions(content, filePath string, line, col int) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
@@ -523,6 +749,61 @@ func GetCompletions(content, filePath string, line, col int) []protocol.Completi
 	enclosingMethod := findEnclosingMethod(file, line+1)
 	items = append(items, getLocalCompletions(enclosingMethod, prefix, line+1, file)...)
 
+	// Add stdlib suggestions if prefix looks like a type name (starts with uppercase)
+	if len(prefix) > 0 && prefix[0] >= 'A' && prefix[0] <= 'Z' {
+		items = append(items, getStdlibCompletions(file, prefix)...)
+	}
+
+	return items
+}
+
+// getStdlibCompletions returns completions for stdlib types that aren't imported
+func getStdlibCompletions(file *tokens.File, prefix string) []protocol.CompletionItem {
+	var items []protocol.CompletionItem
+
+	// Get already imported modules
+	importedModules := make(map[string]bool)
+	for _, entry := range file.Entries {
+		if entry.Import != nil {
+			importedModules[entry.Import.Package()] = true
+			// Also check for selective imports
+			for _, obj := range entry.Import.Objects {
+				importedModules[obj] = true
+			}
+		}
+	}
+
+	// Search stdlib for matching exports
+	stdlibIndex := GetStdlibIndex()
+	exports := stdlibIndex.FindByPrefix(prefix)
+
+	for _, export := range exports {
+		// Skip if already imported
+		if importedModules[export.ModulePath] || importedModules[export.Name] {
+			continue
+		}
+
+		kind := protocol.CompletionItemKindClass
+		switch export.Kind {
+		case "trait":
+			kind = protocol.CompletionItemKindInterface
+		case "func":
+			kind = protocol.CompletionItemKindFunction
+		case "const":
+			kind = protocol.CompletionItemKindConstant
+		case "enum":
+			kind = protocol.CompletionItemKindEnum
+		}
+
+		items = append(items, protocol.CompletionItem{
+			Label:      export.Name,
+			Kind:       kind,
+			Detail:     fmt.Sprintf("%s (import %s)", export.Kind, export.ModulePath),
+			InsertText: export.Name,
+			// Additional edit to add the import would go here with CommitCharacters
+		})
+	}
+
 	return items
 }
 
@@ -533,9 +814,10 @@ func sanitizeForParsing(content string, cursorLine int) string {
 		return content
 	}
 
-	// Check if the cursor line has incomplete expression (ends with . or ::)
+	// Check if the cursor line has incomplete expression
 	lineText := strings.TrimRight(lines[cursorLine], " \t")
-	if strings.HasSuffix(lineText, ".") || strings.HasSuffix(lineText, "::") {
+	if strings.HasSuffix(lineText, ".") || strings.HasSuffix(lineText, "::") ||
+		strings.HasSuffix(lineText, "(") || strings.HasSuffix(lineText, ",") {
 		// Remove the incomplete line for parsing
 		lines[cursorLine] = ""
 	}
@@ -548,6 +830,7 @@ func getStaticMethodCompletions(file *tokens.File, typeName, prefix string) []pr
 	var items []protocol.CompletionItem
 
 	for _, entry := range file.Entries {
+		// Check for class static methods
 		if entry.Class != nil && entry.Class.Name == typeName {
 			for _, field := range entry.Class.Fields {
 				if field.Method != nil {
@@ -562,9 +845,248 @@ func getStaticMethodCompletions(file *tokens.File, typeName, prefix string) []pr
 				}
 			}
 		}
+
+		// Check for enum variants
+		if entry.Enum != nil && entry.Enum.Name == typeName {
+			for _, caseName := range entry.Enum.Cases {
+				if strings.HasPrefix(caseName, prefix) {
+					items = append(items, protocol.CompletionItem{
+						Label:  caseName,
+						Kind:   protocol.CompletionItemKindEnumMember,
+						Detail: typeName + "::" + caseName,
+					})
+				}
+			}
+		}
 	}
 
 	return items
+}
+
+// GetSignatureHelp returns signature help for a function call at the given position
+func GetSignatureHelp(content, filePath string, line, col int) *protocol.SignatureHelp {
+	lines := strings.Split(content, "\n")
+	if line >= len(lines) {
+		return nil
+	}
+	lineText := lines[line]
+	if col > len(lineText) {
+		col = len(lineText)
+	}
+
+	// Find the opening parenthesis and count commas to determine active parameter
+	parenDepth := 0
+	activeParam := 0
+	callStart := -1
+
+	// Scan backwards from cursor to find the function call
+	for i := col - 1; i >= 0; i-- {
+		ch := lineText[i]
+		if ch == ')' {
+			parenDepth++
+		} else if ch == '(' {
+			if parenDepth == 0 {
+				callStart = i
+				break
+			}
+			parenDepth--
+		} else if ch == ',' && parenDepth == 0 {
+			activeParam++
+		}
+	}
+
+	if callStart < 0 {
+		return nil
+	}
+
+	// Extract function/method name before the parenthesis
+	nameEnd := callStart
+	nameStart := nameEnd
+	for nameStart > 0 && isIdentChar(lineText[nameStart-1]) {
+		nameStart--
+	}
+	if nameStart >= nameEnd {
+		return nil
+	}
+	funcName := lineText[nameStart:nameEnd]
+
+	// Check if it's a method call (preceded by '.')
+	var objName string
+	if nameStart > 0 && lineText[nameStart-1] == '.' {
+		objEnd := nameStart - 1
+		objStart := objEnd
+		for objStart > 0 && isIdentChar(lineText[objStart-1]) {
+			objStart--
+		}
+		if objStart < objEnd {
+			objName = lineText[objStart:objEnd]
+		}
+	}
+
+	// Check if it's a static method call (preceded by '::')
+	var typeName string
+	if nameStart > 1 && lineText[nameStart-1] == ':' && lineText[nameStart-2] == ':' {
+		typeEnd := nameStart - 2
+		typeStart := typeEnd
+		for typeStart > 0 && isIdentChar(lineText[typeStart-1]) {
+			typeStart--
+		}
+		if typeStart < typeEnd {
+			typeName = lineText[typeStart:typeEnd]
+		}
+	}
+
+	// Parse the file to look up function signatures
+	sanitizedContent := sanitizeForParsing(content, line)
+	file, _ := parser.Parser.ParseString(filePath, sanitizedContent)
+	if file == nil {
+		return nil
+	}
+	file.ComputeRanges()
+
+	var signature *protocol.SignatureInformation
+
+	if typeName != "" {
+		// Static method call - look up in impl blocks
+		signature = findStaticMethodSignature(file, typeName, funcName)
+	} else if objName != "" {
+		// Instance method call - resolve variable type and look up method
+		varType := lookupVariableTypeInScope(file, objName, line+1)
+		if varType == "" {
+			varType = lookupVariableType(file, objName)
+		}
+		if varType != "" {
+			parsedType := parseGenericType(varType)
+			signature = findMethodSignature(file, filePath, parsedType.BaseName, funcName, parsedType.TypeArgs)
+		}
+	} else {
+		// Free function call
+		signature = findFunctionSignature(file, funcName)
+	}
+
+	if signature == nil {
+		return nil
+	}
+
+	return &protocol.SignatureHelp{
+		Signatures:      []protocol.SignatureInformation{*signature},
+		ActiveSignature: 0,
+		ActiveParameter: uint32(activeParam),
+	}
+}
+
+// findFunctionSignature finds a top-level function signature
+func findFunctionSignature(file *tokens.File, funcName string) *protocol.SignatureInformation {
+	for _, entry := range file.Entries {
+		if entry.Method != nil && entry.Method.Name == funcName {
+			return buildSignatureInfo(entry.Method.Name, entry.Method.Arguments, entry.Method.Type)
+		}
+	}
+	return nil
+}
+
+// findStaticMethodSignature finds a static method signature in impl blocks
+func findStaticMethodSignature(file *tokens.File, typeName, methodName string) *protocol.SignatureInformation {
+	for _, entry := range file.Entries {
+		if entry.Implementation != nil && isImplForClass(entry.Implementation, typeName) {
+			for _, field := range entry.Implementation.GetFields() {
+				if field.Name == methodName {
+					return buildImplSignatureInfo(field)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// findMethodSignature finds an instance method signature
+func findMethodSignature(file *tokens.File, filePath, typeName, methodName string, typeArgs []string) *protocol.SignatureInformation {
+	// Get type parameters for substitution
+	var typeParams []string
+	for _, entry := range file.Entries {
+		if entry.Class != nil && entry.Class.Name == typeName {
+			for _, tp := range entry.Class.TypeParams {
+				typeParams = append(typeParams, tp.Name)
+			}
+			break
+		}
+	}
+
+	// Look in impl blocks
+	for _, entry := range file.Entries {
+		if entry.Implementation != nil && isImplForClass(entry.Implementation, typeName) {
+			for _, field := range entry.Implementation.GetFields() {
+				if field.Name == methodName {
+					sig := buildImplSignatureInfo(field)
+					if len(typeArgs) > 0 {
+						sig.Label = substituteTypeParams(sig.Label, typeParams, typeArgs)
+					}
+					return sig
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// buildSignatureInfo builds a SignatureInformation from function arguments
+func buildSignatureInfo(name string, args []*tokens.Value, returnType *tokens.TypeRef) *protocol.SignatureInformation {
+	var params []protocol.ParameterInformation
+	var paramStrs []string
+
+	for _, arg := range args {
+		typeStr := "unknown"
+		if arg.Type != nil {
+			typeStr = analysis.FormatTypeRef(arg.Type)
+		}
+		paramStr := fmt.Sprintf("%s: %s", arg.Name, typeStr)
+		paramStrs = append(paramStrs, paramStr)
+		params = append(params, protocol.ParameterInformation{
+			Label: paramStr,
+		})
+	}
+
+	retStr := "void"
+	if returnType != nil {
+		retStr = analysis.FormatTypeRef(returnType)
+	}
+
+	label := fmt.Sprintf("%s(%s): %s", name, strings.Join(paramStrs, ", "), retStr)
+
+	return &protocol.SignatureInformation{
+		Label:      label,
+		Parameters: params,
+	}
+}
+
+// buildImplSignatureInfo builds a SignatureInformation from an impl field
+func buildImplSignatureInfo(field *tokens.ImplementationField) *protocol.SignatureInformation {
+	var params []protocol.ParameterInformation
+	var paramStrs []string
+
+	for _, arg := range field.Arguments {
+		typeStr := "unknown"
+		if arg.Type != nil {
+			typeStr = analysis.FormatTypeRef(arg.Type)
+		}
+		paramStr := fmt.Sprintf("%s: %s", arg.Name, typeStr)
+		paramStrs = append(paramStrs, paramStr)
+		params = append(params, protocol.ParameterInformation{
+			Label: paramStr,
+		})
+	}
+
+	retStr := "void"
+	if field.Type != nil {
+		retStr = analysis.FormatTypeRef(field.Type)
+	}
+
+	label := fmt.Sprintf("%s(%s): %s", field.Name, strings.Join(paramStrs, ", "), retStr)
+
+	return &protocol.SignatureInformation{
+		Label:      label,
+		Parameters: params,
+	}
 }
 
 // getMemberCompletionsWithScope resolves variable type from local scope and returns member completions
@@ -592,24 +1114,28 @@ func getMemberCompletionsWithScope(file *tokens.File, filePath, objName, prefix 
 
 	// Remove pointer suffix for class lookup
 	baseType := strings.TrimSuffix(typeName, "*")
+	baseType = strings.TrimSuffix(baseType, "!")
+
+	// Parse generic type to extract base name and type arguments
+	parsedType := parseGenericType(baseType)
 
 	// Check if the type is module-qualified (e.g., "shapes.Circle")
-	if strings.Contains(baseType, ".") {
-		parts := strings.SplitN(baseType, ".", 2)
+	if strings.Contains(parsedType.BaseName, ".") {
+		parts := strings.SplitN(parsedType.BaseName, ".", 2)
 		moduleName := parts[0]
 		className := parts[1]
 
 		// Get completions from imported module with visibility filtering
-		items = append(items, getImportedClassMemberCompletions(filePath, moduleName, className, prefix)...)
+		items = append(items, getImportedClassMemberCompletionsGeneric(filePath, moduleName, className, prefix, parsedType.TypeArgs)...)
 		items = append(items, getImportedTraitMethodCompletions(filePath, moduleName, className, prefix)...)
 		return items
 	}
 
 	// Find the class with this type name and return its members (same module - no visibility filter)
-	items = append(items, getClassMemberCompletions(file, baseType, prefix)...)
+	items = append(items, getClassMemberCompletionsGeneric(file, parsedType.BaseName, prefix, parsedType.TypeArgs)...)
 
 	// Also add trait methods implemented for this class
-	items = append(items, getTraitMethodCompletions(file, baseType, prefix)...)
+	items = append(items, getTraitMethodCompletions(file, parsedType.BaseName, prefix, parsedType.TypeArgs)...)
 
 	return items
 }
@@ -691,14 +1217,14 @@ func lookupVarInEntriesBeforeLine(entries []*tokens.Entry, varName string, curso
 				return inferSimpleType(entry.Field.Value)
 			}
 		}
-		// Recurse into blocks
+		// Recurse into blocks only if cursor is within the block
 		if entry.If != nil {
-			if typeStr := lookupVarInEntriesBeforeLine(entry.If.Value, varName, cursorLine); typeStr != "" {
+			if typeStr := lookupVarInIfBlock(entry.If, varName, cursorLine); typeStr != "" {
 				return typeStr
 			}
 		}
 		if entry.Loop != nil {
-			if typeStr := lookupVarInEntriesBeforeLine(entry.Loop.Value, varName, cursorLine); typeStr != "" {
+			if typeStr := lookupVarInLoopBlock(entry.Loop, varName, cursorLine); typeStr != "" {
 				return typeStr
 			}
 		}
@@ -706,20 +1232,122 @@ func lookupVarInEntriesBeforeLine(entries []*tokens.Entry, varName string, curso
 	return ""
 }
 
+// lookupVarInIfBlock searches for a variable in if/else-if/else blocks
+func lookupVarInIfBlock(ifBlock *tokens.If, varName string, cursorLine int) string {
+	// Check if cursor is within the if block
+	if cursorLine >= ifBlock.Pos.Line && cursorLine <= ifBlock.EndPos.Line {
+		if typeStr := lookupVarInEntriesBeforeLine(ifBlock.Value, varName, cursorLine); typeStr != "" {
+			return typeStr
+		}
+	}
+
+	// Check else-if branches
+	if ifBlock.ElseIf != nil {
+		if typeStr := lookupVarInElseIfBlock(ifBlock.ElseIf, varName, cursorLine); typeStr != "" {
+			return typeStr
+		}
+	}
+
+	// Check else branch
+	if ifBlock.Else != nil && ifBlock.Else.Value != nil {
+		if cursorLine >= ifBlock.Else.Pos.Line && cursorLine <= ifBlock.Else.EndPos.Line {
+			if typeStr := lookupVarInEntriesBeforeLine(ifBlock.Else.Value, varName, cursorLine); typeStr != "" {
+				return typeStr
+			}
+		}
+	}
+
+	return ""
+}
+
+// lookupVarInElseIfBlock searches for a variable in else-if blocks
+func lookupVarInElseIfBlock(elseIf *tokens.ElseIf, varName string, cursorLine int) string {
+	if cursorLine >= elseIf.Pos.Line && cursorLine <= elseIf.EndPos.Line {
+		if typeStr := lookupVarInEntriesBeforeLine(elseIf.Value, varName, cursorLine); typeStr != "" {
+			return typeStr
+		}
+	}
+
+	// Recurse into nested else-if
+	if elseIf.ElseIf != nil {
+		if typeStr := lookupVarInElseIfBlock(elseIf.ElseIf, varName, cursorLine); typeStr != "" {
+			return typeStr
+		}
+	}
+
+	// Check else branch
+	if elseIf.Else != nil && elseIf.Else.Value != nil {
+		if cursorLine >= elseIf.Else.Pos.Line && cursorLine <= elseIf.Else.EndPos.Line {
+			if typeStr := lookupVarInEntriesBeforeLine(elseIf.Else.Value, varName, cursorLine); typeStr != "" {
+				return typeStr
+			}
+		}
+	}
+
+	return ""
+}
+
+// lookupVarInLoopBlock searches for a variable in loop blocks, including loop variables
+func lookupVarInLoopBlock(loop *tokens.Loop, varName string, cursorLine int) string {
+	// Check if cursor is within the loop
+	if cursorLine < loop.Pos.Line || cursorLine > loop.EndPos.Line {
+		return ""
+	}
+
+	// Check for-in loop variable
+	if loop.ForIn != nil && loop.ForIn.Variable != nil {
+		if loop.ForIn.Variable.Name == varName {
+			if loop.ForIn.Variable.Type != nil {
+				return analysis.FormatTypeRef(loop.ForIn.Variable.Type)
+			}
+			return "unknown"
+		}
+	}
+
+	// Check for-of loop variable
+	if loop.ForOf != nil && loop.ForOf.Variable != nil {
+		if loop.ForOf.Variable.Name == varName {
+			if loop.ForOf.Variable.Type != nil {
+				return analysis.FormatTypeRef(loop.ForOf.Variable.Type)
+			}
+			return "unknown"
+		}
+	}
+
+	// Search in loop body
+	return lookupVarInEntriesBeforeLine(loop.Value, varName, cursorLine)
+}
+
 // getClassMemberCompletions returns completions for a class's fields and methods
 func getClassMemberCompletions(file *tokens.File, className, prefix string) []protocol.CompletionItem {
+	return getClassMemberCompletionsGeneric(file, className, prefix, nil)
+}
+
+// getClassMemberCompletionsGeneric returns completions with type parameter substitution
+func getClassMemberCompletionsGeneric(file *tokens.File, className, prefix string, typeArgs []string) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 
 	for _, entry := range file.Entries {
 		if entry.Class != nil && entry.Class.Name == className {
+			// Get type parameter names for substitution
+			var typeParams []string
+			for _, tp := range entry.Class.TypeParams {
+				typeParams = append(typeParams, tp.Name)
+			}
+
 			for _, field := range entry.Class.Fields {
 				if field.Method != nil {
 					name := field.Method.Name
 					if strings.HasPrefix(name, prefix) {
+						detail := analysis.FormatMethodSignature(field.Method)
+						// Substitute type parameters with actual type arguments
+						if len(typeArgs) > 0 {
+							detail = substituteTypeParams(detail, typeParams, typeArgs)
+						}
 						items = append(items, protocol.CompletionItem{
 							Label:  name,
 							Kind:   protocol.CompletionItemKindMethod,
-							Detail: analysis.FormatMethodSignature(field.Method),
+							Detail: detail,
 						})
 					}
 				}
@@ -729,6 +1357,10 @@ func getClassMemberCompletions(file *tokens.File, className, prefix string) []pr
 						typeStr := "unknown"
 						if field.Field.Type != nil {
 							typeStr = analysis.FormatTypeRef(field.Field.Type)
+							// Substitute type parameters with actual type arguments
+							if len(typeArgs) > 0 {
+								typeStr = substituteTypeParams(typeStr, typeParams, typeArgs)
+							}
 						}
 						items = append(items, protocol.CompletionItem{
 							Label:  name,
@@ -759,9 +1391,20 @@ func isImplForClass(impl *tokens.Implementation, className string) bool {
 }
 
 // getTraitMethodCompletions returns completions for trait methods implemented for a class
-func getTraitMethodCompletions(file *tokens.File, className, prefix string) []protocol.CompletionItem {
+func getTraitMethodCompletions(file *tokens.File, className, prefix string, typeArgs []string) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 	addedMethods := make(map[string]bool)
+
+	// Get type parameters from the class definition for substitution
+	var typeParams []string
+	for _, entry := range file.Entries {
+		if entry.Class != nil && entry.Class.Name == className {
+			for _, tp := range entry.Class.TypeParams {
+				typeParams = append(typeParams, tp.Name)
+			}
+			break
+		}
+	}
 
 	for _, entry := range file.Entries {
 		if entry.Implementation != nil && isImplForClass(entry.Implementation, className) {
@@ -771,6 +1414,10 @@ func getTraitMethodCompletions(file *tokens.File, className, prefix string) []pr
 				if strings.HasPrefix(name, prefix) && !addedMethods[name] {
 					addedMethods[name] = true
 					detail := formatImplMethodSignature(field)
+					// Substitute type parameters with actual type arguments
+					if len(typeArgs) > 0 {
+						detail = substituteTypeParams(detail, typeParams, typeArgs)
+					}
 					// Only show trait name if this is a trait impl (not inherent)
 					if entry.Implementation.GetFor() != "" && entry.Implementation.GetName() != "" {
 						detail = fmt.Sprintf("(%s) %s", entry.Implementation.GetName(), detail)
@@ -829,7 +1476,19 @@ func resolveModuleFile(filePath, moduleName string) string {
 // getImportedClassMemberCompletions returns completions for a class from an imported module
 // Only returns public members since the class is from a different module
 func getImportedClassMemberCompletions(filePath, moduleName, className, prefix string) []protocol.CompletionItem {
+	return getImportedClassMemberCompletionsGeneric(filePath, moduleName, className, prefix, nil)
+}
+
+// getImportedClassMemberCompletionsGeneric returns completions with type parameter substitution for imported classes
+func getImportedClassMemberCompletionsGeneric(filePath, moduleName, className, prefix string, typeArgs []string) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
+
+	// Parse generic class name if needed
+	parsedClass := parseGenericType(className)
+	baseClassName := parsedClass.BaseName
+	if len(parsedClass.TypeArgs) > 0 && len(typeArgs) == 0 {
+		typeArgs = parsedClass.TypeArgs
+	}
 
 	modulePath := resolveModuleFile(filePath, moduleName)
 	if modulePath == "" {
@@ -847,16 +1506,27 @@ func getImportedClassMemberCompletions(filePath, moduleName, className, prefix s
 	}
 
 	for _, entry := range moduleFile.Entries {
-		if entry.Class != nil && entry.Class.Name == className {
+		if entry.Class != nil && entry.Class.Name == baseClassName {
+			// Get type parameter names for substitution
+			var typeParams []string
+			for _, tp := range entry.Class.TypeParams {
+				typeParams = append(typeParams, tp.Name)
+			}
+
 			for _, field := range entry.Class.Fields {
 				// Methods - only show public ones
 				if field.Method != nil {
 					name := field.Method.Name
 					if strings.HasPrefix(name, prefix) && analysis.IsPublic(field.Method.Visibility) {
+						detail := analysis.FormatMethodSignature(field.Method)
+						// Substitute type parameters with actual type arguments
+						if len(typeArgs) > 0 {
+							detail = substituteTypeParams(detail, typeParams, typeArgs)
+						}
 						items = append(items, protocol.CompletionItem{
 							Label:  name,
 							Kind:   protocol.CompletionItemKindMethod,
-							Detail: analysis.FormatMethodSignature(field.Method),
+							Detail: detail,
 						})
 					}
 				}
@@ -867,6 +1537,10 @@ func getImportedClassMemberCompletions(filePath, moduleName, className, prefix s
 						typeStr := "unknown"
 						if field.Field.Type != nil {
 							typeStr = analysis.FormatTypeRef(field.Field.Type)
+							// Substitute type parameters with actual type arguments
+							if len(typeArgs) > 0 {
+								typeStr = substituteTypeParams(typeStr, typeParams, typeArgs)
+							}
 						}
 						items = append(items, protocol.CompletionItem{
 							Label:  name,
@@ -996,6 +1670,15 @@ func getImportedModuleCompletions(filePath, moduleName, prefix string) []protoco
 				})
 			}
 		}
+
+		// Enums - always public (no visibility modifier in grammar)
+		if entry.Enum != nil && strings.HasPrefix(entry.Enum.Name, prefix) {
+			items = append(items, protocol.CompletionItem{
+				Label:  entry.Enum.Name,
+				Kind:   protocol.CompletionItemKindEnum,
+				Detail: fmt.Sprintf("enum %s (%d variants)", entry.Enum.Name, len(entry.Enum.Cases)),
+			})
+		}
 	}
 
 	return items
@@ -1037,6 +1720,14 @@ func getEntryCompletions(entry *tokens.Entry, prefix string) []protocol.Completi
 			Label:  entry.Field.Name,
 			Kind:   protocol.CompletionItemKindVariable,
 			Detail: typeStr,
+		})
+	}
+
+	if entry.Enum != nil && strings.HasPrefix(entry.Enum.Name, prefix) {
+		items = append(items, protocol.CompletionItem{
+			Label:  entry.Enum.Name,
+			Kind:   protocol.CompletionItemKindEnum,
+			Detail: fmt.Sprintf("enum %s (%d variants)", entry.Enum.Name, len(entry.Enum.Cases)),
 		})
 	}
 
@@ -1159,14 +1850,109 @@ func getLocalVarsFromEntries(entries []*tokens.Entry, prefix string, cursorLine 
 			}
 		}
 
-		// Recurse into blocks
+		// Recurse into blocks only if cursor is within the block
 		if entry.If != nil {
-			items = append(items, getLocalVarsFromEntries(entry.If.Value, prefix, cursorLine, file)...)
+			items = append(items, getVarsFromIfBlock(entry.If, prefix, cursorLine, file)...)
 		}
 		if entry.Loop != nil {
-			items = append(items, getLocalVarsFromEntries(entry.Loop.Value, prefix, cursorLine, file)...)
+			items = append(items, getVarsFromLoopBlock(entry.Loop, prefix, cursorLine, file)...)
 		}
 	}
+
+	return items
+}
+
+// getVarsFromIfBlock extracts variables from if/else-if/else blocks, respecting scope
+func getVarsFromIfBlock(ifBlock *tokens.If, prefix string, cursorLine int, file *tokens.File) []protocol.CompletionItem {
+	var items []protocol.CompletionItem
+
+	// Check if cursor is within the if block's body
+	if cursorLine >= ifBlock.Pos.Line && cursorLine <= ifBlock.EndPos.Line {
+		// Cursor is somewhere in this if statement - check which branch
+		items = append(items, getLocalVarsFromEntries(ifBlock.Value, prefix, cursorLine, file)...)
+	}
+
+	// Check else-if branches
+	if ifBlock.ElseIf != nil {
+		items = append(items, getVarsFromElseIfBlock(ifBlock.ElseIf, prefix, cursorLine, file)...)
+	}
+
+	// Check else branch
+	if ifBlock.Else != nil && ifBlock.Else.Value != nil {
+		if cursorLine >= ifBlock.Else.Pos.Line && cursorLine <= ifBlock.Else.EndPos.Line {
+			items = append(items, getLocalVarsFromEntries(ifBlock.Else.Value, prefix, cursorLine, file)...)
+		}
+	}
+
+	return items
+}
+
+// getVarsFromElseIfBlock extracts variables from else-if blocks
+func getVarsFromElseIfBlock(elseIf *tokens.ElseIf, prefix string, cursorLine int, file *tokens.File) []protocol.CompletionItem {
+	var items []protocol.CompletionItem
+
+	if cursorLine >= elseIf.Pos.Line && cursorLine <= elseIf.EndPos.Line {
+		items = append(items, getLocalVarsFromEntries(elseIf.Value, prefix, cursorLine, file)...)
+	}
+
+	// Recurse into nested else-if
+	if elseIf.ElseIf != nil {
+		items = append(items, getVarsFromElseIfBlock(elseIf.ElseIf, prefix, cursorLine, file)...)
+	}
+
+	// Check else branch
+	if elseIf.Else != nil && elseIf.Else.Value != nil {
+		if cursorLine >= elseIf.Else.Pos.Line && cursorLine <= elseIf.Else.EndPos.Line {
+			items = append(items, getLocalVarsFromEntries(elseIf.Else.Value, prefix, cursorLine, file)...)
+		}
+	}
+
+	return items
+}
+
+// getVarsFromLoopBlock extracts variables from loop blocks, including loop variables
+func getVarsFromLoopBlock(loop *tokens.Loop, prefix string, cursorLine int, file *tokens.File) []protocol.CompletionItem {
+	var items []protocol.CompletionItem
+
+	// Check if cursor is within the loop body
+	if cursorLine < loop.Pos.Line || cursorLine > loop.EndPos.Line {
+		return items
+	}
+
+	// Add for-in loop variable
+	if loop.ForIn != nil && loop.ForIn.Variable != nil {
+		varName := loop.ForIn.Variable.Name
+		if strings.HasPrefix(varName, prefix) {
+			typeStr := "unknown"
+			if loop.ForIn.Variable.Type != nil {
+				typeStr = analysis.FormatTypeRef(loop.ForIn.Variable.Type)
+			}
+			items = append(items, protocol.CompletionItem{
+				Label:  varName,
+				Kind:   protocol.CompletionItemKindVariable,
+				Detail: "(loop variable) " + typeStr,
+			})
+		}
+	}
+
+	// Add for-of loop variable
+	if loop.ForOf != nil && loop.ForOf.Variable != nil {
+		varName := loop.ForOf.Variable.Name
+		if strings.HasPrefix(varName, prefix) {
+			typeStr := "unknown"
+			if loop.ForOf.Variable.Type != nil {
+				typeStr = analysis.FormatTypeRef(loop.ForOf.Variable.Type)
+			}
+			items = append(items, protocol.CompletionItem{
+				Label:  varName,
+				Kind:   protocol.CompletionItemKindVariable,
+				Detail: "(loop variable) " + typeStr,
+			})
+		}
+	}
+
+	// Add variables from loop body
+	items = append(items, getLocalVarsFromEntries(loop.Value, prefix, cursorLine, file)...)
 
 	return items
 }

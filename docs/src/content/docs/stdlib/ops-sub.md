@@ -3,19 +3,17 @@ title: Sub (trait)
 description: Sub<T> - Trait for the `-` operator.
 ---
 
-```ts
+```gecko
 trait Sub<T>
 ```
 
 Sub<T> - Trait for the `-` operator.
 
-Types implementing this trait can be subtracted using `-`.
-
 ## Required Methods
 
 ### sub
 
-```ts
+```gecko
 func sub(self: void, other: T): T
 ```
 

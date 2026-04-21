@@ -109,8 +109,15 @@ func (t *TypeRef) Check(scope *ast.Ast) bool {
 		classAstOpt = scope.ResolveClass(t.Type)
 	}
 
-	// If class not found, report error
+	// If class not found, check if it's a trait type (used in trait method signatures)
 	if classAstOpt.IsNil() {
+		// Check if this type is a trait
+		traitOpt := scope.ResolveTrait(t.Type)
+		if !traitOpt.IsNil() {
+			// It's a trait reference, which is valid in certain contexts (e.g., trait method return types)
+			return true
+		}
+
 		errorMsg := "Unable to resolve type '" + t.Type + "'"
 
 		// Try to get import suggestions

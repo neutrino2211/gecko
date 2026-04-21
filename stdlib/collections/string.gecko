@@ -1,5 +1,7 @@
 package string
 
+import std.core.traits use { Drop, Clone, Index, Iterator }
+
 declare external func malloc(size: uint64): void*
 declare external func realloc(ptr: void*, size: uint64): void*
 declare external func free(ptr: void*): void
@@ -9,6 +11,45 @@ declare external func strlen(s: string): uint64
 /// Add<T> - Trait for the `+` operator.
 public trait Add<T> {
     func add(self, other: T): T
+}
+
+/// StringIterator - Iterator over bytes in a String.
+public class StringIterator {
+    let data: uint64
+    let len: uint64
+    let pos: uint64
+
+    public func new(data: uint64, len: uint64): StringIterator {
+        let it: StringIterator
+        it.data = data
+        it.len = len
+        it.pos = 0
+        return it
+    }
+
+    public func next(self): uint8 {
+        let ptr: uint8* = (self.data + self.pos) as uint8*
+        let val: uint8 = @deref(ptr)
+        self.pos = self.pos + 1
+        return val
+    }
+
+    public func has_next(self): bool {
+        return self.pos < self.len
+    }
+}
+
+impl Iterator<uint8> for StringIterator {
+    public func next(self): uint8 {
+        let ptr: uint8* = (self.data + self.pos) as uint8*
+        let val: uint8 = @deref(ptr)
+        self.pos = self.pos + 1
+        return val
+    }
+
+    public func has_next(self): bool {
+        return self.pos < self.len
+    }
 }
 
 /// String - A growable, heap-allocated string.
@@ -25,7 +66,7 @@ public class String {
     let cap: uint64
 
     /// Creates a new empty String with default capacity.
-    func new(): String {
+    public func new(): String {
         let initial_cap: uint64 = 16
         let mem: void* = malloc(initial_cap)
         let addr: uint64 = mem as uint64
@@ -42,7 +83,7 @@ public class String {
     }
 
     /// Creates a new String with the specified initial capacity.
-    func with_capacity(capacity: uint64): String {
+    public func with_capacity(capacity: uint64): String {
         let actual_cap: uint64 = capacity + 1
         let mem: void* = malloc(actual_cap)
         let addr: uint64 = mem as uint64
@@ -58,7 +99,7 @@ public class String {
     }
 
     /// Creates a String from a string literal.
-    func from(literal: string): String {
+    public func from(literal: string): String {
         let lit_len: uint64 = strlen(literal)
         let capacity: uint64 = lit_len + 1
 
@@ -90,7 +131,7 @@ public class String {
     }
 
     /// Returns a pointer to the underlying C string.
-    func as_ptr(self): string {
+    public func as_ptr(self): string {
         return self.data as string
     }
 
@@ -231,13 +272,18 @@ public class String {
     }
 
     /// Frees the memory owned by this string.
-    func drop(self) {
+    public func drop(self) {
         if (self.data != 0) {
             free(self.data as void*)
             self.data = 0
             self.len = 0
             self.cap = 0
         }
+    }
+
+    /// Returns an iterator over the bytes of this string.
+    public func iter(self): StringIterator {
+        return StringIterator::new(self.data, self.len)
     }
 }
 
@@ -384,6 +430,65 @@ public class StringBuilder {
             return 0 as uint8
         }
         let ptr: uint8* = self.buffer.offset(index)
+        return @deref(ptr)
+    }
+}
+
+// Trait implementations for StringBuilder
+
+impl Drop for StringBuilder {
+    func drop(self): void {
+        if (!self.buffer.is_null()) {
+            free(self.buffer as void*)
+            self.buffer = 0 as uint8*
+        }
+        self.length = 0
+        self.capacity = 0
+    }
+}
+
+impl Index<uint64, uint8> for StringBuilder {
+    func index(self, idx: uint64): uint8 {
+        if (idx >= self.length) {
+            return 0 as uint8
+        }
+        let ptr: uint8* = self.buffer.offset(idx)
+        return @deref(ptr)
+    }
+}
+
+// Trait implementations for String
+
+impl Drop for String {
+    func drop(self): void {
+        if (self.data != 0) {
+            free(self.data as void*)
+            self.data = 0
+            self.len = 0
+            self.cap = 0
+        }
+    }
+}
+
+impl Clone for String {
+    func clone(self): String {
+        let new_s: String = String::with_capacity(self.len)
+
+        if (self.len > 0) {
+            memcpy(new_s.data as void*, self.data as void*, self.len + 1)
+            new_s.len = self.len
+        }
+
+        return new_s
+    }
+}
+
+impl Index<uint64, uint8> for String {
+    func index(self, idx: uint64): uint8 {
+        if (idx >= self.len) {
+            return 0 as uint8
+        }
+        let ptr: uint8* = (self.data + idx) as uint8*
         return @deref(ptr)
     }
 }

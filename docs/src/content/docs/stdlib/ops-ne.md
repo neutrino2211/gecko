@@ -3,19 +3,17 @@ title: Ne (trait)
 description: Ne<T> - Trait for the `!=` operator.
 ---
 
-```ts
+```gecko
 trait Ne<T>
 ```
 
 Ne<T> - Trait for the `!=` operator.
 
-Types implementing this trait can be compared for inequality using `!=`.
-
 ## Required Methods
 
 ### ne
 
-```ts
+```gecko
 func ne(self: void, other: T): bool
 ```
 

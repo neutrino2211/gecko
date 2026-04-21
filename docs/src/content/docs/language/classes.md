@@ -9,7 +9,7 @@ sidebar:
 
 Classes define custom types with fields and methods:
 
-```ts
+```gecko
 class Point {
     let x: int
     let y: int
@@ -33,13 +33,13 @@ class Point {
 
 Methods without `self` are static:
 
-```ts
+```gecko
 let p: Point = Point::new(3, 4)
 ```
 
 ### Struct Literals
 
-```ts
+```gecko
 let p: Point = Point { x: 3, y: 4 }
 ```
 
@@ -47,7 +47,7 @@ let p: Point = Point { x: 3, y: 4 }
 
 Methods with `self` operate on instances:
 
-```ts
+```gecko
 class Counter {
     let value: int
 
@@ -75,7 +75,7 @@ let val: int = c.get()  // 2
 
 ## Field Access
 
-```ts
+```gecko
 let p: Point = Point::new(3, 4)
 let x: int = p.x        // Read field
 p.x = 10                // Write field
@@ -85,7 +85,7 @@ p.x = 10                // Write field
 
 Classes can have type parameters:
 
-```ts
+```gecko
 class Box<T> {
     let value: T
 
@@ -111,7 +111,7 @@ let val: int = b.get()
 
 Remove padding for memory layout control:
 
-```ts
+```gecko
 @packed
 class PackedData {
     let a: uint8
@@ -124,7 +124,7 @@ class PackedData {
 
 Place data in specific memory sections:
 
-```ts
+```gecko
 @section(".rodata")
 const MESSAGE: string = "Hello"
 ```
@@ -133,6 +133,6 @@ const MESSAGE: string = "Hello"
 
 Declare opaque types from C:
 
-```ts
+```gecko
 declare external type FILE
 ```

@@ -55,12 +55,19 @@ func (b *CBackend) generateGenericInstantiations(scope *ast.Ast) {
 			}
 		}
 
-		// Generate methods from attached impl blocks (impl<T> ClassName<T> { ... })
+		// Generate methods from attached impl blocks
 		for _, implBlock := range classToken.Implementations {
-			for _, f := range implBlock.GetFields() {
-				m := f.ToMethodToken()
-				methodName := methodPrefix + "__" + m.Name
-				impl.GenerateClassMethodDef(scope, classToken, m, methodName, inst.FullName, inst.TypeArgs)
+			if implBlock.GetFor() != "" {
+				// Trait impl (impl<T> Trait for Class<T>)
+				// Generate trait methods with proper naming
+				impl.GenerateGenericTraitImpl(scope, classToken, implBlock, inst)
+			} else {
+				// Inherent impl (impl<T> Class<T> { ... })
+				for _, f := range implBlock.GetFields() {
+					m := f.ToMethodToken()
+					methodName := methodPrefix + "__" + m.Name
+					impl.GenerateClassMethodDef(scope, classToken, m, methodName, inst.FullName, inst.TypeArgs)
+				}
 			}
 		}
 	}
@@ -266,11 +273,34 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 			parentScope.Children[importedFile.PackageName] = importScope
 		}
 
+		// Build use objects map for this imported file
+		localUseObjects := make(map[string][]string)
+		for _, entry := range importedFile.Entries {
+			if entry.Import != nil && len(entry.Import.Objects) > 0 {
+				localUseObjects[entry.Import.ModuleName()] = entry.Import.Objects
+			}
+		}
+
 		// Recursively process nested imports BEFORE processing entries
 		for _, nestedImport := range importedFile.Imports {
 			nestedScope, alreadyProcessed := processImport(nestedImport, importScope)
 			if !alreadyProcessed {
 				importScopes = append(importScopes, nestedScope)
+			}
+
+			// Copy symbols from nested import's 'use { ... }' into this file's scope
+			if objects, ok := localUseObjects[nestedImport.PackageName]; ok {
+				for _, objName := range objects {
+					if cls, found := nestedScope.Classes[objName]; found {
+						importScope.Classes[objName] = cls
+					}
+					if trait, found := nestedScope.Traits[objName]; found {
+						importScope.Traits[objName] = trait
+					}
+					if method, found := nestedScope.Methods[objName]; found {
+						importScope.Methods[objName] = method
+					}
+				}
 			}
 		}
 

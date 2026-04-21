@@ -202,7 +202,7 @@ func (a *Ast) ToCString() string {
 
 // IsPublic returns true if this symbol is accessible from other modules
 func (a *Ast) IsPublic() bool {
-	return a.Visibility == "public"
+	return a.Visibility == "public" || a.Visibility == "external"
 }
 
 // GetOriginModule returns the module where this symbol was defined

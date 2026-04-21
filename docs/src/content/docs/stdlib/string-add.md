@@ -3,7 +3,7 @@ title: Add (trait)
 description: Add<T> - Trait for the `+` operator.
 ---
 
-```ts
+```gecko
 trait Add<T>
 ```
 
@@ -13,7 +13,7 @@ Add<T> - Trait for the `+` operator.
 
 ### add
 
-```ts
+```gecko
 func add(self: void, other: T): T
 ```
 

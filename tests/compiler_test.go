@@ -133,6 +133,12 @@ var compileTests = []compileTest{
 	// Nested generics (3+ levels)
 	{"nested_generics", "test_sources/compile_tests/nested_generics/main.gecko", 42, false},
 
+	// Generic trait implementations (impl<T> Trait for Class<T>)
+	{"generic_trait_impl", "test_sources/compile_tests/generic_trait_impl/main.gecko", 0, false},
+
+	// String iteration
+	{"string_iter", "test_sources/compile_tests/string_iter/main.gecko", 0, false},
+
 	// Multiple trait constraints (T is A & B)
 	{"multiple_constraints", "test_sources/compile_tests/multiple_constraints/main.gecko", 31, false},
 

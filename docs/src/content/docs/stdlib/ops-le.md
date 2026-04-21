@@ -3,19 +3,17 @@ title: Le (trait)
 description: Le<T> - Trait for the `<=` operator.
 ---
 
-```ts
+```gecko
 trait Le<T>
 ```
 
 Le<T> - Trait for the `<=` operator.
 
-Types implementing this trait can be compared using `<=`.
-
 ## Required Methods
 
 ### le
 
-```ts
+```gecko
 func le(self: void, other: T): bool
 ```
 

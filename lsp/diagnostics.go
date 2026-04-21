@@ -21,6 +21,13 @@ func uriToPath(uri string) string {
 	return path
 }
 
+func pathToURI(path string) protocol.DocumentURI {
+	if !strings.HasPrefix(path, "file://") {
+		path = "file://" + path
+	}
+	return protocol.DocumentURI(path)
+}
+
 func RunCompilerCheck(uri string, content string) ([]protocol.Diagnostic, error) {
 	var diagnostics []protocol.Diagnostic
 

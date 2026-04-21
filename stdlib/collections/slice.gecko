@@ -1,5 +1,7 @@
 package slice
 
+import std.core.traits use { Clone, Index }
+
 declare external func malloc(size: uint64): void*
 declare external func free(ptr: void*): void
 
@@ -22,6 +24,24 @@ impl<T> Slice<T> {
 
     func get(self, index: uint64): T {
         let ptr: T* = self.data + index
+        return @deref(ptr)
+    }
+}
+
+// Trait implementations for Slice<T>
+
+impl<T> Clone for Slice<T> {
+    func clone(self): Slice<T> {
+        let s: Slice<T>
+        s.data = self.data
+        s.len = self.len
+        return s
+    }
+}
+
+impl<T> Index<uint64, T> for Slice<T> {
+    func index(self, idx: uint64): T {
+        let ptr: T* = self.data + idx
         return @deref(ptr)
     }
 }

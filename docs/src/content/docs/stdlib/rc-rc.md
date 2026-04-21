@@ -3,7 +3,7 @@ title: Rc
 description: Rc<T> - Reference Counted Smart Pointer.
 ---
 
-```ts
+```gecko
 class Rc<T>
 ```
 
@@ -33,7 +33,7 @@ rc1.drop()                         // frees memory
 
 ### ptr
 
-```ts
+```gecko
 let ptr: uint64
 ```
 
@@ -43,7 +43,7 @@ Internal pointer to the reference-counted allocation.
 
 ### new
 
-```ts
+```gecko
 func new(value: T): Rc<T>
 ```
 
@@ -62,7 +62,7 @@ The initial strong count is 1.
 
 ### is_valid
 
-```ts
+```gecko
 func is_valid(self: void): bool
 ```
 
@@ -78,7 +78,7 @@ Returns true if this Rc points to valid memory.
 
 ### strong_count
 
-```ts
+```gecko
 func strong_count(self: void): uint64
 ```
 
@@ -94,7 +94,7 @@ Returns the current strong reference count.
 
 ### get
 
-```ts
+```gecko
 func get(self: void): T
 ```
 
@@ -110,7 +110,7 @@ Returns the value stored in this Rc.
 
 ### clone
 
-```ts
+```gecko
 func clone(self: void): Rc<T>
 ```
 
@@ -129,7 +129,7 @@ pointing to the same allocation.
 
 ### drop
 
-```ts
+```gecko
 func drop(self: void)
 ```
 
@@ -145,7 +145,7 @@ After calling drop, this Rc is invalidated.
 
 ### as_raw
 
-```ts
+```gecko
 func as_raw(self: void): uint64
 ```
 
@@ -161,7 +161,7 @@ Returns a raw pointer to the value (does not affect refcount).
 
 ### inner_ptr
 
-```ts
+```gecko
 func inner_ptr(self: void): uint64
 ```
 
@@ -177,4 +177,4 @@ Returns the internal pointer for creating `Weak<T>` references.
 
 ---
 
-*Defined in `stdlib/rc.gecko:13`*
+*Defined in `stdlib/memory/rc.gecko:15`*

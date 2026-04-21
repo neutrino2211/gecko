@@ -1,5 +1,7 @@
 package rc
 
+import std.core.traits use { Drop, Clone }
+
 declare external func malloc(size: uint64): void*
 declare external func free(ptr: void*): void
 
@@ -127,5 +129,39 @@ public class Rc<T> {
     /// Returns the internal pointer for creating `Weak<T>` references.
     func inner_ptr(self): uint64 {
         return self.ptr
+    }
+}
+
+// Trait implementations for Rc<T>
+
+impl<T> Drop for Rc<T> {
+    func drop(self): void {
+        if (self.ptr == 0) {
+            return
+        }
+
+        let strong_ptr: uint64* = self.ptr as uint64*
+        let count: uint64 = @deref(strong_ptr)
+
+        if (count <= 1) {
+            free(self.ptr as void*)
+            self.ptr = 0
+        } else {
+            @write_volatile(strong_ptr, count - 1)
+        }
+    }
+}
+
+impl<T> Clone for Rc<T> {
+    func clone(self): Rc<T> {
+        if (self.ptr != 0) {
+            let strong_ptr: uint64* = self.ptr as uint64*
+            let count: uint64 = @deref(strong_ptr)
+            @write_volatile(strong_ptr, count + 1)
+        }
+
+        let r: Rc<T>
+        r.ptr = self.ptr
+        return r
     }
 }

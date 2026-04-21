@@ -87,6 +87,10 @@ var TraitDefinitions = make(map[string]*tokens.Trait)
 // Separate from GeckoToCType to avoid loadPrimitives overwriting enum ASTs
 var EnumToCType = make(map[string]string)
 
+// MethodReturnTypes maps method full names to their return TypeRef
+// This preserves generic type arguments that ast.Method.Type (a string) can't hold
+var MethodReturnTypes = make(map[string]*tokens.TypeRef)
+
 // CGetScopeInformation retrieves or creates scope info
 func CGetScopeInformation(scope *ast.Ast) *CScopeInformation {
 	name := scope.GetFullName()

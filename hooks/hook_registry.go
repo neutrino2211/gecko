@@ -94,7 +94,8 @@ var hookSignatures = map[HookType]HookSignature{
 	HookIntoIterator: {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "any"},
 
 	// Error handling
-	HookTry: {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "T"},
+	// HookTry requires 2 methods: has_value (returns bool) and try_unwrap (returns T)
+	HookTry: {MethodCount: 2, HasSelf: true, ParamCount: 0, ReturnType: "any"},
 	HookOr:  {MethodCount: 1, HasSelf: true, ParamCount: 1, ReturnType: "T"},
 }
 

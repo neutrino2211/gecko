@@ -330,7 +330,16 @@ func (impl *CBackendImplementation) GetTypeOfFuncCall(f *tokens.FuncCall, scope 
 	if f.Module == "" {
 		mth := scope.ResolveMethod(f.Function)
 		if !mth.IsNil() {
-			return &tokens.TypeRef{Type: mth.Unwrap().Type}
+			method := mth.Unwrap()
+			// Try to get full return type with TypeArgs from MethodReturnTypes
+			// Search from root scope since functions are typically defined at module level
+			rootScope := scope.GetRoot()
+			fullName := rootScope.FullScopeName() + "#" + f.Function
+			if fullType, ok := MethodReturnTypes[fullName]; ok {
+				return fullType
+			}
+			// Fallback to string-based type
+			return &tokens.TypeRef{Type: method.Type}
 		}
 	}
 

@@ -373,6 +373,12 @@ func TestTypeCheckingErrors(t *testing.T) {
 			expectedError: "Circular Type Dependency",
 			expectedMsg:   "infinite size",
 		},
+		{
+			name:          "try_in_non_tryable_function",
+			file:          "test_sources/compile_tests/error_handling_try_invalid/main.gecko",
+			expectedError: "Try Expression Error",
+			expectedMsg:   "does not implement @try_hook trait",
+		},
 	}
 
 	for _, tc := range tests {

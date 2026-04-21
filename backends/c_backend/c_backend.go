@@ -284,6 +284,11 @@ func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens
 
 	scope.Methods[m.Name] = astMth
 	Methods[scope.FullScopeName()+"#"+m.Name] = astMth
+
+	// Track full return type for generic type support
+	if m.Type != nil {
+		MethodReturnTypes[scope.FullScopeName()+"#"+m.Name] = m.Type
+	}
 }
 
 // NewClass handles class definitions
@@ -1006,6 +1011,11 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 	scope.Methods[mangledName] = astMth
 	Methods[scope.FullScopeName()+"#"+mangledName] = astMth
 
+	// Track full return type for generic type support
+	if m.Type != nil {
+		MethodReturnTypes[scope.FullScopeName()+"#"+mangledName] = m.Type
+	}
+
 	// Initialize method scope info
 	mthInfo := &CScopeInformation{}
 	mthInfo.Init()
@@ -1170,6 +1180,11 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 
 	scope.Methods[m.Name] = astMth
 	Methods[scope.FullScopeName()+"#"+m.Name] = astMth
+
+	// Track full return type for generic type support
+	if m.Type != nil {
+		MethodReturnTypes[scope.FullScopeName()+"#"+m.Name] = m.Type
+	}
 
 	// Initialize method scope info
 	mthInfo := &CScopeInformation{}

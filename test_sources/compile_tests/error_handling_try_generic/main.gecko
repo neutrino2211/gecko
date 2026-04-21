@@ -3,8 +3,8 @@ package main
 declare external func printf(fmt: string, val: int32): int32
 declare external func puts(s: string): int32
 
-// Generic Tryable trait
-@try_hook(.try_unwrap)
+// Generic Tryable trait with both methods
+@try_hook(.has_value, .try_unwrap)
 trait Tryable<T> {
     func has_value(self): bool
     func try_unwrap(self): T
@@ -31,6 +31,10 @@ class Option<T> {
     func is_some(self): bool {
         return self.has_value
     }
+
+    func unwrap(self): T {
+        return self.value
+    }
 }
 
 impl<T> Tryable<T> for Option<T> {
@@ -43,21 +47,43 @@ impl<T> Tryable<T> for Option<T> {
     }
 }
 
+// Function that returns Option - can use try
+func get_value(should_succeed: bool): Option<int32> {
+    if (should_succeed) {
+        return Option<int32>::some(42)
+    }
+    return Option<int32>::none()
+}
+
+// Function that uses try and returns Option (valid usage)
+func process_with_try(should_succeed: bool): Option<int32> {
+    // This should early return if get_value returns none
+    let val: int32 = try get_value(should_succeed)
+    // If we get here, val is 42
+    return Option<int32>::some(val * 2)
+}
+
 external func main(): int32 {
-    let found: Option<int32> = Option<int32>::some(42)
-
-    // Using 'try' to unwrap the value
-    // Note: try currently only calls try_unwrap, it doesn't handle early return
-    let val1: int32 = try found
-
-    printf("val1 (should be 42): %d\n", val1)
-
-    // Verify value is correct
-    if (val1 == 42) {
-        puts("All tests passed!")
-        return 0
+    // Test 1: try with successful value - should return Some(84)
+    let result1: Option<int32> = process_with_try(true)
+    if (!result1.is_some()) {
+        puts("Test 1 failed: expected Some")
+        return 1
+    }
+    // Use unwrap (since result1 is valid at this point)
+    let val1: int32 = result1.unwrap()
+    if (val1 != 84) {
+        printf("Test 1 failed: expected 84, got %d\n", val1)
+        return 2
     }
 
-    puts("Test failed!")
-    return 1
+    // Test 2: try with None - should early return None
+    let result2: Option<int32> = process_with_try(false)
+    if (result2.is_some()) {
+        puts("Test 2 failed: expected None")
+        return 3
+    }
+
+    puts("All tests passed!")
+    return 0
 }

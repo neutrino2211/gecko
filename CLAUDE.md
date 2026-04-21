@@ -118,7 +118,7 @@ Source (.gecko) -> Lexer/Parser (Participle) -> tokens.File -> Backend -> C/LLVM
 - Break/continue in loops
 - For-in loops with `@iterator_hook` trait: `for let x in collection { }`
 - Error handling with `or` keyword: `expr or default` via `@or_hook` (works with generic types like `Option<T>`)
-- Error handling with `try` keyword: `try expr` via `@try_hook` (works with generic types like `Option<T>`)
+- Error handling with `try` keyword: `try expr` via `@try_hook` with early return (works with generic types like `Option<T>`)
 
 ### Standard Library
 
@@ -228,7 +228,6 @@ go build -o gecko-lsp ./lsp
 ### Not Yet Implemented
 
 - Trait inheritance (`trait Child: Parent`)
-- Early return semantics for `try` (currently just calls `try_unwrap`, doesn't propagate errors)
 - Visibility refinement: `protected` keyword for package-level visibility
 
 ## Ground Rules for Development

@@ -1,0 +1,54 @@
+package main
+
+declare external func puts(s: string): int32
+
+// Generic Tryable trait with both methods
+@try_hook(.has_value, .try_unwrap)
+trait Tryable<T> {
+    func has_value(self): bool
+    func try_unwrap(self): T
+}
+
+// Generic Option type
+class Option<T> {
+    let value: T
+    let has_value: bool
+
+    func some(val: T): Option<T> {
+        let opt: Option<T>
+        opt.value = val
+        opt.has_value = true
+        return opt
+    }
+
+    func none(): Option<T> {
+        let opt: Option<T>
+        opt.has_value = false
+        return opt
+    }
+}
+
+impl<T> Tryable<T> for Option<T> {
+    func has_value(self): bool {
+        return self.has_value
+    }
+
+    func try_unwrap(self): T {
+        return self.value
+    }
+}
+
+func get_value(): Option<int32> {
+    return Option<int32>::some(42)
+}
+
+// ERROR: This function returns int32, not a Tryable type
+// Using try here should cause a compile error
+func bad_function(): int32 {
+    let val: int32 = try get_value()
+    return val
+}
+
+external func main(): int32 {
+    return 0
+}

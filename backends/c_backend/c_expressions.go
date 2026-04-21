@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/hooks"
 	"github.com/neutrino2211/gecko/tokens"
@@ -226,7 +227,7 @@ func (impl *CBackendImplementation) UnaryToCString(u *tokens.Unary, scope *ast.A
 
 		// Handle 'try' operator for error handling
 		if u.Op == "try" {
-			if traitCall, ok := impl.GetTryOperatorCall(innerCode, innerType, scope); ok {
+			if traitCall, ok := impl.GetTryOperatorCall(innerCode, innerType, scope, u.Pos); ok {
 				base = traitCall
 			} else {
 				// Fallback: just return the inner expression (for types without @try_hook)
@@ -255,9 +256,31 @@ func (impl *CBackendImplementation) UnaryToCString(u *tokens.Unary, scope *ast.A
 	return base
 }
 
-// GetTryOperatorCall generates code for the 'try' operator
-func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, operandType *tokens.TypeRef, scope *ast.Ast) (string, bool) {
+// tryTempCounter generates unique names for try temporaries
+var tryTempCounter int = 0
+
+// getCurrentFuncReturnType walks up the scope hierarchy to find the current function's return type
+func getCurrentFuncReturnType(scope *ast.Ast) *tokens.TypeRef {
+	currentScope := scope
+	for currentScope != nil {
+		info, ok := (*CScopeDataMap)[currentScope.GetFullName()]
+		if ok && info.CurrentFuncReturnType != nil {
+			return info.CurrentFuncReturnType
+		}
+		currentScope = currentScope.Parent
+	}
+	return nil
+}
+
+// GetTryOperatorCall generates code for the 'try' operator with early return semantics
+func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, operandType *tokens.TypeRef, scope *ast.Ast, pos lexer.Position) (string, bool) {
 	if operandType == nil || operandType.Type == "" {
+		return "", false
+	}
+
+	// Get the try hook (requires both has_value and try_unwrap methods)
+	tryHook := hooks.GetHookRegistry().GetHookFromAnyModule(hooks.HookTry)
+	if tryHook == nil || len(tryHook.Methods) < 2 {
 		return "", false
 	}
 
@@ -278,17 +301,53 @@ func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, opera
 		typeName = mangleName(baseTypeName, typeArgStrs)
 	}
 
-	tryHook := hooks.GetHookRegistry().GetHookFromAnyModule(hooks.HookTry)
-	if tryHook == nil {
-		return "", false
-	}
-
+	// Check if the operand type implements Tryable
 	_, found := impl.GetOperatorTraitName(typeName, tryHook.TraitName, scope)
-	if !found || len(tryHook.Methods) == 0 {
+	if !found {
 		return "", false
 	}
 
-	methodName := tryHook.Methods[0]
+	// Check if the current function's return type implements Tryable
+	funcReturnType := getCurrentFuncReturnType(scope)
+	if funcReturnType == nil {
+		scope.ErrorScope.NewCompileTimeError(
+			"Try Expression Error",
+			"'try' can only be used inside a function",
+			pos,
+		)
+		return "", false
+	}
+
+	// Build the return type name for trait lookup
+	returnTypeName := funcReturnType.Type
+	var returnTypeArgStrs []string
+	if len(funcReturnType.TypeArgs) > 0 {
+		returnTypeArgStrs = make([]string, len(funcReturnType.TypeArgs))
+		for i, arg := range funcReturnType.TypeArgs {
+			if cType, ok := GeckoToCType[arg.Type]; ok {
+				returnTypeArgStrs[i] = cType
+			} else {
+				returnTypeArgStrs[i] = arg.Type
+			}
+		}
+		returnTypeName = mangleName(funcReturnType.Type, returnTypeArgStrs)
+	}
+
+	// Check if the function's return type implements Tryable
+	_, returnTypeHasTryable := impl.GetOperatorTraitName(returnTypeName, tryHook.TraitName, scope)
+	if !returnTypeHasTryable {
+		scope.ErrorScope.NewCompileTimeError(
+			"Try Expression Error",
+			"'try' can only be used in functions that return a type implementing Tryable (e.g., Option<T>, Result<T, E>). "+
+				"Function returns '"+funcReturnType.Type+"' which does not implement @try_hook trait.",
+			pos,
+		)
+		return "", false
+	}
+
+	// Build method names: has_value and try_unwrap
+	hasValueMethod := tryHook.Methods[0]  // has_value
+	tryUnwrapMethod := tryHook.Methods[1] // try_unwrap
 
 	// Build the substituted trait name (e.g., Tryable__T -> Tryable__int32_t)
 	mangledTraitName := tryHook.TraitName
@@ -298,18 +357,35 @@ func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, opera
 		}
 	}
 
-	// Only add module prefix for generic types (detected by having type args)
-	var fullMethodName string
+	// Build method prefix (with or without module prefix for generic types)
+	var methodPrefix string
 	if len(typeArgStrs) > 0 {
 		modulePrefix := scope.GetRoot().Scope
 		if modulePrefix != "" {
 			modulePrefix += "__"
 		}
-		fullMethodName = modulePrefix + typeName + "__" + mangledTraitName + "__" + methodName
+		methodPrefix = modulePrefix + typeName + "__" + mangledTraitName + "__"
 	} else {
-		fullMethodName = typeName + "__" + mangledTraitName + "__" + methodName
+		methodPrefix = typeName + "__" + mangledTraitName + "__"
 	}
-	return fullMethodName + "(&(" + operandCode + "))", true
+
+	hasValueCall := methodPrefix + hasValueMethod
+	tryUnwrapCall := methodPrefix + tryUnwrapMethod
+
+	// Get the C type for the operand (use mangled typeName for generic types)
+	cTypeName := typeName
+
+	// Generate unique temp variable name
+	tryTempCounter++
+	tempVar := "__try_tmp_" + strconv.Itoa(tryTempCounter)
+
+	// Generate GCC statement expression with early return:
+	// ({ Type tmp = expr; if (!has_value(&tmp)) return tmp; try_unwrap(&tmp); })
+	code := "({ " + cTypeName + " " + tempVar + " = " + operandCode + "; " +
+		"if (!" + hasValueCall + "(&" + tempVar + ")) return " + tempVar + "; " +
+		tryUnwrapCall + "(&" + tempVar + "); })"
+
+	return code, true
 }
 
 // PrimaryToCString converts primary expressions

@@ -133,8 +133,9 @@ public trait Fn<A, R> {
 
 /// Tryable<T> - Trait for types that can be "tried" (unwrap or propagate).
 /// Used with the `try` keyword: `let val = try expr`
-/// If the expression has no value, propagates the error.
-@try_hook(.try_unwrap)
+/// If the expression has no value, propagates the error by early return.
+/// The enclosing function must also return a Tryable type.
+@try_hook(.has_value, .try_unwrap)
 public trait Tryable<T> {
     /// Returns true if this contains a success value.
     func has_value(self): bool

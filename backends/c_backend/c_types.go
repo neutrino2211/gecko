@@ -32,6 +32,7 @@ type CScopeInformation struct {
 	StructDefs            []*StructDefinition // struct definitions with dependency info
 	TypeDefs              []string            // typedef declarations for external types
 	Includes              []string            // C header includes from cimport
+	CImportLibraries      []string            // Libraries from cimport for pkg-config
 	CurrentFunc           string
 	CurrentFuncReturnType *tokens.TypeRef // Return type of current function for validation
 	LocalVars             map[string]string // variable name -> C type

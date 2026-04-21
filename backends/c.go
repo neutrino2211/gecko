@@ -366,6 +366,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	// Then prepend the combined import info to main's info
 	var allImportTypeDefs, allImportTypes, allImportDecls, allImportGlobals, allImportFuncs, allImportIncludes []string
 	var allImportStructDefs []*cbackend.StructDefinition
+	var allCImportLibraries []string
 
 	for _, importScope := range importScopes {
 		importInfo := cbackend.CGetScopeInformation(importScope)
@@ -376,6 +377,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 		allImportGlobals = append(allImportGlobals, importInfo.Globals...)
 		allImportFuncs = append(allImportFuncs, importInfo.Functions...)
 		allImportIncludes = append(allImportIncludes, importInfo.Includes...)
+		allCImportLibraries = append(allCImportLibraries, importInfo.CImportLibraries...)
 	}
 
 	// Prepend combined import info so imports come before main
@@ -386,6 +388,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	info.Globals = append(allImportGlobals, info.Globals...)
 	info.Functions = append(allImportFuncs, info.Functions...)
 	info.Includes = append(allImportIncludes, info.Includes...)
+	info.CImportLibraries = append(allCImportLibraries, info.CImportLibraries...)
 
 	// Check for circular value dependencies (infinite size cycles)
 	cycles := cbackend.DetectCircularValueDependencies(info.StructDefs)
@@ -483,6 +486,22 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	if file.Config.Project != nil {
 		if cflags, err := file.Config.Project.GetCFlags(); err == nil {
 			gccArgs = append(gccArgs, cflags...)
+		}
+	}
+
+	// Add pkg-config --cflags for cimport libraries (for include paths)
+	if len(info.CImportLibraries) > 0 {
+		// Deduplicate libraries
+		libSet := make(map[string]bool)
+		for _, lib := range info.CImportLibraries {
+			libSet[lib] = true
+		}
+		for lib := range libSet {
+			pkgCmd := exec.Command("pkg-config", "--cflags", lib)
+			if output, err := pkgCmd.Output(); err == nil {
+				flags := strings.Fields(strings.TrimSpace(string(output)))
+				gccArgs = append(gccArgs, flags...)
+			}
 		}
 	}
 

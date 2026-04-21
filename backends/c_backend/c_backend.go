@@ -2256,8 +2256,15 @@ func (impl *CBackendImplementation) NewCImport(scope *ast.Ast, cimport *tokens.C
 		info.Includes = append(info.Includes, "#include \""+header+"\"")
 	}
 
-	// Note: WithObject and WithLibrary are handled at link time by the build command
-	// They are stored in the token and can be retrieved by the compiler orchestrator
+	// Track library for pkg-config cflags (needed for include paths)
+	if cimport.WithLibrary != "" {
+		lib := cimport.WithLibrary
+		// Strip quotes if present
+		if len(lib) >= 2 && lib[0] == '"' && lib[len(lib)-1] == '"' {
+			lib = lib[1 : len(lib)-1]
+		}
+		info.CImportLibraries = append(info.CImportLibraries, lib)
+	}
 }
 
 // processEntry handles a single entry in a block (for control flow bodies)

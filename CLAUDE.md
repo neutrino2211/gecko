@@ -15,6 +15,10 @@ go get
 # Run the compiler (shows help)
 go run .
 
+# Initialize a new project
+gecko init myapp              # executable project
+gecko init --type lib mylib   # library project
+
 # Compile to C (default backend)
 gecko compile examples/traits/shapes.gecko
 
@@ -108,7 +112,8 @@ Source (.gecko) -> Lexer/Parser (Participle) -> tokens.File -> Backend -> C/LLVM
 - Array indexing: `arr[i]` for read and write
 - Fixed-size arrays: `[4096]uint8`
 - Inline assembly: `asm { "hlt" }`
-- Function attributes: `@naked`, `@noreturn`, `@section(".text")`
+- Function attributes: `@static`, `@naked`, `@noreturn`, `@section(".text")`
+- C header imports: `cimport "<stdio.h>"`, `cimport "<gtk/gtk.h>" withlibrary "gtk4"`
 - Global variables with `@section` placement
 - Struct literals: `Type { field: value }`
 - Module imports with dot notation: `import std.collections.string`

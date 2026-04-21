@@ -37,13 +37,13 @@ type NullCheckInfo struct {
 // - ptr != nil pattern (legacy)
 // - ptr == nil pattern (legacy)
 func DetectNullCheck(expr *tokens.Expression) *NullCheckInfo {
-	if expr == nil || expr.LogicalOr == nil {
+	if expr == nil || expr.GetLogicalOr() == nil {
 		narrowingDebug("DetectNullCheck: expr or LogicalOr is nil")
 		return nil
 	}
 
 	// Handle parenthesized expressions - unwrap SubExpression
-	lo := expr.LogicalOr
+	lo := expr.GetLogicalOr()
 	if lo.LogicalAnd != nil && lo.LogicalAnd.Equality != nil &&
 		lo.LogicalAnd.Equality.Comparison != nil &&
 		lo.LogicalAnd.Equality.Comparison.Addition != nil &&
@@ -130,11 +130,11 @@ func DetectNullCheck(expr *tokens.Expression) *NullCheckInfo {
 
 // detectIntrinsicNullCheck checks if the expression is an @is_not_null or @is_null intrinsic
 func detectIntrinsicNullCheck(expr *tokens.Expression) *NullCheckInfo {
-	if expr == nil || expr.LogicalOr == nil {
+	if expr == nil || expr.GetLogicalOr() == nil {
 		return nil
 	}
 
-	lo := expr.LogicalOr
+	lo := expr.GetLogicalOr()
 	if lo.Next != nil || lo.LogicalAnd == nil {
 		return nil
 	}
@@ -201,10 +201,10 @@ func detectIntrinsicNullCheck(expr *tokens.Expression) *NullCheckInfo {
 
 // extractSymbolFromExpression extracts a simple symbol name from an Expression
 func extractSymbolFromExpression(expr *tokens.Expression) string {
-	if expr == nil || expr.LogicalOr == nil {
+	if expr == nil || expr.GetLogicalOr() == nil {
 		return ""
 	}
-	lo := expr.LogicalOr
+	lo := expr.GetLogicalOr()
 	if lo.Next != nil || lo.LogicalAnd == nil {
 		return ""
 	}

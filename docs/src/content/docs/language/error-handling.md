@@ -121,19 +121,30 @@ The `try` keyword unwraps a `Result` or `Option`, returning early if it contains
 
 ### Try Hook
 
+The `@try_hook` attribute enables the `try` keyword for a type. It requires two methods:
+- `has_value(self): bool` - Returns true if the value is present
+- `try_unwrap(self): T` - Returns the contained value
+
 ```gecko
-@try_hook(.try_unwrap)
-trait Try<T, E> {
+@try_hook(.has_value, .try_unwrap)
+trait Tryable<T> {
+    func has_value(self): bool
     func try_unwrap(self): T
 }
 
-impl<T, E> Try<T, E> for Result<T, E> {
+impl<T, E> Tryable<T> for Result<T, E> {
+    func has_value(self): bool {
+        return self.is_ok
+    }
     func try_unwrap(self): T {
         return self.value
     }
 }
 
-impl<T> Try<T, void> for Option<T> {
+impl<T> Tryable<T> for Option<T> {
+    func has_value(self): bool {
+        return self.some
+    }
     func try_unwrap(self): T {
         return self.value
     }
@@ -151,16 +162,16 @@ func process_file(path: string): Result<Data, FileError> {
 }
 ```
 
-The compiler rewrites `try expr` to:
+The compiler rewrites `try expr` to (using GCC statement expressions):
 
-```gecko
-{
-    let __result = expr
-    if __result.is_err() {
-        return Result::err(__result.unwrap_err())
+```c
+({
+    ResultType __tmp = expr;
+    if (!has_value(&__tmp)) {
+        return __tmp;  // Early return the error/none
     }
-    __result.unwrap()
-}
+    try_unwrap(&__tmp);  // Yields the unwrapped value
+})
 ```
 
 ### Usage with Option
@@ -173,16 +184,16 @@ func get_user_email(id: int): Option<string> {
 }
 ```
 
-The compiler rewrites `try expr` for Option to:
+The same transformation applies to `Option`:
 
-```gecko
-{
-    let __option = expr
-    if __option.is_none() {
-        return Option::none()
+```c
+({
+    OptionType __tmp = expr;
+    if (!has_value(&__tmp)) {
+        return __tmp;  // Early return None
     }
-    __option.unwrap()
-}
+    try_unwrap(&__tmp);  // Yields the unwrapped value
+})
 ```
 
 ## The `or` Keyword
@@ -191,20 +202,23 @@ The `or` keyword provides a default value when a `Result` is an error or an `Opt
 
 ### Or Hook
 
+The `@or_hook` attribute enables the `or` keyword for a type. It requires one method:
+- `unwrap_or(self, default: T): T` - Returns the contained value or the default
+
 ```gecko
 @or_hook(.unwrap_or)
-trait Or<T> {
+trait Orable<T> {
     func unwrap_or(self, default: T): T
 }
 
-impl<T, E> Or<T> for Result<T, E> {
+impl<T, E> Orable<T> for Result<T, E> {
     func unwrap_or(self, default: T): T {
-        if self.ok { return self.value }
+        if self.is_ok { return self.value }
         return default
     }
 }
 
-impl<T> Or<T> for Option<T> {
+impl<T> Orable<T> for Option<T> {
     func unwrap_or(self, default: T): T {
         if self.some { return self.value }
         return default

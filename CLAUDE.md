@@ -165,7 +165,7 @@ Traits can define hooks that enable syntactic sugar:
 @index_mut_hook(.index_mut) // arr[i] = v write access
 @add_hook(.add)             // a + b operator
 @eq_hook(.eq)               // a == b operator
-@try_hook(.try_unwrap)      // try expr - unwrap or propagate
+@try_hook(.has_value, .try_unwrap)  // try expr - unwrap or early return
 @or_hook(.unwrap_or)        // expr or default - unwrap with fallback
 ```
 
@@ -228,7 +228,6 @@ go build -o gecko-lsp ./lsp
 ### Not Yet Implemented
 
 - Trait inheritance (`trait Child: Parent`)
-- Visibility refinement: `protected` keyword for package-level visibility
 
 ## Ground Rules for Development
 

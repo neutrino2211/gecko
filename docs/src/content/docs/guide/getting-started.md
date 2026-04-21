@@ -72,7 +72,7 @@ Create a file `hello.gecko`:
 ```gecko
 package main
 
-declare external variardic func printf(format: string): int
+declare external variadic func printf(format: string): int
 
 func main(): int {
     printf("Hello, Gecko!\n")

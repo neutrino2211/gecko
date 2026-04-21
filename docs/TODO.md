@@ -35,6 +35,11 @@ Ordered by priority. Check off items as completed.
 - [x] **17. Shiki grammar for Gecko** - Created gecko.tmLanguage.json
 - [x] **18. Astro integration** - Configured expressiveCode with custom language
 
+## Recently Completed Features
+
+- [x] **19. Error handling implementation** - Result<T,E>, Option<T>, @try_hook, @or_hook (fully working)
+- [x] **20. Visibility refinement** - private (file), protected (package), public (everywhere) (implemented)
+
 ---
 
 ## Notes

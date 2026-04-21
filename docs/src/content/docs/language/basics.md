@@ -43,7 +43,7 @@ func greet(name: string) {
 ### Variadic Functions
 
 ```gecko
-declare external variardic func printf(format: string): int
+declare external variadic func printf(format: string): int
 ```
 
 ## Operators

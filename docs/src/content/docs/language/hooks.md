@@ -356,6 +356,46 @@ func process_file(): void {
 | `[]` write | `IndexMut<I, T>` | `@index_mut_hook(.index_mut)` | `index_mut(self, idx: I, val: T): void` |
 | `for-in` | `Iterator<T>` | `@iterator_hook(.next, .has_next)` | `next(self): T`, `has_next(self): bool` |
 | scope exit | `Drop` | `@drop_hook(.drop)` | `drop(self): void` |
+| `try` | `Tryable<T>` | `@try_hook(.has_value, .try_unwrap)` | `has_value(self): bool`, `try_unwrap(self): T` |
+| `or` | `Orable<T>` | `@or_hook(.unwrap_or)` | `unwrap_or(self, default: T): T` |
+
+## Error Handling Hooks
+
+The `@try_hook` and `@or_hook` enable ergonomic error handling syntax:
+
+```gecko
+@try_hook(.has_value, .try_unwrap)
+trait Tryable<T> {
+    func has_value(self): bool
+    func try_unwrap(self): T
+}
+
+@or_hook(.unwrap_or)
+trait Orable<T> {
+    func unwrap_or(self, default: T): T
+}
+```
+
+**Example: Option with try/or**
+
+```gecko
+import std.option use { Option }
+
+func get_value(): Option<int> {
+    return Option<int>::some(42)
+}
+
+// Using or - returns 0 if none
+let val = get_value() or 0
+
+// Using try - early returns if none (function must return Option)
+func process(): Option<int> {
+    let x = try get_value()
+    return Option<int>::some(x * 2)
+}
+```
+
+See the [Error Handling](/language/error-handling/) page for more details.
 
 ## Defining Your Own Hooks
 

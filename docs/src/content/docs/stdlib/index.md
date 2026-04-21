@@ -29,6 +29,8 @@ The standard library provides memory management primitives for Gecko programs.
 - [**Display** (trait)](/stdlib/traits-display/) - Display - Trait for user-facing formatting.
 - [**FnOnce** (trait)](/stdlib/traits-fnonce/) - FnOnce<A, R> - Callable types consumed on call.
 - [**Fn** (trait)](/stdlib/traits-fn/) - Fn<A, R> - Callable types (multiple calls allowed).
+- [**Tryable** (trait)](/stdlib/traits-tryable/) - Tryable<T> - Trait enabling the `try` keyword.
+- [**Orable** (trait)](/stdlib/traits-orable/) - Orable<T> - Trait enabling the `or` keyword.
 
 ### memory
 
@@ -53,6 +55,10 @@ The standard library provides memory management primitives for Gecko programs.
 ### option
 
 - [**Option**](/stdlib/option-option/) - Option<T> - Represents an optional value.
+
+### result
+
+- [**Result**](/stdlib/result-result/) - Result<T, E> - Represents success or failure.
 
 ### slice
 

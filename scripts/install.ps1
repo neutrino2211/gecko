@@ -57,11 +57,9 @@ function Write-Error-Message {
 
 function Get-LatestRelease {
     try {
-        $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases" -UseBasicParsing
-        if ($releases.Count -gt 0) {
-            return $releases[0].tag_name
-        }
-        return $null
+        # Use /releases/latest endpoint - GitHub determines "latest" correctly
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -UseBasicParsing
+        return $release.tag_name
     }
     catch {
         return $null

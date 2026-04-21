@@ -52,9 +52,9 @@ detect_platform() {
 
 # Get latest release tag
 get_latest_release() {
-    curl -sL "https://api.github.com/repos/${REPO}/releases" | \
+    # Use /releases/latest endpoint - GitHub determines "latest" correctly
+    curl -sL "https://api.github.com/repos/${REPO}/releases/latest" | \
         grep '"tag_name":' | \
-        head -1 | \
         sed -E 's/.*"([^"]+)".*/\1/'
 }
 

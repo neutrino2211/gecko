@@ -57,10 +57,11 @@ function Write-Error-Message {
 
 function Get-LatestRelease {
     try {
-        # GitHub API returns releases sorted by created_at desc (newest first)
+        # GitHub API does NOT sort releases by date - must sort explicitly
         $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases" -UseBasicParsing
         if ($releases -and $releases.Count -gt 0) {
-            return $releases[0].tag_name
+            $sorted = $releases | Sort-Object -Property created_at -Descending
+            return $sorted[0].tag_name
         }
         return $null
     }

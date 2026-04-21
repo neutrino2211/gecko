@@ -52,18 +52,18 @@ detect_platform() {
 
 # Get latest release tag
 get_latest_release() {
-    # GitHub API returns releases sorted by created_at desc (newest first)
-    # Use jq if available for reliable parsing, otherwise fall back to grep/sed
+    # GitHub API does NOT sort releases by date - must sort explicitly
     if command -v jq &> /dev/null; then
         curl -sL "https://api.github.com/repos/${REPO}/releases" | \
-            jq -r '.[0].tag_name // empty'
+            jq -r 'sort_by(.created_at) | reverse | .[0].tag_name // empty'
     else
-        # Fallback: get first tag_name from JSON array
-        # Use grep to extract and tr/cut for portable parsing (no sed -E/-r issues)
+        # Fallback: filter release-level fields (4-space indent), pair tag+date, sort, extract
         curl -sL "https://api.github.com/repos/${REPO}/releases" | \
-            grep -m1 '"tag_name"' | \
-            tr -d ' ",' | \
-            cut -d: -f2
+            grep -E '^    "(tag_name|created_at)"' | \
+            paste - - | \
+            sort -t'"' -k8 -r | \
+            head -1 | \
+            cut -d'"' -f4
     fi
 }
 

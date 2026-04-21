@@ -206,7 +206,7 @@ Check out the `examples/` directory for complete projects:
 - [X] Trait constraints (`<T is Trait>`, multiple constraints)
 - [X] Enums
 - [X] Type checking and inference
-- [X] Visibility modifiers (`public`, `private`)
+- [X] Visibility modifiers (`public`, `protected`, `private`)
 
 ### Module System
 - [X] Module imports (`import std.collections.vec`)
@@ -224,6 +224,7 @@ Check out the `examples/` directory for complete projects:
 - [X] Hook attributes for operators (`@add_hook`, `@eq_hook`, etc.)
 - [X] Iterator hooks for `for-in` loops
 - [X] Index hooks for `[]` syntax
+- [X] Error handling (`try` and `or` keywords)
 
 ### Tooling
 - [X] C backend (recommended)

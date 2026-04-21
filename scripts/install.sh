@@ -59,9 +59,11 @@ get_latest_release() {
             jq -r '.[0].tag_name // empty'
     else
         # Fallback: get first tag_name from JSON array
+        # Use grep to extract and tr/cut for portable parsing (no sed -E/-r issues)
         curl -sL "https://api.github.com/repos/${REPO}/releases" | \
-            grep -m1 '"tag_name":' | \
-            sed -E 's/.*"tag_name": *"([^"]+)".*/\1/'
+            grep -m1 '"tag_name"' | \
+            tr -d ' ",' | \
+            cut -d: -f2
     fi
 }
 

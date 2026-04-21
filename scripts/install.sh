@@ -52,10 +52,17 @@ detect_platform() {
 
 # Get latest release tag
 get_latest_release() {
-    # Use /releases/latest endpoint - GitHub determines "latest" correctly
-    curl -sL "https://api.github.com/repos/${REPO}/releases/latest" | \
-        grep '"tag_name":' | \
-        sed -E 's/.*"([^"]+)".*/\1/'
+    # GitHub API returns releases sorted by created_at desc (newest first)
+    # Use jq if available for reliable parsing, otherwise fall back to grep/sed
+    if command -v jq &> /dev/null; then
+        curl -sL "https://api.github.com/repos/${REPO}/releases" | \
+            jq -r '.[0].tag_name // empty'
+    else
+        # Fallback: get first tag_name from JSON array
+        curl -sL "https://api.github.com/repos/${REPO}/releases" | \
+            grep -m1 '"tag_name":' | \
+            sed -E 's/.*"tag_name": *"([^"]+)".*/\1/'
+    fi
 }
 
 # Download and install

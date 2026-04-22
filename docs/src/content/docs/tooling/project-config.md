@@ -131,6 +131,92 @@ gecko build main.gecko --pkg-config gtk4 --pkg-config libadwaita-1
 gecko build main.gecko --cflags "-I/usr/include/custom" --ldflags "-L/usr/lib/custom -lmylib"
 ```
 
+### Static Linking
+
+Build standalone binaries without dynamic library dependencies:
+
+```toml
+[build]
+static = true
+```
+
+Or via CLI:
+```bash
+gecko build --static src/main.gecko -o myapp
+```
+
+When `static = true`, pkg-config uses `--static` flag to get static library flags.
+
+### Build Scripts
+
+Run custom commands before or after building:
+
+```toml
+[build.scripts]
+pre_build = [
+    "echo 'Starting build...'"
+]
+post_build = [
+    "strip $OUTPUT",
+    "echo 'Build complete: $OUTPUT'"
+]
+```
+
+**Available variables in scripts:**
+| Variable | Description |
+|----------|-------------|
+| `$OUTPUT` | Path to built executable |
+| `$PROJECT_ROOT` | Project root directory |
+| `$PACKAGE_NAME` | Package name from [package] |
+| `$PACKAGE_VERSION` | Package version from [package] |
+
+Scripts run with the project root as working directory.
+
+### macOS App Bundle
+
+Create a `.app` bundle using post-build scripts:
+
+```toml
+[package]
+name = "MyApp"
+version = "1.0.0"
+
+[build]
+backend = "c"
+
+[build.entries]
+main = "src/main.gecko"
+
+[build.scripts]
+post_build = [
+    "scripts/bundle-macos.sh $OUTPUT \"$PACKAGE_NAME\""
+]
+```
+
+The `bundle-macos.sh` script (included in Gecko's scripts directory) creates a proper macOS app structure:
+
+```
+MyApp.app/
+├── Contents/
+│   ├── Info.plist
+│   ├── MacOS/
+│   │   └── MyApp
+│   └── Resources/
+```
+
+**With custom icon:**
+```toml
+[build.scripts]
+post_build = [
+    "scripts/bundle-macos.sh $OUTPUT \"$PACKAGE_NAME\" resources/icon.icns"
+]
+```
+
+**Code signing (optional):**
+```bash
+CODESIGN_IDENTITY="Developer ID" gecko build --entry main
+```
+
 ## Dependencies
 
 ### Git Dependencies

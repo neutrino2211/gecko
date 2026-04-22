@@ -37,6 +37,14 @@ type BuildConfig struct {
 	PkgConfig     []string                 `toml:"pkg_config"` // pkg-config packages to include
 	CFlags        []string                 `toml:"cflags"`     // Additional C compiler flags
 	LdFlags       []string                 `toml:"ldflags"`    // Additional linker flags
+	Static        bool                     `toml:"static"`     // Link statically
+	Scripts       *BuildScripts            `toml:"scripts"`    // Build scripts
+}
+
+// BuildScripts holds pre/post build scripts
+type BuildScripts struct {
+	PreBuild  []string `toml:"pre_build"`  // Commands to run before build
+	PostBuild []string `toml:"post_build"` // Commands to run after build
 }
 
 // BuildProfile holds profile-specific build settings

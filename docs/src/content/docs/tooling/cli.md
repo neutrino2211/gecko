@@ -132,6 +132,7 @@ gecko build --entry <name>
 |------|-------------|---------|
 | `--output, -o` | Output executable name | Source name |
 | `--release` | Build with optimizations (`-O2`) | false |
+| `--static` | Link statically (standalone binary) | false |
 | `--keep-c` | Keep generated C file | false |
 | All `compile` flags | Inherited from compile | - |
 
@@ -143,6 +144,9 @@ gecko build src/main.gecko -o myapp
 
 # Release build with optimizations
 gecko build --release src/main.gecko -o myapp
+
+# Static linking (standalone binary)
+gecko build --static --release src/main.gecko -o myapp
 
 # Build from gecko.toml entry
 gecko build --entry main -o myapp

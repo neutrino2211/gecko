@@ -306,6 +306,21 @@ func runPkgConfig(flag string, packages []string) ([]string, error) {
 	return strings.Fields(flagStr), nil
 }
 
+// runPkgConfigWithFlags executes pkg-config with multiple flags (e.g., "--libs --static")
+func runPkgConfigWithFlags(flags string, packages []string) ([]string, error) {
+	args := append(strings.Fields(flags), packages...)
+	cmd := exec.Command("pkg-config", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	flagStr := strings.TrimSpace(string(output))
+	if flagStr == "" {
+		return nil, nil
+	}
+	return strings.Fields(flagStr), nil
+}
+
 // BuildCommand compiles gecko to an executable
 var BuildCommand = &cli.Command{
 	Name:        "build",
@@ -381,6 +396,15 @@ var BuildCommand = &cli.Command{
 			gccArgs = append([]string{"-O2"}, gccArgs...)
 		}
 
+		// Check for static linking (CLI flag or project config)
+		isStatic := ctx.Bool("static")
+		if !isStatic && projectCfg != nil && projectCfg.Build.Static {
+			isStatic = true
+		}
+		if isStatic {
+			gccArgs = append([]string{"-static"}, gccArgs...)
+		}
+
 		// Add pkg-config --cflags for cimport libraries (for include paths)
 		if len(cbackend.LastCImportLibraries) > 0 {
 			// Deduplicate libraries
@@ -398,10 +422,16 @@ var BuildCommand = &cli.Command{
 		// Add linker flags from CLI
 		ldflags := ctx.StringSlice("ldflags")
 
+		// Determine pkg-config flags (use --static for static linking)
+		pkgConfigLibsFlag := "--libs"
+		if isStatic {
+			pkgConfigLibsFlag = "--libs --static"
+		}
+
 		// Add pkg-config --libs if specified via CLI
 		pkgConfigPkgs := ctx.StringSlice("pkg-config")
 		if len(pkgConfigPkgs) > 0 {
-			if pkgLibs, err := runPkgConfig("--libs", pkgConfigPkgs); err == nil {
+			if pkgLibs, err := runPkgConfigWithFlags(pkgConfigLibsFlag, pkgConfigPkgs); err == nil {
 				ldflags = append(ldflags, pkgLibs...)
 			}
 		}
@@ -420,7 +450,7 @@ var BuildCommand = &cli.Command{
 				libSet[lib] = true
 			}
 			for lib := range libSet {
-				if pkgLibs, err := runPkgConfig("--libs", []string{lib}); err == nil {
+				if pkgLibs, err := runPkgConfigWithFlags(pkgConfigLibsFlag, []string{lib}); err == nil {
 					ldflags = append(ldflags, pkgLibs...)
 				}
 			}
@@ -442,6 +472,36 @@ var BuildCommand = &cli.Command{
 		// Clean up C file unless --keep-c is set
 		if !ctx.Bool("keep-c") {
 			os.Remove(cFile)
+		}
+
+		// Run post-build scripts if defined
+		if projectCfg != nil && projectCfg.Build.Scripts != nil {
+			for _, script := range projectCfg.Build.Scripts.PostBuild {
+				// Expand variables in script
+				expandedScript := os.Expand(script, func(key string) string {
+					switch key {
+					case "OUTPUT":
+						return output
+					case "PROJECT_ROOT":
+						return projectCfg.ProjectRoot
+					case "PACKAGE_NAME":
+						return projectCfg.Package.Name
+					case "PACKAGE_VERSION":
+						return projectCfg.Package.Version
+					default:
+						return os.Getenv(key)
+					}
+				})
+
+				fmt.Printf("Running post-build: %s\n", expandedScript)
+				scriptCmd := exec.Command("sh", "-c", expandedScript)
+				scriptCmd.Dir = projectCfg.ProjectRoot
+				scriptCmd.Stdout = os.Stdout
+				scriptCmd.Stderr = os.Stderr
+				if err := scriptCmd.Run(); err != nil {
+					return fmt.Errorf("post-build script failed: %w", err)
+				}
+			}
 		}
 
 		return nil
@@ -473,6 +533,11 @@ var BuildCommand = &cli.Command{
 			Name:  "ir-only",
 			Value: true,
 			Usage: "Only compile to IR (always true for build)",
+		},
+		&cli.BoolFlag{
+			Name:  "static",
+			Value: false,
+			Usage: "Link statically (standalone binary)",
 		},
 	),
 }

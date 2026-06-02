@@ -3,6 +3,7 @@
 package main
 
 import (
+	"embed"
 	"log"
 	"os"
 
@@ -15,8 +16,16 @@ import (
 // Version is set at build time via -ldflags
 var Version = "dev"
 
+//go:embed root
+//go:embed root/*
+var ROOT embed.FS
+
+//go:embed stdlib
+//go:embed stdlib/*
+var STDLIB embed.FS
+
 func main() {
-	config.Init()
+	config.Init(ROOT, STDLIB)
 	logger.SetDefaultChannel("Gecko")
 
 	cmd := &cli.App{

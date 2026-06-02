@@ -1,3 +1,5 @@
+// spec: spec/modules.md, spec/scoping.md
+
 package interfaces
 
 import (

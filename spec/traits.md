@@ -7,6 +7,7 @@ Traits define interfaces that types can implement.
 1. **No privileged traits** - The compiler doesn't hardcode behavior for any trait name
 2. **Hooks via attributes** - Developers wire up compiler features to their own traits
 3. **Explicit opt-in** - Syntactic sugar only works when hooks are defined
+4. **Pointer operations use intrinsics** - Pointer/null operations are explicit intrinsics, not special traits
 
 ## Declaration Syntax
 
@@ -43,6 +44,94 @@ impl Shape for Rectangle {
         return 2 * (self.width + self.height)
     }
 }
+```
+
+## Default Methods and Impl Model
+
+Gecko uses a single trait implementation form:
+
+```gecko
+impl TraitName for TypeName {
+    // required methods and optional overrides
+}
+```
+
+There is no separate `default impl` form in the language spec.
+
+### Legacy Compatibility Note
+
+Some compiler versions may still accept `default impl Trait for Type` as legacy syntax.
+That form is deprecated and should be migrated to the single impl model:
+
+```gecko
+impl Trait for Type {
+    // required methods, optional overrides
+}
+```
+
+### Default Methods
+
+Trait methods with bodies are defaults. Methods without bodies are required.
+
+```gecko
+trait Counter {
+    func get_value(self): int
+
+    func double_value(self): int {
+        return self.get_value() * 2
+    }
+}
+
+class MyCounter {
+    let count: int
+}
+
+impl Counter for MyCounter {
+    func get_value(self): int {
+        return self.count
+    }
+    // double_value inherited from trait default
+}
+```
+
+### Required Method Rule
+
+If an impl omits a required method, compilation fails.
+
+```gecko
+impl Counter for MyCounter {
+    // ^? error: missing required method get_value(self): int
+}
+```
+
+### Override Rule
+
+An impl method with the same signature as a default trait method overrides that default.
+
+```gecko
+impl Counter for MyCounter {
+    func get_value(self): int { return self.count }
+
+    func double_value(self): int {
+        return 999 // overrides default implementation
+    }
+}
+```
+
+### Ambiguous Method Rule
+
+If two traits implemented by a type provide the same method name, unqualified method calls are ambiguous unless disambiguated.
+
+```gecko
+trait A { func show(self): void }
+trait B { func show(self): void }
+
+impl A for MyType { func show(self): void { } }
+impl B for MyType { func show(self): void { } }
+
+let x: MyType
+x.show()
+// ^? error: ambiguous method 'show' (A, B)
 ```
 
 ## Static Trait Methods
@@ -92,7 +181,7 @@ func process<T is Shape>(shape: T*): int32 {
 
 Trait hooks connect compiler features to user-defined traits. The compiler provides *capabilities*, developers wire them up.
 
-### Hook Attributes
+### Hook Attributes (Implemented)
 
 ```gecko
 // Cleanup hook - compiler calls .drop() when value goes out of scope
@@ -100,14 +189,18 @@ Trait hooks connect compiler features to user-defined traits. The compiler provi
 trait Drop {
     func drop(self): void
 }
+```
 
-// Copy hook - compiler uses .copy() for implicit copies
+### Hook Attributes (Planned, Not Yet Implemented)
+
+```gecko
+// Planned: compiler-guided implicit copy
 @copy_hook(.copy)
 trait Copy {
     func copy(self): Self
 }
 
-// Clone hook - compiler uses .clone() for explicit cloning
+// Planned: compiler-guided explicit clone
 @clone_hook(.clone)  
 trait Clone {
     func clone(self): Self
@@ -178,7 +271,21 @@ trait IntoIterator<T> {
 1. **One hook per capability** - Only one trait can be registered per hook type
 2. **Signature verification** - Compiler verifies trait matches expected signature
 3. **No hook = no sugar** - If `@add_hook` isn't defined, `+` only works for primitives
-4. **Scope-local** - Hooks are active within the module that defines them and importers
+4. **Lookup order** - Resolve hooks from local module/imports first; if stdlib is present, std hooks may be used as fallback
+5. **Missing hook behavior** - Hook-dependent features (for example `try`, `or`, trait-based indexing/iteration) are compile errors when no hook is found
+
+### Pointer and Nullability Operations
+
+Pointer/nullability operations are not modeled as privileged traits.
+Use explicit pointer syntax with canonical dereference:
+
+```gecko
+let value = @deref(ptr)
+let is_null = ptr == null
+let next = (ptr as uint64 + 1) as int*
+```
+
+Do not rely on pseudo-traits like `Pointer` or `NonNullable`.
 
 ### Example: Complete Drop Implementation
 
@@ -268,7 +375,7 @@ impl Rectangle {
 1. **Methods only** - Extensions cannot add fields, only methods
 2. **Add only** - Extensions cannot override existing methods (compile error if duplicate)
 3. **Any file** - Extensions can be in a different file than the class
-4. **Same module** - Extensions must be in the same module (or importing module)
+4. **Defining package only** - Inherent extensions (`impl Type { ... }`) are only allowed in the package where `Type` is defined
 
 ### Classes vs Extensions
 
@@ -301,7 +408,84 @@ impl Point {
 Both are equivalent. Use extensions to:
 - Organize code by functionality
 - Add methods in separate files
-- Extend types from other modules
+- Keep related methods near feature code within the same package
+
+## Coherence Rules
+
+Gecko uses explicit coherence rules for trait implementations:
+
+1. **Local inherent impl only** - `impl Type { ... }` requires `Type` to be defined in the current package
+2. **Trait impl orphan rule** - `impl Trait for Type` is allowed only if the current package defines `Trait` or `Type`
+3. **Foreign-foreign impls are rejected** - If both `Trait` and `Type` are imported from other packages, compilation fails
+
+### Coherence Examples
+
+```gecko
+// package math
+public class Point {
+    public let x: int32
+    public let y: int32
+}
+
+// Allowed: inherent extension in defining package
+impl Point {
+    func norm_sq(self): int32 {
+        return self.x * self.x + self.y * self.y
+    }
+}
+```
+
+```gecko
+// package app
+import math use { Point }
+
+// Error: Point is foreign to this package
+impl Point {
+    func manhattan(self): int32 {
+        return self.x + self.y
+    }
+}
+```
+
+```gecko
+// package app
+import math use { Point }
+
+public trait Renderable {
+    func render(self): void
+}
+
+// Allowed: local trait on foreign type
+impl Renderable for Point {
+    func render(self): void {
+        // ...
+    }
+}
+```
+
+### Coherence Diagnostics
+
+When coherence rules are violated, the compiler should emit explicit diagnostics:
+
+```text
+error: cannot add inherent impl for foreign type `math.Point`
+  --> app/main.gecko:5:1
+   |
+5  | impl Point {
+   | ^^^^^^^^^^^
+   |
+help: inherent impls are only allowed in the defining package `math`
+```
+
+```text
+error: orphan impl is not allowed: both trait `fmt.Display` and type `math.Point` are foreign
+  --> app/main.gecko:8:1
+   |
+8  | impl Display for Point {
+   | ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: define a local trait or wrap the foreign type in a local newtype
+```
 
 ## Visibility
 
@@ -310,7 +494,7 @@ public trait Shape {           // exported
     func area(self): int32
 }
 
-trait InternalHelper {      // private to module
+trait InternalHelper {      // private to current file
     func helper(self): void
 }
 ```

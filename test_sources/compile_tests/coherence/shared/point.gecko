@@ -1,0 +1,18 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/modules.md
+
+package point
+
+public class Point {
+    let x: int32
+    let y: int32
+}
+
+impl Point {
+    public func new(x: int32, y: int32): Point {
+        return Point { x: x, y: y }
+    }
+
+    public func sum(self): int32 {
+        return self.x + self.y
+    }
+}

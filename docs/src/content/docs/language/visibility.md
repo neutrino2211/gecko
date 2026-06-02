@@ -5,11 +5,20 @@ sidebar:
   order: 9
 ---
 
-Gecko uses visibility modifiers to control access to symbols across module boundaries.
+Gecko uses visibility modifiers to control access to symbols across file and package boundaries.
+
+## Visibility Levels
+
+| Modifier | Scope |
+|----------|-------|
+| `private` | Same file only (default) |
+| `protected` | Same package (any file in package) |
+| `public` | Accessible from anywhere |
+| `external` | C ABI linkage (implies public) |
 
 ## Default Visibility
 
-By default, all symbols are **private** to their module:
+By default, all symbols are **private** - only accessible within the same file:
 
 ```gecko
 // utils.gecko
@@ -25,15 +34,70 @@ class InternalState {
 }
 ```
 
+## Private Visibility
+
+Use `private` to make intent explicit (same as default):
+
+```gecko
+private func internal_calculation(): int {
+    return 42
+}
+
+private class FileLocalCache {
+    let data: string
+}
+```
+
+## Protected Visibility
+
+Use `protected` to share symbols within a package (across files):
+
+```gecko
+// shapes/circle.gecko
+package shapes
+
+protected func calculate_area(radius: float64): float64 {
+    return 3.14159 * radius * radius
+}
+
+protected class ShapeMetrics {
+    let area: float64
+    let perimeter: float64
+}
+
+// shapes/rectangle.gecko
+package shapes
+
+func rectangle_area(w: float64, h: float64): float64 {
+    // Can access protected symbols from same package
+    let metrics = ShapeMetrics { area: w * h, perimeter: 2 * (w + h) }
+    return metrics.area
+}
+```
+
+Protected symbols are **not** visible to subpackages:
+
+```gecko
+// shapes/3d/cube.gecko
+package shapes.3d
+
+import shapes
+
+func cube_area(): float64 {
+    // Error: calculate_area is protected, not accessible from subpackage
+    shapes.calculate_area(5.0)
+}
+```
+
 ## Public Visibility
 
-Use `public` to make symbols accessible from other modules:
+Use `public` to make symbols accessible from anywhere:
 
 ```gecko
 // utils.gecko
 package utils
 
-// Accessible from other modules
+// Accessible from any module
 public func format_string(s: string): string {
     return s
 }
@@ -44,27 +108,20 @@ public class Config {
 }
 ```
 
-## Visibility Modifiers
-
-| Modifier | Scope |
-|----------|-------|
-| (none) | Private - same file only |
-| `public` | Accessible from any module |
-| `private` | Explicit private (same as default) |
-| `protected` | Reserved for future use |
-| `external` | C ABI linkage |
-
 ## Class Member Visibility
 
 Class fields and methods can have their own visibility:
 
 ```gecko
 public class User {
-    // Public fields - accessible from outside
+    // Public fields - accessible from anywhere
     public let name: string
     public let email: string
     
-    // Private fields - internal use only
+    // Protected fields - accessible within package
+    protected let account_type: string
+    
+    // Private fields - only this file
     let password_hash: string
     let internal_id: int
 }
@@ -75,17 +132,23 @@ impl User {
         return User {
             name: name,
             email: email,
+            account_type: "standard",
             password_hash: "",
             internal_id: 0
         }
     }
 
-    // Public method
+    // Public method - callable from anywhere
     public func display_name(self): string {
         return self.name
     }
+    
+    // Protected method - callable within package
+    protected func upgrade_account(self, account_type: string): void {
+        self.account_type = account_type
+    }
 
-    // Private method - only callable within this module
+    // Private method - only callable within this file
     func hash_password(self, password: string): void {
         self.password_hash = compute_hash(password)
     }
@@ -175,34 +238,61 @@ external "FILE" class File {
 
 External declarations have C linkage and are accessible across the C ABI boundary.
 
+## Visibility Summary
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ File A (package foo)    │ File B (package foo)          │
+├─────────────────────────┼───────────────────────────────┤
+│ private   ✓             │ private   ✗                   │
+│ protected ✓             │ protected ✓                   │
+│ public    ✓             │ public    ✓                   │
+└─────────────────────────┴───────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│ File C (package bar)    │ File D (package foo.sub)      │
+├─────────────────────────┼───────────────────────────────┤
+│ private   ✗             │ private   ✗                   │
+│ protected ✗             │ protected ✗ (not inherited)   │
+│ public    ✓             │ public    ✓                   │
+└─────────────────────────┴───────────────────────────────┘
+```
+
 ## Best Practices
 
 1. **Default to private** - Only expose what's necessary
-2. **Public API, private implementation** - Keep internal details hidden
-3. **Document public symbols** - Use doc comments for public APIs
-4. **Group related public symbols** - Make the public API cohesive
+2. **Use protected for package internals** - Share within package, hide from outside
+3. **Use public sparingly** - Only for true public APIs
+4. **Document public symbols** - Use doc comments for public APIs
 5. **Use explicit private when intentional** - Makes intent clear to readers
 
 ```gecko
 public class Database {
     // Public API
-    public func query(sql: string): Result {
+    public func query(sql: string): Result<Rows, DbError> {
         return self.execute_internal(sql)
     }
     
-    public func connect(url: string): bool {
+    public func connect(url: string): Result<void, DbError> {
         return self.init_connection(url)
+    }
+    
+    // Protected - shared within package for testing/extensions
+    protected let config: DbConfig
+    
+    protected func raw_execute(sql: string): Result<Rows, DbError> {
+        // ...
     }
     
     // Private implementation details
     private let connection: Connection
     private let cache: Cache
     
-    private func execute_internal(sql: string): Result {
+    private func execute_internal(sql: string): Result<Rows, DbError> {
         // ...
     }
     
-    private func init_connection(url: string): bool {
+    private func init_connection(url: string): Result<void, DbError> {
         // ...
     }
 }

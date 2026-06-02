@@ -1,0 +1,98 @@
+// adw_app - A Gecko executable
+package main
+
+cimport "<adwaita.h>" withlibrary "libadwaita-1"
+
+external "AdwApplication" class Application {}
+external "GtkWidget" class Widget {}
+external "GtkApplication" class G_Application {}
+external "GtkButton" class G_Button {}
+
+class Counter {
+    let label: Widget*
+    let value: int
+}
+
+@static
+func update_label(c: Counter*): void {
+    let text: string = g_strdup_printf("%d", c.value)
+    gtk_label_set_text(GTK_LABEL(c.label), text)
+}
+
+@static
+func on_inc(btn: G_Button*, c: Counter*): void {
+    c.value = c.value + 1
+    update_label(c)
+}
+
+@static
+func on_dec(btn: G_Button*, c: Counter*): void {
+    c.value = c.value - 1
+    update_label(c)
+}
+
+@static
+func reset_count(btn: G_Button*, c: Counter*): void {
+    c.value = 0
+    update_label(c)
+}
+
+@static
+func activate_callback(app: G_Application*): void {
+    let counter: Counter* = g_new0(Counter, 1)
+    
+    let window: Widget* = adw_application_window_new(ADW_APPLICATION(app))
+    gtk_window_set_title(GTK_WINDOW(window), "Counter")
+    gtk_window_set_default_size(GTK_WINDOW(window), 360, 200)
+
+    let box: Widget* = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)
+    adw_application_window_set_content(ADW_APPLICATION_WINDOW(window), box)
+
+    let header_bar: Widget* = adw_header_bar_new()
+    gtk_box_append(GTK_BOX(box), header_bar)
+
+    let header_button: Widget* = gtk_button_new_with_label("Reset")
+    gtk_widget_add_css_class(header_button, "primary")
+    g_signal_connect(header_button, "clicked", G_CALLBACK(reset_count), counter)
+    adw_header_bar_pack_end(header_bar, GTK_BUTTON(header_button))
+
+    let content: Widget* = gtk_box_new(GTK_ORIENTATION_VERTICAL, 24)
+    gtk_widget_set_valign(content, GTK_ALIGN_CENTER)
+    gtk_widget_set_halign(content, GTK_ALIGN_CENTER)
+    gtk_widget_set_margin_start(content, 24)
+    gtk_widget_set_margin_end(content, 24)
+    gtk_widget_set_margin_top(content, 24)
+    gtk_box_append(GTK_BOX(box), content)
+
+    counter.label = gtk_label_new("0") as Widget*
+    gtk_widget_add_css_class(counter.label, "title-1")
+    gtk_box_append(GTK_BOX(content), counter.label)
+
+    let btn_box: Widget* = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12)
+    gtk_widget_set_halign(btn_box, GTK_ALIGN_CENTER)
+    gtk_box_append(GTK_BOX(content), btn_box)
+
+    let dec: Widget* = gtk_button_new_with_label("-")
+    gtk_widget_add_css_class(dec, "pill")
+    g_signal_connect(dec, "clicked", G_CALLBACK(on_dec), counter)
+    gtk_box_append(GTK_BOX(btn_box), dec)
+
+    let inc: Widget* = gtk_button_new_with_label("+")
+    gtk_widget_add_css_class(inc, "pill")
+    g_signal_connect(inc, "clicked", G_CALLBACK(on_inc), counter)
+    gtk_box_append(GTK_BOX(btn_box), inc)
+
+    g_signal_connect_swapped(window, "destroy", G_CALLBACK(g_free), counter)
+
+    gtk_window_present(GTK_WINDOW(window))
+}
+
+external func main(): int32 {
+    printf("Hello from adw_app!")
+    let app: Application* = adw_application_new("org.example.Hello", G_APPLICATION_DEFAULT_FLAGS)
+    let argv: string = &""
+
+    g_signal_connect(app, "activate", G_CALLBACK(activate_callback), 0)
+    
+    return g_application_run(G_APPLICATION(app), 0, &argv)
+}

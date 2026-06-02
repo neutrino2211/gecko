@@ -1,0 +1,16 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/modules.md
+
+package main
+
+import shared
+
+impl Point {
+    func double(self): int32 {
+        return self.sum() * 2
+    }
+}
+
+external func main(): int32 {
+    let p: Point = Point::new(5, 10)
+    return p.double()
+}

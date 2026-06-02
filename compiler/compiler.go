@@ -1,3 +1,5 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/generics.md, spec/modules.md, spec/scoping.md, spec/attributes.md
+
 package compiler
 
 import (
@@ -10,13 +12,17 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/fatih/color"
 	"github.com/neutrino2211/gecko/backends"
+	cbackend "github.com/neutrino2211/gecko/backends/c_backend"
+	llvmbackend "github.com/neutrino2211/gecko/backends/llvm_backend"
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/errors"
+	"github.com/neutrino2211/gecko/hooks"
 	"github.com/neutrino2211/gecko/interfaces"
 	"github.com/neutrino2211/gecko/parser"
 	"github.com/neutrino2211/gecko/tokens"
@@ -24,6 +30,7 @@ import (
 )
 
 func streamPipe(std io.ReadCloser) {
+	defer std.Close()
 	buf := bufio.NewReader(std) // Notice that this is not in a loop
 	for {
 
@@ -48,10 +55,21 @@ func streamCommand(cmd *exec.Cmd) error {
 	if err != nil {
 		return err
 	}
-	streamPipe(stdout)
-	streamPipe(stderr)
+	var wg sync.WaitGroup
+	wg.Add(2)
 
-	return nil
+	go func() {
+		defer wg.Done()
+		streamPipe(stdout)
+	}()
+
+	go func() {
+		defer wg.Done()
+		streamPipe(stderr)
+	}()
+
+	wg.Wait()
+	return cmd.Wait()
 }
 
 var parsedFiles = make(map[string]*tokens.File)
@@ -325,7 +343,7 @@ func ResolveMethodFromDirectoryImports(sourceFile *tokens.File, methodName strin
 
 // resolveImports finds and parses imported modules
 // Resolution order: 1) Relative to source file, 2) Stdlib ($GECKO_HOME/stdlib), 3) Vendor (./vendor)
-func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.CompileCfg) {
+func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.CompileCfg, importErrorScope *errors.ErrorScope) {
 	geckoHome := getGeckoHome()
 
 	// Determine stdlib path - prefer "std" over legacy "stdlib"
@@ -411,17 +429,38 @@ func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.Compile
 		}
 
 		if location.FilePath == "" {
+			if importErrorScope != nil {
+				importErrorScope.NewCompileTimeError(
+					"Import Resolution Error",
+					"Unable to resolve import '"+fullPath+"'",
+					entry.Import.Pos,
+				)
+			}
 			continue // Module not found, will be handled as error later
 		}
 
 		// Parse the module
 		moduleContents, err := os.ReadFile(location.FilePath)
 		if err != nil {
+			if importErrorScope != nil {
+				importErrorScope.NewCompileTimeError(
+					"Import Read Error",
+					"Unable to read module '"+fullPath+"': "+err.Error(),
+					entry.Import.Pos,
+				)
+			}
 			continue
 		}
 
 		moduleFile, parseErr := parser.Parser.ParseString(location.FilePath, string(moduleContents))
 		if parseErr != nil {
+			if importErrorScope != nil {
+				importErrorScope.NewCompileTimeError(
+					"Import Parse Error",
+					"Unable to parse module '"+fullPath+"': "+parseErr.Error(),
+					entry.Import.Pos,
+				)
+			}
 			continue
 		}
 
@@ -435,13 +474,15 @@ func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.Compile
 
 		// Recursively resolve imports in the module
 		moduleDir := filepath.Dir(location.FilePath)
-		resolveImports(moduleFile, moduleDir, cfg)
+		moduleImportScope := errors.NewErrorScope("import", moduleFile.Path, moduleFile.Content)
+		resolveImports(moduleFile, moduleDir, cfg, moduleImportScope)
 	}
 }
 
 func Compile(file string, config *config.CompileCfg) string {
 	fileOpt := option.SomePair(os.ReadFile(file))
 	fileContents := fileOpt.Expect("Unable to read file '" + file + "'")
+	compileErrorScope := errors.NewErrorScope("compile", file, string(fileContents))
 
 	sourceFile, tokenError := parser.Parser.ParseString(file, string(fileContents))
 
@@ -454,9 +495,7 @@ func Compile(file string, config *config.CompileCfg) string {
 	if baseDir == "" {
 		baseDir = "."
 	}
-	resolveImports(sourceFile, baseDir, config)
-
-	compileErrorScope := errors.NewErrorScope("compile", sourceFile.Name, string(fileContents))
+	resolveImports(sourceFile, baseDir, config, compileErrorScope)
 
 	ts := strconv.Itoa(int(time.Now().UnixNano()))
 
@@ -639,8 +678,18 @@ type DiagnosticMessage struct {
 
 // ResetErrorScopes clears all error scopes (useful for LSP between checks)
 func ResetErrorScopes() {
+	ResetCompilationState()
+}
+
+// ResetCompilationState clears all compiler/backend global state.
+// Useful for long-lived processes (e.g. LSP) between checks.
+func ResetCompilationState() {
 	errors.ResetScopes()
 	parsedFiles = make(map[string]*tokens.File)
+	ResetTypeRegistry()
+	cbackend.ResetState()
+	llvmbackend.ResetState()
+	hooks.ResetHookRegistry()
 }
 
 // GetAllErrors returns all errors from all scopes

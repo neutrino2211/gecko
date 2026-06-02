@@ -1,3 +1,5 @@
+// spec: spec/types.md, spec/traits.md, spec/modules.md, spec/scoping.md
+
 package analysis
 
 import (
@@ -39,7 +41,8 @@ func NewAnalysisContext(filePath string, content string) (*AnalysisContext, erro
 
 	// Build AST scope for symbol resolution
 	ctx.RootScope = &ast.Ast{
-		Scope: file.PackageName,
+		Scope:      file.PackageName,
+		SourceFile: filePath,
 	}
 	errorScope := errors.NewErrorScope("analysis", file.PackageName, content)
 	ctx.RootScope.Init(errorScope)
@@ -105,8 +108,9 @@ func (ctx *AnalysisContext) registerSymbols() {
 
 	for moduleName, moduleFile := range ctx.ImportedFiles {
 		moduleScope := &ast.Ast{
-			Scope:  moduleName,
-			Parent: ctx.RootScope,
+			Scope:      moduleName,
+			Parent:     ctx.RootScope,
+			SourceFile: moduleFile.Path,
 		}
 		moduleScope.Init(ctx.RootScope.ErrorScope)
 		ctx.RootScope.Children[moduleName] = moduleScope
@@ -123,6 +127,7 @@ func (ctx *AnalysisContext) registerFileSymbols(file *tokens.File, scope *ast.As
 				Parent:       scope,
 				Visibility:   entry.Class.Visibility,
 				OriginModule: file.PackageName,
+				SourceFile:   file.Path,
 			}
 			classScope.Init(scope.ErrorScope)
 
@@ -518,28 +523,29 @@ func (ctx *AnalysisContext) inferFuncCallType(f *tokens.FuncCall) string {
 }
 
 func getPrimaryFromExpr(expr *tokens.Expression) *tokens.Primary {
-	if expr.LogicalOr == nil {
+	lo := expr.GetLogicalOr()
+	if lo == nil {
 		return nil
 	}
-	if expr.LogicalOr.LogicalAnd == nil {
+	if lo.LogicalAnd == nil {
 		return nil
 	}
-	if expr.LogicalOr.LogicalAnd.Equality == nil {
+	if lo.LogicalAnd.Equality == nil {
 		return nil
 	}
-	if expr.LogicalOr.LogicalAnd.Equality.Comparison == nil {
+	if lo.LogicalAnd.Equality.Comparison == nil {
 		return nil
 	}
-	if expr.LogicalOr.LogicalAnd.Equality.Comparison.Addition == nil {
+	if lo.LogicalAnd.Equality.Comparison.Addition == nil {
 		return nil
 	}
-	if expr.LogicalOr.LogicalAnd.Equality.Comparison.Addition.Multiplication == nil {
+	if lo.LogicalAnd.Equality.Comparison.Addition.Multiplication == nil {
 		return nil
 	}
-	if expr.LogicalOr.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary == nil {
+	if lo.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary == nil {
 		return nil
 	}
-	return expr.LogicalOr.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary
+	return lo.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary
 }
 
 // getGeckoHome returns the Gecko home directory (same logic as compiler)

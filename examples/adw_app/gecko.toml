@@ -1,0 +1,16 @@
+[package]
+name = "adw_app"
+version = "0.1.0"
+
+[build]
+backend = "c"
+pkg-config = ["libadwaita-1"]
+
+[build.entries]
+main = "src/main.gecko"
+
+[build.profiles.debug]
+optimize = false
+
+[build.profiles.release]
+optimize = true

@@ -1,3 +1,5 @@
+// spec: spec/modules.md, spec/stdlib.md
+
 package docgen
 
 import (

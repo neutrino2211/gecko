@@ -8,9 +8,8 @@
 | `-` | Subtraction | `a - b` |
 | `*` | Multiplication | `a * b` |
 | `/` | Division | `a / b` |
+| `%` | Modulo | `a % b` |
 | `-` (unary) | Negation | `-x` |
-
-**Gap**: No modulo operator (`%`).
 
 ## Comparison Operators
 
@@ -73,11 +72,12 @@ let p: int32* = &x
 Access value through pointer:
 
 ```gecko
-let value: int32 = *p
-*p = 100  // write through pointer
+let value: int32 = @deref(p)
 ```
 
-**Note**: Dereference syntax is implicit in many contexts. Field access on pointers uses `.` not `->`.
+`@deref(...)` is the canonical dereference form.
+
+Field access on pointers uses `.` (no `->` operator).
 
 ## Type Cast
 
@@ -117,12 +117,16 @@ From highest to lowest:
 
 1. Unary: `!`, `-`, `+`, `&` (address-of)
 2. Cast: `as`
-3. Multiplicative: `*`, `/`
-4. Additive: `+`, `-`, `|`, `&`, `^`, `<<`, `>>`, `<<<`, `>>>`
-5. Comparison: `<`, `>`, `<=`, `>=`
-6. Equality: `==`, `!=`
-7. Logical AND: `&&`
-8. Logical OR: `||`
+3. Multiplicative: `*`, `/`, `%`
+4. Additive: `+`, `-`
+5. Shift/Rotate: `<<`, `>>`, `<<<`, `>>>`
+6. Bitwise AND: `&`
+7. Bitwise XOR: `^`
+8. Bitwise OR: `|`
+9. Comparison: `<`, `>`, `<=`, `>=`
+10. Equality: `==`, `!=`
+11. Logical AND: `&&`
+12. Logical OR: `||`
 
 Use parentheses for clarity:
 
@@ -133,10 +137,9 @@ let check: bool = (x > 0) && (y < 10)
 
 ## Gaps and Limitations
 
-- No modulo operator (`%`)
 - No compound assignment (`+=`, `-=`, `*=`, `/=`)
 - No increment/decrement (`++`, `--`)
 - No ternary operator (`? :`)
-- No operator overloading (traits exist but not integrated)
+- No user-defined operators beyond hook-mapped built-ins
 - No null coalescing (`??`)
 - No range operator (`..`)

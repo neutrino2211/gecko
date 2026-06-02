@@ -1,3 +1,5 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/generics.md, spec/control-flow.md, spec/operators.md, spec/pointers.md, spec/memory.md, spec/c-interop.md, spec/attributes.md
+
 package backends
 
 // Feature represents a language feature that may or may not be supported by a backend
@@ -5,40 +7,40 @@ type Feature string
 
 const (
 	// Core features - minimal set for any backend
-	FeatureFunctions    Feature = "functions"
-	FeaturePrimitives   Feature = "primitives"    // int, bool, uint8, etc.
-	FeatureControlFlow  Feature = "control_flow"  // if, else, while, for
-	FeatureBasicOps     Feature = "basic_ops"     // arithmetic, comparison, logical
-	FeatureVariables    Feature = "variables"     // let, const
+	FeatureFunctions   Feature = "functions"
+	FeaturePrimitives  Feature = "primitives"   // int, bool, uint8, etc.
+	FeatureControlFlow Feature = "control_flow" // if, else, while, for
+	FeatureBasicOps    Feature = "basic_ops"    // arithmetic, comparison, logical
+	FeatureVariables   Feature = "variables"    // let, const
 
 	// Structured features - require memory layout
-	FeatureClasses      Feature = "classes"       // class definitions
-	FeatureStructs      Feature = "structs"       // struct literals
-	FeatureArrays       Feature = "arrays"        // fixed-size arrays
-	FeatureStrings      Feature = "strings"       // string type
+	FeatureClasses Feature = "classes" // class definitions
+	FeatureStructs Feature = "structs" // struct literals
+	FeatureArrays  Feature = "arrays"  // fixed-size arrays
+	FeatureStrings Feature = "strings" // string type
 
 	// Standard features - higher-level abstractions
-	FeatureGenerics     Feature = "generics"      // type parameters
-	FeatureTraits       Feature = "traits"        // trait definitions
-	FeatureImpl         Feature = "impl"          // trait implementations
+	FeatureGenerics     Feature = "generics" // type parameters
+	FeatureTraits       Feature = "traits"   // trait definitions
+	FeatureImpl         Feature = "impl"     // trait implementations
 	FeatureOperatorOvld Feature = "operator_overload"
 	FeatureTypeInfer    Feature = "type_inference"
-	FeatureImports      Feature = "imports"       // module imports
+	FeatureImports      Feature = "imports" // module imports
 
 	// Low-level features - direct memory access
-	FeaturePointers     Feature = "pointers"      // pointer types, &, *
-	FeatureDeref        Feature = "deref"         // @deref intrinsic
-	FeatureExternDecl   Feature = "extern_decl"   // declare external
-	FeatureCasts        Feature = "casts"         // as keyword
-	FeatureVolatile     Feature = "volatile"      // volatile pointers
-	FeatureAddressOf    Feature = "address_of"    // & operator
+	FeaturePointers   Feature = "pointers"    // pointer types, &, *
+	FeatureDeref      Feature = "deref"       // @deref intrinsic
+	FeatureExternDecl Feature = "extern_decl" // declare external
+	FeatureCasts      Feature = "casts"       // as keyword
+	FeatureVolatile   Feature = "volatile"    // volatile pointers
+	FeatureAddressOf  Feature = "address_of"  // & operator
 
 	// Freestanding features - OS/kernel development
-	FeatureNaked        Feature = "naked"         // @naked attribute
-	FeatureNoReturn     Feature = "noreturn"      // @noreturn attribute
-	FeatureSection      Feature = "section"       // @section attribute
-	FeaturePacked       Feature = "packed"        // @packed attribute
-	FeatureInlineAsm    Feature = "inline_asm"    // asm {} blocks
+	FeatureNaked     Feature = "naked"      // @naked attribute
+	FeatureNoReturn  Feature = "noreturn"   // @noreturn attribute
+	FeatureSection   Feature = "section"    // @section attribute
+	FeaturePacked    Feature = "packed"     // @packed attribute
+	FeatureInlineAsm Feature = "inline_asm" // asm {} blocks
 )
 
 // FeatureSet defines which features a backend supports
@@ -239,7 +241,28 @@ func NewCFeatureSet() *FeatureSet {
 
 // NewLLVMFeatureSet creates a feature set for LLVM backend
 func NewLLVMFeatureSet() *FeatureSet {
-	fs := NewFullFeatureSet("llvm")
+	// Keep this conservative and aligned with actual implementation status.
+	// Experimental/incomplete areas (generics, traits/impl hooks, imports,
+	// operator overloads, type inference, and intrinsic pointer ops) are
+	// intentionally not advertised as supported yet.
+	fs := NewFeatureSet("llvm")
+	fs.Enable(
+		CoreFeatures()...,
+	)
+	fs.Enable(
+		StructuredFeatures()...,
+	)
+	fs.Enable(
+		FeaturePointers,
+		FeatureExternDecl,
+		FeatureCasts,
+		FeatureAddressOf,
+		FeatureNaked,
+		FeatureNoReturn,
+		FeatureSection,
+		FeaturePacked,
+		FeatureInlineAsm,
+	)
 	fs.SetToolchain(ToolchainNative, "c", "asm") // LLVM can link with C and ASM
 	return fs
 }

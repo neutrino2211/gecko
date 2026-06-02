@@ -1,3 +1,5 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/generics.md, spec/control-flow.md, spec/operators.md, spec/pointers.md, spec/memory.md, spec/c-interop.md, spec/attributes.md
+
 package llvmbackend
 
 import (
@@ -203,12 +205,19 @@ func (impl *LLVMBackendImplementation) NewImplementation(scope *ast.Ast, i *toke
 	if i.GetFor() != "" {
 		impl.LLVMImplementationForClass(scope, i)
 	} else {
+		classOpt := scope.ResolveClass(i.GetName())
+		if !classOpt.IsNil() {
+			class := classOpt.Unwrap()
+			impl.LLVMInherentImplementation(scope, i, class)
+			return
+		}
 		impl.LLVMImplementationForArch(scope, i)
 	}
 }
 
 func (impl *LLVMBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait) {
-
+	TraitDefinitionOrigins[t.Name] = scope.GetRoot().Scope
+	impl.TraitAssignToScope(scope, t)
 }
 
 func (impl *LLVMBackendImplementation) NewEnum(scope *ast.Ast, e *tokens.Enum) {

@@ -10,12 +10,12 @@
 | `int16` | 16-bit signed | -32,768 to 32,767 |
 | `int32` | 32-bit signed | -2^31 to 2^31-1 |
 | `int64` | 64-bit signed | -2^63 to 2^63-1 |
-| `int` | alias for `int32` | |
+| `int` | alias for `int64` | |
 | `uint8` | 8-bit unsigned | 0 to 255 |
 | `uint16` | 16-bit unsigned | 0 to 65,535 |
 | `uint32` | 32-bit unsigned | 0 to 2^32-1 |
 | `uint64` | 64-bit unsigned | 0 to 2^64-1 |
-| `uint` | alias for `uint32` | |
+| `uint` | alias for `uint64` | |
 
 ### Other Primitives
 
@@ -30,7 +30,29 @@
 A type reference specifies a type with optional modifiers:
 
 ```
-TypeRef = Type [ '<' TypeArgs '>' ] [ 'volatile' ] [ '*' ] [ '!' ]
+TypeRef = ValueType [ 'volatile' ] [ '*' ]
+ValueType = Type [ '<' TypeArgs '>' ] [ '?' ]
+```
+
+### Nullability
+
+Values are non-null by default.
+
+```gecko
+let x: int32      // non-null int32
+let y: int32?     // nullable int32
+```
+
+For pointers:
+
+- `Type*` means a nullable pointer to a non-null `Type` value.
+- `Type?*` means a nullable pointer to a nullable `Type` value.
+- `Type*?` is invalid syntax (pointer nullability is implicit and cannot be annotated).
+
+```gecko
+let p: int32*      // pointer may be null, pointee is non-null int32
+let q: int32?*     // pointer may be null, pointee is nullable int32
+let r: int32*?     // invalid
 ```
 
 ### Pointers
@@ -38,18 +60,19 @@ TypeRef = Type [ '<' TypeArgs '>' ] [ 'volatile' ] [ '*' ] [ '!' ]
 ```gecko
 let p: int32*           // pointer to int32
 let q: int32 volatile*  // pointer to volatile int32
-let r: int32*!          // non-null pointer to int32
+let r: int32?*          // pointer to nullable int32
 ```
 
-### Const
+### Mutability
 
-The `!` suffix after a type (not pointer) marks it as const:
+Mutability is controlled by declaration keywords, not type suffixes:
 
 ```gecko
-let x: int32! = 42  // const int32
+let x: int32 = 42
+const y: int32 = 42
 ```
 
-**Gap**: The const system is inconsistent. `!` is overloaded for both const and non-null.
+`const` makes the binding immutable.
 
 ## Arrays
 
@@ -71,7 +94,7 @@ No built-in dynamic array. Use `Vec<T>` from stdlib.
 The compiler infers types in these contexts:
 
 ```gecko
-let x = 42              // infers int32
+let x = 42              // infers int (int64)
 let y = true            // infers bool
 let s = "hello"         // infers string
 let r = Rect::new(1,2)  // infers Rect from static method return

@@ -1,0 +1,27 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/modules.md, spec/control-flow.md
+
+package main
+
+import std.core.traits use { Clone }
+
+class LocalCounter {
+    let value: int32
+}
+
+impl LocalCounter {
+    func new(v: int32): LocalCounter {
+        return LocalCounter { value: v }
+    }
+}
+
+impl Clone for LocalCounter {
+    func clone(self): LocalCounter {
+        return LocalCounter { value: self.value }
+    }
+}
+
+external func main(): int32 {
+    let c: LocalCounter = LocalCounter::new(21)
+    let cloned: LocalCounter = c.clone()
+    return cloned.value
+}

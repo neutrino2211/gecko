@@ -54,8 +54,6 @@ class User {
 }
 ```
 
-**Gap**: Visibility is parsed but not enforced.
-
 ## Methods
 
 ### Static Methods
@@ -66,7 +64,7 @@ Methods without `self` parameter are static:
 class Vec {
     func new(): Vec {
         let v: Vec
-        v.data = nil
+        v.data = null
         v.len = 0
         return v
     }
@@ -179,6 +177,5 @@ class Header {
 - No inheritance
 - No destructors (use `Drop` trait manually)
 - No member initialization in declaration
-- No private/protected enforcement
 - No `const` methods
 - Classes are always value types (no reference semantics)

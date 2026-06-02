@@ -1,3 +1,5 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/generics.md, spec/control-flow.md, spec/operators.md, spec/pointers.md, spec/memory.md, spec/c-interop.md, spec/attributes.md
+
 package backends
 
 import (
@@ -252,28 +254,41 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	// Returns (scope, alreadyProcessed)
 	var processImport func(importedFile *tokens.File, parentScope *ast.Ast) (*ast.Ast, bool)
 	processImport = func(importedFile *tokens.File, parentScope *ast.Ast) (*ast.Ast, bool) {
-		if existingScope, ok := processedModules[importedFile.PackageName]; ok {
+		moduleKey := importedFile.Name
+		if moduleKey == "" {
+			moduleKey = importedFile.PackageName
+		}
+		if moduleKey == "" {
+			moduleKey = importedFile.Path
+		}
+
+		processKey := importedFile.Path
+		if processKey == "" {
+			processKey = moduleKey
+		}
+
+		if existingScope, ok := processedModules[processKey]; ok {
 			// Already processed - just link to parent
 			if parentScope != nil {
-				parentScope.Children[importedFile.PackageName] = existingScope
+				parentScope.Children[moduleKey] = existingScope
 			}
 			return existingScope, true
 		}
 
 		importScope := &ast.Ast{
-			Scope:            importedFile.PackageName,
-			Parent:           nil, // No parent so names are module__symbol, not main__module__symbol
+			Scope:            moduleKey,
+			Parent:           nil,  // No parent so names are module__symbol, not main__module__symbol
 			IsImportedModule: true, // Mark as imported module for scoped typedef names
 			SourceFile:       importedFile.Path,
 		}
 		importScope.Init(errors.NewErrorScope(importedFile.Name, importedFile.Path, importedFile.Content))
 		importScope.Config = importedFile.Config
 
-		processedModules[importedFile.PackageName] = importScope
-		file.Children[importedFile.PackageName] = importScope
+		processedModules[processKey] = importScope
+		file.Children[moduleKey] = importScope
 
 		if parentScope != nil {
-			parentScope.Children[importedFile.PackageName] = importScope
+			parentScope.Children[moduleKey] = importScope
 		}
 
 		// Build use objects map for this imported file
@@ -292,7 +307,11 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 			}
 
 			// Copy symbols from nested import's 'use { ... }' into this file's scope
-			if objects, ok := localUseObjects[nestedImport.PackageName]; ok {
+			nestedModuleKey := nestedImport.Name
+			if nestedModuleKey == "" {
+				nestedModuleKey = nestedImport.PackageName
+			}
+			if objects, ok := localUseObjects[nestedModuleKey]; ok {
 				for _, objName := range objects {
 					if cls, found := nestedScope.Classes[objName]; found {
 						importScope.Classes[objName] = cls
@@ -319,7 +338,11 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 		}
 
 		// Copy symbols specified in 'use { ... }' into the main file's scope
-		if objects, ok := useObjects[importedFile.PackageName]; ok {
+		moduleKey := importedFile.Name
+		if moduleKey == "" {
+			moduleKey = importedFile.PackageName
+		}
+		if objects, ok := useObjects[moduleKey]; ok {
 			for _, objName := range objects {
 				// Copy classes
 				if cls, found := importScope.Classes[objName]; found {

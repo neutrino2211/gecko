@@ -1,3 +1,5 @@
+// spec: spec/traits.md, spec/control-flow.md, spec/operators.md, spec/attributes.md
+
 package hooks
 
 import (

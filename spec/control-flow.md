@@ -43,7 +43,7 @@ if x > 0 {
     // ...
 }
 
-if ptr != nil {
+if ptr != null {
     // ...
 }
 
@@ -92,7 +92,20 @@ for let i: int32 = 0; i < 10; i = i + 1 {
 }
 ```
 
-**Gap**: No iterator-based for loop (`for item in collection`).
+### For-In Loop
+
+Iterator-style loop:
+
+```gecko
+for let item in collection {
+    // body
+}
+```
+
+This form relies on iterator hooks (see `traits.md` and `attributes.md`), typically:
+
+- `@iterator_hook(.next, .has_next)`
+- optionally `@into_iterator_hook(.iter)` for conversion to an iterator
 
 ### Break
 
@@ -162,7 +175,6 @@ func find(arr: int32*, len: int32, target: int32): int32 {
 - No `switch`/`match` statement
 - No labeled breaks (`break 'outer`)
 - No `loop` keyword (infinite loop)
-- No iterator-based for loop
 - No `do-while` loop
 - No conditional expressions (`x = cond ? a : b`)
 - No `if` as expression

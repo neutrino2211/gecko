@@ -1,8 +1,11 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/generics.md, spec/control-flow.md, spec/operators.md, spec/pointers.md, spec/memory.md, spec/c-interop.md, spec/attributes.md
+
 package llvmbackend
 
 import (
 	"strconv"
 
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/alecthomas/repr"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/types"
@@ -168,6 +171,73 @@ func (impl *LLVMBackendImplementation) LLVMImplementationToMethodTokens(scope *a
 	return mTokens
 }
 
+func (impl *LLVMBackendImplementation) resolveTraitOrigin(scope *ast.Ast, traitName string) string {
+	if origin, ok := TraitDefinitionOrigins[traitName]; ok && origin != "" {
+		return origin
+	}
+
+	traitOpt := scope.ResolveTrait(traitName)
+	if !traitOpt.IsNil() {
+		traitMethods := traitOpt.Unwrap()
+		if traitMethods != nil && len(*traitMethods) > 0 {
+			first := (*traitMethods)[0]
+			if first != nil {
+				return first.GetOriginModule()
+			}
+		}
+	}
+
+	return ""
+}
+
+func (impl *LLVMBackendImplementation) validateInherentImplCoherence(scope *ast.Ast, className string, classOrigin string, pos lexer.Position) bool {
+	currentPackage := scope.GetRoot().Scope
+	if classOrigin == "" || classOrigin == currentPackage {
+		return true
+	}
+
+	typeName := className
+	if classOrigin != "" {
+		typeName = classOrigin + "." + className
+	}
+
+	scope.ErrorScope.NewCompileTimeError(
+		"Coherence Error",
+		"cannot add inherent impl for foreign type '"+typeName+"'\nhelp: inherent impls are only allowed in the defining package '"+classOrigin+"'",
+		pos,
+	)
+	return false
+}
+
+func (impl *LLVMBackendImplementation) validateTraitImplCoherence(scope *ast.Ast, class *ast.Ast, className string, traitName string, pos lexer.Position) bool {
+	currentPackage := scope.GetRoot().Scope
+	classOrigin := class.GetOriginModule()
+	traitOrigin := impl.resolveTraitOrigin(scope, traitName)
+
+	classLocal := classOrigin == "" || classOrigin == currentPackage
+	traitLocal := traitOrigin == "" || traitOrigin == currentPackage
+	if classLocal || traitLocal {
+		return true
+	}
+
+	typeName := className
+	if classOrigin != "" {
+		typeName = classOrigin + "." + className
+	}
+
+	qualifiedTraitName := traitName
+	if traitOrigin != "" {
+		qualifiedTraitName = traitOrigin + "." + traitName
+	}
+
+	scope.ErrorScope.NewCompileTimeError(
+		"Coherence Error",
+		"orphan impl is not allowed: both trait '"+qualifiedTraitName+"' and type '"+typeName+"' are foreign\nhelp: define a local trait or wrap the foreign type in a local newtype",
+		pos,
+	)
+	return false
+}
+
 func (impl *LLVMBackendImplementation) LLVMImplementationForClass(scope *ast.Ast, i *tokens.Implementation) {
 	classOpt := scope.ResolveClass(i.GetFor())
 	traitOpt := scope.ResolveTrait(i.GetName())
@@ -195,6 +265,10 @@ func (impl *LLVMBackendImplementation) LLVMImplementationForClass(scope *ast.Ast
 		return
 	}
 
+	if !impl.validateTraitImplCoherence(scope, class, i.GetFor(), i.GetName(), i.Pos) {
+		return
+	}
+
 	var mthdList []*ast.Method
 
 	if i.Default {
@@ -216,6 +290,26 @@ func (impl *LLVMBackendImplementation) LLVMImplementationForClass(scope *ast.Ast
 	}
 
 	class.Traits[mangledTraitName] = &mthdList
+}
+
+func (impl *LLVMBackendImplementation) LLVMInherentImplementation(scope *ast.Ast, i *tokens.Implementation, class *ast.Ast) {
+	className := i.GetName()
+	if !impl.validateInherentImplCoherence(scope, className, class.GetOriginModule(), i.Pos) {
+		return
+	}
+
+	for _, f := range i.GetFields() {
+		m := f.ToMethodToken()
+		if _, exists := class.Methods[m.Name]; exists {
+			scope.ErrorScope.NewCompileTimeError(
+				"Duplicate Method",
+				"Method '"+m.Name+"' already exists on class '"+className+"'. Extensions can only add new methods, not override existing ones.",
+				m.Pos,
+			)
+			continue
+		}
+		impl.NewMethod(class, m)
+	}
 }
 
 // typeRefToMangledName converts a TypeRef to a mangled string for trait keys.

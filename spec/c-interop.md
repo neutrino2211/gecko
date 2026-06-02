@@ -10,17 +10,18 @@ Declare C functions for use in Gecko:
 declare external func malloc(size: uint64): void*
 declare external func free(ptr: void*): void
 declare external func puts(s: string): int32
-declare external variardic func printf(fmt: string): int32
+declare external variadic func printf(fmt: string): int32
 ```
 
 ### Syntax
 
 ```gecko
-declare external [variardic] func name(params): ReturnType
+declare external [variadic|variardic] func name(params): ReturnType
 ```
 
 - `external` - Uses C calling convention, no name mangling
-- `variardic` - C-style variadic function (note the typo is intentional)
+- `variadic` - Canonical spelling for C-style variadic function
+- `variardic` - Compatibility alias
 
 ## Exporting Functions
 
@@ -84,10 +85,12 @@ The `external "name"` provides the C type name.
 | `int16` | `int16_t` |
 | `int32` | `int32_t` |
 | `int64` | `int64_t` |
+| `int` | `int64_t` |
 | `uint8` | `uint8_t` |
 | `uint16` | `uint16_t` |
 | `uint32` | `uint32_t` |
 | `uint64` | `uint64_t` |
+| `uint` | `uint64_t` |
 | `bool` | `_Bool` |
 | `string` | `const char*` |
 | `void` | `void` |
@@ -141,7 +144,8 @@ cimport "mylib.h" withobject "mylib.o"
 cimport "mylib.h" withlibrary "mylib"
 ```
 
-**Gap**: `cimport` is parsed but not functional. C header parsing not implemented. Use manual `declare external` instead.
+`cimport` is implemented for header inclusion and build/link metadata.
+It does not parse C declarations into Gecko symbols.
 
 ## Linking
 
@@ -161,7 +165,7 @@ ld -T linker.ld kernel.o -o kernel.elf
 
 ## Gaps and Limitations
 
-- No C header parsing (`cimport` not functional)
+- No C declaration parsing from headers (`cimport` only adds includes/link metadata)
 - No automatic binding generation
 - No `#define` constant import
 - No C macro support

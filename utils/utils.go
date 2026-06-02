@@ -1,3 +1,5 @@
+// spec: spec/modules.md
+
 package utils
 
 import (

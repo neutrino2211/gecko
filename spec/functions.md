@@ -3,7 +3,7 @@
 ## Declaration Syntax
 
 ```gecko
-[visibility] [variardic] func name[<TypeParams>](params): ReturnType {
+[visibility] [variadic|variardic] func name[<TypeParams>](params): ReturnType {
     body
 }
 ```
@@ -24,9 +24,10 @@ func greet(): void {
 
 | Modifier | Meaning |
 |----------|---------|
-| (none) | Package-private |
-| `public` | Exported from module |
-| `private` | Only within current scope |
+| (none) | Private to the current file |
+| `public` | Exported from package |
+| `protected` | Visible within the current package |
+| `private` | Only within the current file |
 | `external` | Exported with C linkage (no name mangling) |
 
 ```gecko
@@ -35,7 +36,7 @@ external func main(): int32 {
 }
 
 public func helper(): void {
-    // accessible from other modules
+    // accessible from other packages
 }
 ```
 
@@ -64,12 +65,12 @@ func area(self): int32 {
 ### Variadic Functions
 
 ```gecko
-variardic func printf(fmt: string): int32 {
+variadic func printf(fmt: string): int32 {
     // C-style varargs
 }
 ```
 
-**Note**: The keyword is `variardic` (with typo preserved for compatibility).
+**Note**: `variadic` is the canonical spelling. `variardic` is accepted as a compatibility alias.
 
 ## Return Types
 
@@ -131,7 +132,7 @@ See [c-interop.md](c-interop.md).
 
 ```gecko
 declare external func malloc(size: uint64): void*
-declare external variardic func printf(fmt: string): int32
+declare external variadic func printf(fmt: string): int32
 ```
 
 ## Gaps and Limitations

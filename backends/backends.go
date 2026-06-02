@@ -1,3 +1,5 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/generics.md, spec/control-flow.md, spec/operators.md, spec/pointers.md, spec/memory.md, spec/c-interop.md, spec/attributes.md
+
 package backends
 
 import (
@@ -5,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sync"
 
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/hooks"
@@ -13,6 +16,7 @@ import (
 )
 
 func streamPipe(std io.ReadCloser) {
+	defer std.Close()
 	buf := bufio.NewReader(std) // Notice that this is not in a loop
 	for {
 
@@ -37,10 +41,21 @@ func streamCommand(cmd *exec.Cmd) error {
 	if err != nil {
 		return err
 	}
-	streamPipe(stdout)
-	streamPipe(stderr)
+	var wg sync.WaitGroup
+	wg.Add(2)
 
-	return nil
+	go func() {
+		defer wg.Done()
+		streamPipe(stdout)
+	}()
+
+	go func() {
+		defer wg.Done()
+		streamPipe(stderr)
+	}()
+
+	wg.Wait()
+	return cmd.Wait()
 }
 
 func BackendRun(b interfaces.BackendInteface, c *interfaces.BackendConfig) *exec.Cmd {

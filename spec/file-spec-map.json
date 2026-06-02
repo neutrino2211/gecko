@@ -1,0 +1,528 @@
+{
+  "order": [
+    "spec/types.md",
+    "spec/functions.md",
+    "spec/classes.md",
+    "spec/traits.md",
+    "spec/generics.md",
+    "spec/modules.md",
+    "spec/scoping.md",
+    "spec/control-flow.md",
+    "spec/operators.md",
+    "spec/pointers.md",
+    "spec/memory.md",
+    "spec/c-interop.md",
+    "spec/attributes.md",
+    "spec/stdlib.md"
+  ],
+  "exclude_prefixes": [
+    ".github/",
+    "docs/",
+    "spec/",
+    "scripts/",
+    "tools/"
+  ],
+  "prefix_rules": [
+    {
+      "prefix": "main.go",
+      "specs": [
+        "spec/modules.md",
+        "spec/c-interop.md",
+        "spec/stdlib.md"
+      ]
+    },
+    {
+      "prefix": "analysis/",
+      "specs": [
+        "spec/scoping.md",
+        "spec/modules.md",
+        "spec/types.md",
+        "spec/traits.md"
+      ]
+    },
+    {
+      "prefix": "ast/",
+      "specs": [
+        "spec/scoping.md",
+        "spec/modules.md",
+        "spec/types.md",
+        "spec/functions.md",
+        "spec/classes.md",
+        "spec/traits.md"
+      ]
+    },
+    {
+      "prefix": "backends/",
+      "specs": [
+        "spec/types.md",
+        "spec/functions.md",
+        "spec/classes.md",
+        "spec/traits.md",
+        "spec/generics.md",
+        "spec/control-flow.md",
+        "spec/operators.md",
+        "spec/pointers.md",
+        "spec/memory.md",
+        "spec/c-interop.md",
+        "spec/attributes.md"
+      ]
+    },
+    {
+      "prefix": "commands/",
+      "specs": [
+        "spec/modules.md",
+        "spec/c-interop.md",
+        "spec/stdlib.md"
+      ]
+    },
+    {
+      "prefix": "compiler/",
+      "specs": [
+        "spec/types.md",
+        "spec/functions.md",
+        "spec/classes.md",
+        "spec/traits.md",
+        "spec/generics.md",
+        "spec/modules.md",
+        "spec/scoping.md",
+        "spec/attributes.md"
+      ]
+    },
+    {
+      "prefix": "config/",
+      "specs": [
+        "spec/modules.md"
+      ]
+    },
+    {
+      "prefix": "docgen/",
+      "specs": [
+        "spec/modules.md",
+        "spec/stdlib.md"
+      ]
+    },
+    {
+      "prefix": "errors/",
+      "specs": [
+        "spec/scoping.md",
+        "spec/modules.md"
+      ]
+    },
+    {
+      "prefix": "hooks/",
+      "specs": [
+        "spec/traits.md",
+        "spec/operators.md",
+        "spec/control-flow.md",
+        "spec/attributes.md"
+      ]
+    },
+    {
+      "prefix": "interfaces/",
+      "specs": [
+        "spec/modules.md",
+        "spec/scoping.md"
+      ]
+    },
+    {
+      "prefix": "logger/",
+      "specs": [
+        "spec/modules.md"
+      ]
+    },
+    {
+      "prefix": "lsp/",
+      "specs": [
+        "spec/types.md",
+        "spec/functions.md",
+        "spec/classes.md",
+        "spec/traits.md",
+        "spec/generics.md",
+        "spec/modules.md",
+        "spec/scoping.md"
+      ]
+    },
+    {
+      "prefix": "parser/",
+      "specs": [
+        "spec/types.md",
+        "spec/functions.md",
+        "spec/classes.md",
+        "spec/traits.md",
+        "spec/generics.md",
+        "spec/modules.md",
+        "spec/control-flow.md",
+        "spec/operators.md",
+        "spec/pointers.md",
+        "spec/memory.md",
+        "spec/c-interop.md",
+        "spec/attributes.md"
+      ]
+    },
+    {
+      "prefix": "tests/",
+      "specs": [
+        "spec/types.md",
+        "spec/traits.md",
+        "spec/modules.md",
+        "spec/scoping.md"
+      ]
+    },
+    {
+      "prefix": "tokens/",
+      "specs": [
+        "spec/types.md",
+        "spec/functions.md",
+        "spec/classes.md",
+        "spec/traits.md",
+        "spec/generics.md",
+        "spec/modules.md",
+        "spec/control-flow.md",
+        "spec/operators.md",
+        "spec/pointers.md",
+        "spec/memory.md",
+        "spec/c-interop.md",
+        "spec/attributes.md"
+      ]
+    },
+    {
+      "prefix": "utils/",
+      "specs": [
+        "spec/modules.md"
+      ]
+    },
+    {
+      "prefix": "stdlib/",
+      "specs": [
+        "spec/types.md",
+        "spec/traits.md",
+        "spec/modules.md",
+        "spec/operators.md",
+        "spec/pointers.md",
+        "spec/memory.md",
+        "spec/stdlib.md"
+      ]
+    },
+    {
+      "prefix": "examples/",
+      "specs": [
+        "spec/types.md",
+        "spec/functions.md",
+        "spec/modules.md",
+        "spec/control-flow.md"
+      ]
+    },
+    {
+      "prefix": "test_sources/",
+      "specs": [
+        "spec/types.md",
+        "spec/functions.md",
+        "spec/modules.md",
+        "spec/control-flow.md"
+      ]
+    }
+  ],
+  "contains_rules": [
+    {
+      "contains": "trait",
+      "specs": [
+        "spec/traits.md"
+      ]
+    },
+    {
+      "contains": "hook",
+      "specs": [
+        "spec/traits.md",
+        "spec/attributes.md"
+      ]
+    },
+    {
+      "contains": "generic",
+      "specs": [
+        "spec/generics.md"
+      ]
+    },
+    {
+      "contains": "operator",
+      "specs": [
+        "spec/operators.md"
+      ]
+    },
+    {
+      "contains": "logical_ops",
+      "specs": [
+        "spec/operators.md"
+      ]
+    },
+    {
+      "contains": "index",
+      "specs": [
+        "spec/operators.md",
+        "spec/traits.md"
+      ]
+    },
+    {
+      "contains": "pointer",
+      "specs": [
+        "spec/pointers.md",
+        "spec/memory.md"
+      ]
+    },
+    {
+      "contains": "volatile",
+      "specs": [
+        "spec/pointers.md",
+        "spec/memory.md"
+      ]
+    },
+    {
+      "contains": "raw_pointer",
+      "specs": [
+        "spec/pointers.md",
+        "spec/memory.md"
+      ]
+    },
+    {
+      "contains": "memory",
+      "specs": [
+        "spec/memory.md"
+      ]
+    },
+    {
+      "contains": "cimport",
+      "specs": [
+        "spec/c-interop.md"
+      ]
+    },
+    {
+      "contains": "external",
+      "specs": [
+        "spec/c-interop.md"
+      ]
+    },
+    {
+      "contains": "ffi",
+      "specs": [
+        "spec/c-interop.md"
+      ]
+    },
+    {
+      "contains": "attribute",
+      "specs": [
+        "spec/attributes.md"
+      ]
+    },
+    {
+      "contains": "asm",
+      "specs": [
+        "spec/attributes.md",
+        "spec/c-interop.md"
+      ]
+    },
+    {
+      "contains": "packed",
+      "specs": [
+        "spec/attributes.md",
+        "spec/classes.md"
+      ]
+    },
+    {
+      "contains": "kernel",
+      "specs": [
+        "spec/attributes.md",
+        "spec/c-interop.md",
+        "spec/memory.md"
+      ]
+    },
+    {
+      "contains": "intrinsic",
+      "specs": [
+        "spec/attributes.md",
+        "spec/pointers.md"
+      ]
+    },
+    {
+      "contains": "stdlib",
+      "specs": [
+        "spec/stdlib.md"
+      ]
+    },
+    {
+      "contains": "string",
+      "specs": [
+        "spec/stdlib.md"
+      ]
+    },
+    {
+      "contains": "vec",
+      "specs": [
+        "spec/stdlib.md"
+      ]
+    },
+    {
+      "contains": "slice",
+      "specs": [
+        "spec/stdlib.md"
+      ]
+    },
+    {
+      "contains": "option",
+      "specs": [
+        "spec/stdlib.md",
+        "spec/traits.md"
+      ]
+    },
+    {
+      "contains": "result",
+      "specs": [
+        "spec/stdlib.md",
+        "spec/traits.md"
+      ]
+    },
+    {
+      "contains": "box",
+      "specs": [
+        "spec/stdlib.md",
+        "spec/memory.md"
+      ]
+    },
+    {
+      "contains": "rc",
+      "specs": [
+        "spec/stdlib.md",
+        "spec/memory.md"
+      ]
+    },
+    {
+      "contains": "weak",
+      "specs": [
+        "spec/stdlib.md",
+        "spec/memory.md"
+      ]
+    },
+    {
+      "contains": "class",
+      "specs": [
+        "spec/classes.md"
+      ]
+    },
+    {
+      "contains": "struct",
+      "specs": [
+        "spec/classes.md"
+      ]
+    },
+    {
+      "contains": "static_methods",
+      "specs": [
+        "spec/classes.md"
+      ]
+    },
+    {
+      "contains": "visibility",
+      "specs": [
+        "spec/modules.md",
+        "spec/scoping.md"
+      ]
+    },
+    {
+      "contains": "import",
+      "specs": [
+        "spec/modules.md"
+      ]
+    },
+    {
+      "contains": "module",
+      "specs": [
+        "spec/modules.md",
+        "spec/scoping.md"
+      ]
+    },
+    {
+      "contains": "directory_imports",
+      "specs": [
+        "spec/modules.md",
+        "spec/scoping.md"
+      ]
+    },
+    {
+      "contains": "circular_deps",
+      "specs": [
+        "spec/modules.md"
+      ]
+    },
+    {
+      "contains": "lazy_method_resolution",
+      "specs": [
+        "spec/modules.md",
+        "spec/scoping.md"
+      ]
+    },
+    {
+      "contains": "qualified_types",
+      "specs": [
+        "spec/modules.md",
+        "spec/types.md"
+      ]
+    },
+    {
+      "contains": "type_",
+      "specs": [
+        "spec/types.md"
+      ]
+    },
+    {
+      "contains": "types",
+      "specs": [
+        "spec/types.md"
+      ]
+    },
+    {
+      "contains": "ints",
+      "specs": [
+        "spec/types.md"
+      ]
+    },
+    {
+      "contains": "casts",
+      "specs": [
+        "spec/types.md",
+        "spec/pointers.md"
+      ]
+    },
+    {
+      "contains": "enum",
+      "specs": [
+        "spec/types.md",
+        "spec/classes.md"
+      ]
+    },
+    {
+      "contains": "error_handling",
+      "specs": [
+        "spec/control-flow.md",
+        "spec/traits.md"
+      ]
+    },
+    {
+      "contains": "effects",
+      "specs": [
+        "spec/control-flow.md",
+        "spec/traits.md"
+      ]
+    },
+    {
+      "contains": "loop",
+      "specs": [
+        "spec/control-flow.md"
+      ]
+    },
+    {
+      "contains": "for_in",
+      "specs": [
+        "spec/control-flow.md",
+        "spec/traits.md"
+      ]
+    }
+  ]
+}

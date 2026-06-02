@@ -1,0 +1,19 @@
+# Build artifacts
+*.o
+*.c
+*.ll
+*.out
+
+# Gecko build directories
+.gecko/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

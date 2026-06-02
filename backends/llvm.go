@@ -1,3 +1,5 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/generics.md, spec/control-flow.md, spec/operators.md, spec/pointers.md, spec/memory.md, spec/c-interop.md, spec/attributes.md
+
 package backends
 
 import (
@@ -41,7 +43,8 @@ func (b *LLVMBackend) Features() interfaces.FeatureChecker {
 
 func (b *LLVMBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	file := &ast.Ast{
-		Scope: c.SourceFile.PackageName,
+		Scope:      c.SourceFile.PackageName,
+		SourceFile: c.SourceFile.Path,
 	}
 
 	file.Init(errors.NewErrorScope(c.SourceFile.Name, c.SourceFile.Path, c.SourceFile.Content))

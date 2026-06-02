@@ -22,6 +22,9 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Run LLVM-lite contract tests
+        run: go test ./tests/... -v -run "TestLLVMLite"
+
       - name: Run tests
         run: go test ./tests/... -v
 

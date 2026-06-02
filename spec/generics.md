@@ -19,19 +19,17 @@ class Box<T> {
 ## Generic Functions
 
 ```gecko
-func swap<T>(a: T*, b: T*): void {
-    let tmp: T = *a
-    *a = *b
-    *b = tmp
+func first<T>(a: T, b: T): T {
+    return a
 }
 
 // Usage - type inferred:
-let x: int32 = 1
-let y: int32 = 2
-swap(&x, &y)
+let x: int = 1
+let y: int = 2
+let z = first(x, y)
 
 // Or explicit:
-swap<int32>(&x, &y)
+let q = first<int>(x, y)
 ```
 
 ## Generic Classes
@@ -86,6 +84,17 @@ func print_area<T is Shape>(shape: T*): void {
 
 The compiler verifies at instantiation that the concrete type implements the trait.
 
+### Multiple Trait Constraints
+
+Use `&` to require multiple traits:
+
+```gecko
+func render<T is Drawable & Debug>(x: T): void {
+    x.draw()
+    x.debug_print()
+}
+```
+
 ## Monomorphization
 
 Each unique combination of type arguments generates a specialized version:
@@ -123,7 +132,6 @@ let nested: Option<Vec<int32>> = Option<Vec<int32>>::some(Vec<int32>::new())
 
 - No type parameter inference in all contexts
 - No variance annotations (covariance/contravariance)
-- No generic bounds with multiple traits (`T is A + B`)
 - No `where` clauses
 - No const generics (`Array<T, N>` where N is a compile-time integer)
 - No higher-kinded types

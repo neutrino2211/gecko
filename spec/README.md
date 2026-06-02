@@ -22,12 +22,29 @@ This spec documents **what exists**, not aspirational features. Each document no
 | [c-interop.md](c-interop.md) | External declarations, C ABI |
 | [attributes.md](attributes.md) | Compile-time attributes, trait hooks |
 | [stdlib.md](stdlib.md) | Standard library structure and modules |
+| [TODO-implementation-alignment.md](TODO-implementation-alignment.md) | Tracking doc for spec/implementation parity work |
 
 ## Design Principles
 
 1. **Types solve problems** - Use the type system over runtime constructs
 2. **Explicit over implicit** - No prelude, no hidden allocations, no magic
 3. **Hooks over hardcoding** - Compiler provides capabilities, developers wire them up
-4. **Private by default** - Explicit `pub` required for exports
+4. **Private by default** - Explicit `public` required for exports
 5. **C ABI compatibility** - Seamless interop with C libraries
 6. **Freestanding capable** - Core language and stdlib work without libc
+
+## Spec Tags
+
+Source files are tagged with top-of-file comments linking relevant spec docs, for example:
+
+```go
+// spec: spec/traits.md, spec/modules.md
+```
+
+Use:
+
+- `scripts/spec-tags audit` - report missing/mismatched tags
+- `scripts/spec-tags apply` - insert/update tags
+- `scripts/spec-tags check` - CI-friendly verification
+
+Tag mapping rules live in `spec/file-spec-map.json`.

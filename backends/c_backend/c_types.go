@@ -1,3 +1,5 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/generics.md, spec/control-flow.md, spec/operators.md, spec/pointers.md, spec/memory.md, spec/c-interop.md, spec/attributes.md
+
 package cbackend
 
 import (
@@ -34,7 +36,7 @@ type CScopeInformation struct {
 	Includes              []string            // C header includes from cimport
 	CImportLibraries      []string            // Libraries from cimport for pkg-config
 	CurrentFunc           string
-	CurrentFuncReturnType *tokens.TypeRef // Return type of current function for validation
+	CurrentFuncReturnType *tokens.TypeRef   // Return type of current function for validation
 	LocalVars             map[string]string // variable name -> C type
 	ChildContexts         map[string]*CScopeInformation
 	TypeState             *ast.TypeState // Flow-sensitive type state for this scope
@@ -87,6 +89,10 @@ var CProgramValues = &CValuesMap{}
 // TraitDefinitions stores trait token definitions for default implementations
 // Maps trait name (e.g., "Iterator") to its token definition
 var TraitDefinitions = make(map[string]*tokens.Trait)
+
+// TraitDefinitionOrigins stores the defining package for trait declarations.
+// Maps trait name (e.g., "Iterator") to origin package (e.g., "traits").
+var TraitDefinitionOrigins = make(map[string]string)
 
 // EnumToCType maps enum names to their mangled C type names
 // Separate from GeckoToCType to avoid loadPrimitives overwriting enum ASTs

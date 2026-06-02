@@ -18,7 +18,7 @@ stdlib/
 │   └── ops.gecko         # Operator traits (Add, Sub, Eq, etc.)
 ├── collections/
 │   ├── vec.gecko         # Vec<T>
-│   ├── hash.gecko        # HashMap<K,V>, HashSet<T>
+│   ├── slice.gecko       # Slice<T> borrowed views
 │   └── string.gecko      # String type
 ├── memory/
 │   ├── box.gecko         # Box<T> - unique ownership
@@ -26,9 +26,7 @@ stdlib/
 │   ├── weak.gecko        # Weak<T> - weak references
 │   └── raw.gecko         # Raw pointer utilities
 ├── option.gecko          # Option<T>
-├── result.gecko          # Result<T, E>
-├── io.gecko              # I/O primitives (hosted only)
-└── fmt.gecko             # Formatting (hosted only)
+└── result.gecko          # Result<T, E>
 ```
 
 ## Module Descriptions
@@ -43,20 +41,29 @@ public trait Drop {
     func drop(self): void
 }
 
-@clone_hook(.clone)
 public trait Clone {
     func clone(self): Self
 }
 
-@copy_hook(.copy)
 public trait Copy {
-    func copy(self): Self
+}
+
+public trait Tryable<T> {
+    func has_value(self): bool
+    func try_unwrap(self): T
+}
+
+public trait Orable<T> {
+    func unwrap_or(self, default_val: T): T
 }
 
 public trait Default {
     func default_val(): Self
 }
 ```
+
+`Drop` hook integration is implemented.
+`Clone` and `Copy` remain regular traits unless hook support is explicitly enabled in a future release.
 
 **Dependencies:** None (freestanding-compatible)
 
@@ -96,7 +103,7 @@ impl Option<T> {
     public func is_none(self): bool
     public func unwrap(self): T
     public func unwrap_or(self, default: T): T
-    public func map<U>(self, f: func(T): U): Option<U>
+    public func get_or(self, default: T): T
 }
 ```
 
@@ -104,21 +111,22 @@ impl Option<T> {
 
 ### std.result
 
-Error handling type (requires effect typing):
+Error handling type:
 
 ```gecko
 public class Result<T, E> {
+    let value: T
+    let error: E
     let is_ok: bool
-    let ok_value: T
-    let err_value: E
 }
 
 impl Result<T, E> {
     public func ok(val: T): Result<T, E>
     public func err(e: E): Result<T, E>
-    public func is_ok(self): bool
-    public func is_err(self): bool
-    public func unwrap(self): T throws E
+    public func is_success(self): bool
+    public func is_error(self): bool
+    public func unwrap(self): T
+    public func unwrap_err(self): E
     public func unwrap_or(self, default: T): T
 }
 ```
@@ -131,7 +139,7 @@ Dynamic array:
 
 ```gecko
 public class Vec<T> {
-    let data: T*
+    let data: uint64
     let len: uint64
     let cap: uint64
 }
@@ -140,11 +148,13 @@ impl Vec<T> {
     public func new(): Vec<T>
     public func with_capacity(cap: uint64): Vec<T>
     public func push(self, value: T): void
-    public func pop(self): Option<T>
+    public func pop(self): T
     public func get(self, index: uint64): T
-    public func set(self, index: uint64, value: T): void
-    public func len(self): uint64
+    public func set(self, index: uint64, value: T)
+    public func length(self): uint64
     public func is_empty(self): bool
+    public func capacity(self): uint64
+    public func reserve(self, additional: uint64)
     public func clear(self): void
 }
 
@@ -153,7 +163,7 @@ impl Drop for Vec<T> {
 }
 
 impl Index<uint64, T> for Vec<T> {
-    func get(self, i: uint64): T { return self.get(i) }
+    func index(self, i: uint64): T { return self.get(i) }
 }
 ```
 
@@ -165,18 +175,19 @@ Owned string type:
 
 ```gecko
 public class String {
-    let data: uint8*
+    let data: uint64
     let len: uint64
     let cap: uint64
 }
 
 impl String {
     public func new(): String
-    public func from_cstr(s: string): String
-    public func as_cstr(self): string
-    public func push(self, c: uint8): void
-    public func push_str(self, s: string): void
-    public func len(self): uint64
+    public func with_capacity(capacity: uint64): String
+    public func from(literal: string): String
+    public func as_ptr(self): string
+    public func push(self, c: uint8)
+    public func push_str(self, s: string)
+    public func length(self): uint64
 }
 
 impl Drop for String {
@@ -192,13 +203,15 @@ Unique heap ownership:
 
 ```gecko
 public class Box<T> {
-    let ptr: T*
+    let ptr: uint64
 }
 
 impl Box<T> {
     public func new(value: T): Box<T>
-    public func get(self): T*
-    public func into_inner(self): T
+    public func get(self): T
+    public func set(self, value: T)
+    public func as_raw(self): uint64
+    public func into_raw(self): uint64
 }
 
 impl Drop for Box<T> {
@@ -217,15 +230,15 @@ Reference-counted pointer:
 
 ```gecko
 public class Rc<T> {
-    let ptr: T*
-    let count: uint64*
+    let ptr: uint64
 }
 
 impl Rc<T> {
     public func new(value: T): Rc<T>
     public func clone(self): Rc<T>
-    public func get(self): T*
+    public func get(self): T
     public func strong_count(self): uint64
+    public func inner_ptr(self): uint64
 }
 
 impl Drop for Rc<T> {
@@ -241,26 +254,10 @@ impl Drop for Rc<T> {
 
 **Dependencies:** malloc/free (hosted)
 
-### std.io
+### Hosted I/O
 
-I/O primitives (hosted environments only):
-
-```gecko
-declare external func puts(s: string): int32
-declare external func printf(fmt: string, ...): int32
-declare external func getchar(): int32
-
-public func print(s: string): void {
-    puts(s)
-}
-
-public func println(s: string): void {
-    puts(s)
-    puts("\n")
-}
-```
-
-**Dependencies:** libc (hosted only)
+The current stdlib tree does not ship a dedicated `std.io` module.
+Hosted I/O is currently done via C interop declarations (`declare external` + libc functions).
 
 ## Freestanding Support
 
@@ -276,33 +273,3 @@ import std.option use { Option }
 ```
 
 The core modules have zero external dependencies.
-
-## Consolidation Plan
-
-Current state has two directories (`stdlib/` and `std/`). Consolidate into single `stdlib/` with structure above.
-
-### Migration
-
-1. Move `std/` contents into appropriate `stdlib/` subdirectories
-2. Update import paths in examples and tests
-3. Delete `std/` directory
-4. Update compiler default stdlib path
-
-### Files to Consolidate
-
-| Old Location | New Location |
-|--------------|--------------|
-| `std/mem.gecko` | `stdlib/memory/raw.gecko` |
-| `std/io.gecko` | `stdlib/io.gecko` |
-| `std/str.gecko` | `stdlib/collections/string.gecko` |
-| `std/math.gecko` | `stdlib/math.gecko` |
-| `std/types.gecko` | Remove (use stdint types directly) |
-| `stdlib/core.gecko` | Split into `stdlib/core/traits.gecko` + `stdlib/core/ops.gecko` |
-| `stdlib/vec.gecko` | `stdlib/collections/vec.gecko` |
-| `stdlib/string.gecko` | Merge with `stdlib/collections/string.gecko` |
-| `stdlib/box.gecko` | `stdlib/memory/box.gecko` |
-| `stdlib/rc.gecko` | `stdlib/memory/rc.gecko` |
-| `stdlib/weak.gecko` | `stdlib/memory/weak.gecko` |
-| `stdlib/option.gecko` | `stdlib/option.gecko` |
-| `stdlib/ops.gecko` | `stdlib/core/ops.gecko` |
-| `stdlib/raw.gecko` | `stdlib/memory/raw.gecko` |

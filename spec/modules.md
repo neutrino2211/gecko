@@ -6,6 +6,7 @@
 2. **No privileged code** - stdlib is just code, not special
 3. **Private by default** - Explicit `public` required for exports
 4. **Lazy resolution** - Compiler only parses what's actually used
+5. **No vendor search path** - Dependencies are resolved via project deps, not `vendor/`
 
 ## Package Declaration
 
@@ -23,16 +24,16 @@ Dot notation for hierarchical modules:
 
 ```gecko
 import std.collections.vec
-import std.collections.hash use { HashMap }
+import std.collections.string use { String }
 ```
 
 ### Full Module Import
 
 ```gecko
-import std.math
+import std.collections.string
 
 // Access via module prefix:
-let result: float64 = std.math.sqrt(16.0)
+let s = std.collections.string.String::from("hello")
 ```
 
 ### Selective Import
@@ -41,11 +42,11 @@ Import specific symbols into current scope:
 
 ```gecko
 import std.collections.vec use { Vec }
-import std.option use { Option, Some, None }
+import std.option use { Option }
 
 // Use directly without prefix:
 let list: Vec<int32> = Vec<int32>::new()
-let maybe: Option<int32> = Some(42)
+let maybe: Option<int32> = Option<int32>::some(42)
 ```
 
 ### Directory Import
@@ -57,18 +58,19 @@ import std.collections    // imports stdlib/collections/
 
 // Compiler lazily resolves types from the directory:
 let v: Vec<int32> = Vec<int32>::new()      // found in collections/vec.gecko
-let s: HashSet<int32> = HashSet<int32>::new()  // found in collections/hash.gecko
+let s: String = String::from("hello")      // found in collections/string.gecko
 ```
 
-**Important:** Directory imports are NOT recursive. `import std.collections` does not include `std.collections.hash`. The compiler only searches immediate children of the directory.
+**Important:** Directory imports are NOT recursive. The compiler only searches immediate children of the imported directory.
 
 ## Module Resolution
 
 The compiler searches for modules in this order:
 
 1. **Relative:** `./path/to/module.gecko` or `./path/to/module/mod.gecko`
-2. **Stdlib:** `$GECKO_HOME/stdlib/path/to/module.gecko`
-3. **Vendor:** `./vendor/path/to/module.gecko` (future)
+2. **Project root:** `<project-root>/path/to/module.gecko` or `<project-root>/path/to/module/mod.gecko`
+3. **Project deps:** `<project-root>/.gecko/deps/path/to/module.gecko` or `<project-root>/.gecko/deps/path/to/module/mod.gecko`
+4. **Stdlib:** `$GECKO_HOME/std/path/to/module.gecko` (falls back to `$GECKO_HOME/stdlib`)
 
 For dot notation `import a.b.c`:
 - Translates to path `a/b/c.gecko` or `a/b/c/mod.gecko`
@@ -85,8 +87,10 @@ All declarations are **private by default**.
 
 | Modifier | Accessible From |
 |----------|-----------------|
-| (none) | Same module only |
-| `public` | Any importing module |
+| (none) | Current file only |
+| `private` | Current file only |
+| `protected` | Current package |
+| `public` | Any importing package |
 | `external` | Exported with C linkage |
 
 ```gecko
@@ -95,14 +99,14 @@ package mylib
 public class Point {           // exported
     public let x: int32        // field accessible
     public let y: int32
-    let internal: int32     // field private to module
+    let internal: int32     // field private to current file
 }
 
 public func create_point(x: int32, y: int32): Point {  // exported
     return Point { x: x, y: y, internal: 0 }
 }
 
-func helper(): void {       // private to module
+func helper(): void {       // private to current file
     // ...
 }
 ```
@@ -123,17 +127,16 @@ When a type is used but not imported, the compiler:
 3. Suggests possible imports
 
 ```
-error: Unknown type `HashMap`
+error: Unknown type `Vec`
   --> main.gecko:10:12
    |
-10 |     let m: HashMap<string, int32>
-   |            ^^^^^^^
+10 |     let v: Vec<int32>
+   |            ^^^
 
-help: `HashMap` was found in the following modules:
-  - std.collections.hash
-  - vendor.custom_maps
+help: `Vec` was found in the following modules:
+  - std.collections.vec
 
-Consider adding: import std.collections.hash use { HashMap }
+Consider adding: import std.collections.vec use { Vec }
 ```
 
 ## Built-in Types
@@ -144,7 +147,7 @@ Only C integer types from `<stdint.h>` are available without import:
 |------|--------------|
 | `int8`, `int16`, `int32`, `int64` | `int8_t`, etc. |
 | `uint8`, `uint16`, `uint32`, `uint64` | `uint8_t`, etc. |
-| `int`, `uint` | Platform-native `int`, `unsigned int` |
+| `int`, `uint` | `int64_t`, `uint64_t` |
 | `bool` | `_Bool` / `bool` |
 | `void` | `void` |
 | `string` | `const char*` |
@@ -177,15 +180,15 @@ stdlib/
 │   └── ops.gecko         # Operator traits (Add, Sub, etc.)
 ├── collections/
 │   ├── vec.gecko         # Vec<T>
-│   ├── hash.gecko        # HashMap, HashSet
+│   ├── slice.gecko       # Slice<T>
 │   └── string.gecko      # String type
 ├── memory/
 │   ├── box.gecko         # Box<T>
 │   ├── rc.gecko          # Rc<T>
+│   ├── weak.gecko        # Weak<T>
 │   └── raw.gecko         # Raw pointer utilities
 ├── option.gecko          # Option<T>
-├── result.gecko          # Result<T, E>
-└── io.gecko              # I/O (hosted only)
+└── result.gecko          # Result<T, E>
 ```
 
 ## File Organization
@@ -200,9 +203,8 @@ project/
 │   ├── mod.gecko           # package models (re-exports)
 │   ├── user.gecko          # internal
 │   └── post.gecko          # internal
-└── vendor/                 # third-party code
-    └── json/
-        └── mod.gecko
+└── .gecko/
+    └── deps/               # resolved project dependencies
 ```
 
 ## No Re-exports
@@ -214,15 +216,7 @@ Re-exporting imported symbols is not supported. Instead:
 
 This avoids "dot notation hell" where types flow through many re-export layers.
 
-## Circular Imports
+## Circular Imports (Planned)
 
-Circular imports are a compile error:
-
-```
-error: Circular import detected
-  --> a.gecko:1:1
-   |
-   = note: a.gecko -> b.gecko -> a.gecko
-```
-
-Refactor by extracting shared types into a third module.
+Explicit circular import diagnostics are planned.
+Until then, projects should avoid circular import structures and extract shared symbols into a third module.

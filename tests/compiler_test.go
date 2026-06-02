@@ -1,3 +1,5 @@
+// spec: spec/types.md, spec/traits.md, spec/modules.md, spec/scoping.md
+
 package tests
 
 import (
@@ -70,6 +72,8 @@ var compileTests = []compileTest{
 
 	// Inherent implementations
 	{"inherent_impl", "test_sources/compile_tests/inherent_impl/main.gecko", 35, false},
+	{"coherence_local_trait_foreign_type_ok", "test_sources/compile_tests/coherence/trait_impl_local_trait_foreign_type_ok.gecko", 35, false},
+	{"coherence_foreign_trait_local_type_ok", "test_sources/compile_tests/coherence/trait_impl_foreign_trait_local_type_ok.gecko", 21, false},
 
 	// Directory imports with lazy resolution
 	{"directory_imports", "test_sources/compile_tests/directory_imports/main.gecko", 35, false},
@@ -306,6 +310,18 @@ func TestTypeCheckingErrors(t *testing.T) {
 			file:          "test_sources/compile_tests/inherent_impl/duplicate_error.gecko",
 			expectedError: "Duplicate Method",
 			expectedMsg:   "Extensions can only add new methods",
+		},
+		{
+			name:          "coherence_inherent_foreign_type",
+			file:          "test_sources/compile_tests/coherence/inherent_foreign_type_error.gecko",
+			expectedError: "Coherence Error",
+			expectedMsg:   "cannot add inherent impl for foreign type",
+		},
+		{
+			name:          "coherence_trait_impl_foreign_foreign",
+			file:          "test_sources/compile_tests/coherence/trait_impl_foreign_foreign_error.gecko",
+			expectedError: "Coherence Error",
+			expectedMsg:   "orphan impl is not allowed",
 		},
 		{
 			name:          "type_suggestion",

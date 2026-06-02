@@ -1,3 +1,5 @@
+// spec: spec/types.md, spec/modules.md, spec/stdlib.md
+
 package docgen
 
 // DocItem represents a documented item (class, method, field, trait, etc.)

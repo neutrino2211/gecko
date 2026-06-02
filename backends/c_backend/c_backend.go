@@ -1,9 +1,12 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/generics.md, spec/control-flow.md, spec/operators.md, spec/pointers.md, spec/memory.md, spec/c-interop.md, spec/attributes.md
+
 package cbackend
 
 import (
 	"fmt"
 	"strings"
 
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/hooks"
 	"github.com/neutrino2211/gecko/interfaces"
@@ -374,7 +377,7 @@ func (impls *CBackendImplementation) GenerateClassDef(scope *ast.Ast, c *tokens.
 			Scope:        name,
 			Parent:       scope,
 			OriginModule: scope.GetRoot().Scope,
-		SourceFile:   scope.GetSourceFile(),
+			SourceFile:   scope.GetSourceFile(),
 		}
 		classAst.Init(scope.ErrorScope)
 		scope.Classes[name] = classAst
@@ -799,6 +802,11 @@ func (impl *CBackendImplementation) NewImplementation(scope *ast.Ast, i *tokens.
 
 		// Check if the target class is a registered generic class
 		if Generics.IsGenericClass(className) {
+			originModule := Generics.GenericClassOrigins[className]
+			if !impl.validateInherentImplCoherence(scope, className, originModule, i.Pos) {
+				return
+			}
+
 			// Store the impl with the generic class for later instantiation
 			classToken := Generics.GenericClasses[className]
 			if classToken != nil {
@@ -810,6 +818,11 @@ func (impl *CBackendImplementation) NewImplementation(scope *ast.Ast, i *tokens.
 		// Check if i.GetName() is a class (inherent impl) or an arch (arch-specific impl)
 		classOpt := scope.ResolveClass(className)
 		if !classOpt.IsNil() {
+			class := classOpt.Unwrap()
+			if !impl.validateInherentImplCoherence(scope, className, class.GetOriginModule(), i.Pos) {
+				return
+			}
+
 			// If this impl has type params but class is not generic, that's an error
 			if len(typeParams) > 0 {
 				scope.ErrorScope.NewCompileTimeError(
@@ -820,7 +833,7 @@ func (impl *CBackendImplementation) NewImplementation(scope *ast.Ast, i *tokens.
 				return
 			}
 			// `impl ClassName` - inherent implementation (methods on the class itself)
-			impl.CInherentImplementation(scope, i, classOpt.Unwrap())
+			impl.CInherentImplementation(scope, i, class)
 		} else {
 			// Assume it's an arch-specific implementation
 			impl.CImplementationForArch(scope, i)
@@ -877,12 +890,13 @@ func (impl *CBackendImplementation) NewEnum(scope *ast.Ast, e *tokens.Enum) {
 func (impl *CBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait) {
 	// Store trait token for default implementations
 	TraitDefinitions[t.Name] = t
+	TraitDefinitionOrigins[t.Name] = scope.GetRoot().Scope
 
 	// Set up type parameter checking for traits
 	// Include "Self" and the trait's own name as valid type parameters
 	oldIsTypeParameter := tokens.IsTypeParameter
 	typeParams := map[string]bool{
-		"Self":  true,
+		"Self": true,
 		t.Name: true, // Allow trait to reference itself in method signatures
 	}
 	for _, tp := range t.TypeParams {
@@ -1453,6 +1467,73 @@ func (impl *CBackendImplementation) NewLocalVariable(scope *ast.Ast, f *tokens.F
 
 // Helper functions for implementations
 
+func (impl *CBackendImplementation) validateInherentImplCoherence(scope *ast.Ast, className string, classOrigin string, pos lexer.Position) bool {
+	currentPackage := scope.GetRoot().Scope
+	if classOrigin == "" || classOrigin == currentPackage {
+		return true
+	}
+
+	typeName := className
+	if classOrigin != "" {
+		typeName = classOrigin + "." + className
+	}
+
+	scope.ErrorScope.NewCompileTimeError(
+		"Coherence Error",
+		"cannot add inherent impl for foreign type '"+typeName+"'\nhelp: inherent impls are only allowed in the defining package '"+classOrigin+"'",
+		pos,
+	)
+	return false
+}
+
+func (impl *CBackendImplementation) resolveTraitOrigin(scope *ast.Ast, traitName string) string {
+	if origin, ok := TraitDefinitionOrigins[traitName]; ok && origin != "" {
+		return origin
+	}
+
+	traitOpt := scope.ResolveTrait(traitName)
+	if !traitOpt.IsNil() {
+		traitMethods := traitOpt.Unwrap()
+		if traitMethods != nil && len(*traitMethods) > 0 {
+			first := (*traitMethods)[0]
+			if first != nil {
+				return first.GetOriginModule()
+			}
+		}
+	}
+
+	return ""
+}
+
+func (impl *CBackendImplementation) validateTraitImplCoherence(scope *ast.Ast, class *ast.Ast, className string, traitName string, pos lexer.Position) bool {
+	currentPackage := scope.GetRoot().Scope
+	classOrigin := class.GetOriginModule()
+	traitOrigin := impl.resolveTraitOrigin(scope, traitName)
+
+	classLocal := classOrigin == "" || classOrigin == currentPackage
+	traitLocal := traitOrigin == "" || traitOrigin == currentPackage
+	if classLocal || traitLocal {
+		return true
+	}
+
+	typeName := className
+	if classOrigin != "" {
+		typeName = classOrigin + "." + className
+	}
+
+	qualifiedTraitName := traitName
+	if traitOrigin != "" {
+		qualifiedTraitName = traitOrigin + "." + traitName
+	}
+
+	scope.ErrorScope.NewCompileTimeError(
+		"Coherence Error",
+		"orphan impl is not allowed: both trait '"+qualifiedTraitName+"' and type '"+typeName+"' are foreign\nhelp: define a local trait or wrap the foreign type in a local newtype",
+		pos,
+	)
+	return false
+}
+
 func (impl *CBackendImplementation) CImplementationForClass(scope *ast.Ast, i *tokens.Implementation) {
 	className := i.GetFor()
 	typeParams := i.GetTypeParams()
@@ -1460,6 +1541,27 @@ func (impl *CBackendImplementation) CImplementationForClass(scope *ast.Ast, i *t
 	// Check if this is a generic trait impl (impl<T> Trait for GenericClass<T>)
 	// If so, store it with the generic class for later instantiation
 	if len(typeParams) > 0 && Generics.IsGenericClass(className) {
+		originModule := Generics.GenericClassOrigins[className]
+		classLocal := originModule == "" || originModule == scope.GetRoot().Scope
+		traitOrigin := impl.resolveTraitOrigin(scope, i.GetName())
+		traitLocal := traitOrigin == "" || traitOrigin == scope.GetRoot().Scope
+		if !classLocal && !traitLocal {
+			typeName := className
+			if originModule != "" {
+				typeName = originModule + "." + className
+			}
+			qualifiedTraitName := i.GetName()
+			if traitOrigin != "" {
+				qualifiedTraitName = traitOrigin + "." + i.GetName()
+			}
+			scope.ErrorScope.NewCompileTimeError(
+				"Coherence Error",
+				"orphan impl is not allowed: both trait '"+qualifiedTraitName+"' and type '"+typeName+"' are foreign\nhelp: define a local trait or wrap the foreign type in a local newtype",
+				i.Pos,
+			)
+			return
+		}
+
 		classToken := Generics.GenericClasses[className]
 		if classToken != nil {
 			classToken.Implementations = append(classToken.Implementations, i)
@@ -1503,6 +1605,9 @@ func (impl *CBackendImplementation) CImplementationForClass(scope *ast.Ast, i *t
 	class := classOpt.Unwrap()
 	_ = traitOpt.Unwrap() // Validate trait exists (methods come from TraitDefinitions for default impls)
 	traitName := i.GetName()
+	if !impl.validateTraitImplCoherence(scope, class, className, traitName, i.Pos) {
+		return
+	}
 
 	// Build mangled trait name with type arguments (e.g., "Add__Point" for Add<Point>)
 	mangledTraitName := traitName
@@ -1977,13 +2082,14 @@ func (impl *CBackendImplementation) inferMethodCallType(expr *tokens.Expression,
 
 // generateForInLoop handles for-in loop iteration using the Iterator trait
 // for x in collection { ... } desugars to:
-//   {
-//       CollType __iter = collection;
-//       while (CollType__Iterator__has_next(&__iter)) {
-//           ElemType x = CollType__Iterator__next(&__iter);
-//           ...
-//       }
-//   }
+//
+//	{
+//	    CollType __iter = collection;
+//	    while (CollType__Iterator__has_next(&__iter)) {
+//	        ElemType x = CollType__Iterator__next(&__iter);
+//	        ...
+//	    }
+//	}
 func (impl *CBackendImplementation) generateForInLoop(scope *ast.Ast, l *tokens.Loop) {
 	info := CGetScopeInformation(scope)
 	forIn := l.ForIn

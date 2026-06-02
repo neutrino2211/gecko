@@ -7,6 +7,9 @@ The standard library provides memory management primitives for Gecko programs.
 
 ## Packages
 
+### core
+
+
 ### traits
 
 - [**Drop** (trait)](/stdlib/traits-drop/) - Drop - Trait for types that need cleanup when going out of scope.
@@ -29,6 +32,10 @@ The standard library provides memory management primitives for Gecko programs.
 - [**Tryable** (trait)](/stdlib/traits-tryable/) - Tryable<T> - Trait for types that can be "tried" (unwrap or propagate).
 - [**Orable** (trait)](/stdlib/traits-orable/) - Orable<T> - Trait for types that can use `or` for default values.
 
+### box
+
+- [**Box**](/stdlib/box-box/) - Box<T> - Unique ownership smart pointer.
+
 ### memory
 
 
@@ -36,17 +43,9 @@ The standard library provides memory management primitives for Gecko programs.
 
 - [**Raw**](/stdlib/raw-raw/) - Raw<T> - Unsafe pointer wrapper for low-level memory operations.
 
-### rc
+### slice
 
-- [**RcInner**](/stdlib/rc-rcinner/) - Internal structure holding reference counts and value.
-- [**Rc**](/stdlib/rc-rc/) - Rc<T> - Reference Counted Smart Pointer.
-
-### weak
-
-- [**Weak**](/stdlib/weak-weak/) - Weak<T> - Non-owning reference to `Rc<T>` data.
-
-### collections
-
+- [**Slice**](/stdlib/slice-slice/) - 
 
 ### string
 
@@ -59,7 +58,16 @@ The standard library provides memory management primitives for Gecko programs.
 
 - [**Vec**](/stdlib/vec-vec/) - Vec<T> - A growable, heap-allocated array.
 
-### core
+### rc
+
+- [**RcInner**](/stdlib/rc-rcinner/) - Internal structure holding reference counts and value.
+- [**Rc**](/stdlib/rc-rc/) - Rc<T> - Reference Counted Smart Pointer.
+
+### weak
+
+- [**Weak**](/stdlib/weak-weak/) - Weak<T> - Non-owning reference to `Rc<T>` data.
+
+### collections
 
 
 ### ops
@@ -82,14 +90,6 @@ The standard library provides memory management primitives for Gecko programs.
 - [**Le** (trait)](/stdlib/ops-le/) - Le<T> - Trait for the `<=` operator.
 - [**Ge** (trait)](/stdlib/ops-ge/) - Ge<T> - Trait for the `>=` operator.
 
-### box
-
-- [**Box**](/stdlib/box-box/) - Box<T> - Unique ownership smart pointer.
-
 ### std
 
-
-### slice
-
-- [**Slice**](/stdlib/slice-slice/) - 
 

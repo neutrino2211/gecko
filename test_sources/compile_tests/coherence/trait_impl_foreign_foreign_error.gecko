@@ -1,0 +1,18 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/modules.md
+
+package main
+
+import shared
+import std.core.traits use { Clone }
+
+impl Clone for Point {
+    func clone(self): Point {
+        return Point::new(self.sum(), 0)
+    }
+}
+
+external func main(): int32 {
+    let p: Point = Point::new(10, 25)
+    let q: Point = p.clone()
+    return q.sum()
+}

@@ -40,6 +40,7 @@ export default defineConfig({
             { label: 'Generics', slug: 'language/generics' },
             { label: 'Modules & Imports', slug: 'language/modules' },
             { label: 'Hooks', slug: 'language/hooks' },
+            { label: 'Error Handling', slug: 'language/error-handling' },
             { label: 'Enums', slug: 'language/enums' },
             { label: 'Visibility', slug: 'language/visibility' },
             { label: 'Intrinsics', slug: 'language/intrinsics' },

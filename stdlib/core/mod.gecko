@@ -1,3 +1,5 @@
+// spec: spec/types.md, spec/traits.md, spec/modules.md, spec/operators.md, spec/pointers.md, spec/memory.md, spec/stdlib.md
+
 package core
 
 // Core module - re-exports all core traits

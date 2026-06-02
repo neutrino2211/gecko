@@ -19,6 +19,10 @@ build:
 test:
     go test ./tests/... -v
 
+# Run LLVM-lite backend contract tests only
+test-llvm-lite:
+    go test ./tests/... -v -run "TestLLVMLite"
+
 # Run a specific test by name
 test-one name:
     go test ./tests/... -v -run "TestCompileAndRun/{{name}}"
@@ -62,6 +66,18 @@ clean:
 # Run compiler with debug logging
 debug file:
     GECKO_DEBUG=1 go run . compile {{file}}
+
+# Audit source-file spec tags
+spec-tags-audit:
+    scripts/spec-tags audit
+
+# Apply/update source-file spec tags
+spec-tags-apply:
+    scripts/spec-tags apply
+
+# Verify source-file spec tags (CI-friendly)
+spec-tags-check:
+    scripts/spec-tags check
 
 # Format Go code
 fmt:

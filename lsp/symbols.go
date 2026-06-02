@@ -1,3 +1,5 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/generics.md, spec/modules.md, spec/scoping.md
+
 package main
 
 import (
@@ -335,7 +337,7 @@ func lookupVarInEntries(entries []*tokens.Entry, varName string) string {
 
 // inferSimpleType does basic type inference without recursion risk
 func inferSimpleType(expr *tokens.Expression) string {
-	if expr == nil || expr.LogicalOr == nil {
+	if expr == nil || expr.GetLogicalOr() == nil {
 		return ""
 	}
 	primary := getPrimaryFromExpr(expr)
@@ -363,28 +365,29 @@ func inferSimpleType(expr *tokens.Expression) string {
 }
 
 func getPrimaryFromExpr(expr *tokens.Expression) *tokens.Primary {
-	if expr.LogicalOr == nil {
+	lo := expr.GetLogicalOr()
+	if lo == nil {
 		return nil
 	}
-	if expr.LogicalOr.LogicalAnd == nil {
+	if lo.LogicalAnd == nil {
 		return nil
 	}
-	if expr.LogicalOr.LogicalAnd.Equality == nil {
+	if lo.LogicalAnd.Equality == nil {
 		return nil
 	}
-	if expr.LogicalOr.LogicalAnd.Equality.Comparison == nil {
+	if lo.LogicalAnd.Equality.Comparison == nil {
 		return nil
 	}
-	if expr.LogicalOr.LogicalAnd.Equality.Comparison.Addition == nil {
+	if lo.LogicalAnd.Equality.Comparison.Addition == nil {
 		return nil
 	}
-	if expr.LogicalOr.LogicalAnd.Equality.Comparison.Addition.Multiplication == nil {
+	if lo.LogicalAnd.Equality.Comparison.Addition.Multiplication == nil {
 		return nil
 	}
-	if expr.LogicalOr.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary == nil {
+	if lo.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary == nil {
 		return nil
 	}
-	return expr.LogicalOr.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary
+	return lo.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary
 }
 
 func findInEntry(entry *tokens.Entry, name string) *HoverInfo {

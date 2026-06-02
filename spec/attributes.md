@@ -109,13 +109,11 @@ Values: `"c"` (default), `"llvm"`
 
 Hook attributes connect compiler features to user-defined traits. See [Traits](traits.md) for full documentation.
 
-### Lifecycle Hooks
+### Lifecycle Hooks (Implemented)
 
 | Attribute | Purpose | Expected Signature |
 |-----------|---------|-------------------|
 | `@drop_hook(.method)` | Cleanup on scope exit | `func method(self): void` |
-| `@copy_hook(.method)` | Implicit bitwise copy | `func method(self): Self` |
-| `@clone_hook(.method)` | Explicit deep clone | `func method(self): Self` |
 
 ```gecko
 @drop_hook(.drop)
@@ -123,6 +121,13 @@ trait Drop {
     func drop(self): void
 }
 ```
+
+### Lifecycle Hooks (Planned)
+
+| Attribute | Purpose | Expected Signature |
+|-----------|---------|-------------------|
+| `@copy_hook(.method)` | Compiler-guided implicit copy | `func method(self): Self` |
+| `@clone_hook(.method)` | Compiler-guided explicit clone | `func method(self): Self` |
 
 ### Operator Hooks
 
@@ -159,11 +164,19 @@ trait Drop {
 | `@iterator_hook(.next, .has_next)` | iteration | `func next(self): T`, `func has_next(self): bool` |
 | `@into_iterator_hook(.method)` | `for x in y` | `func method(self): Iterator<T>` |
 
+### Error-Handling Hooks
+
+| Attribute | Sugar | Expected Signature |
+|-----------|-------|-------------------|
+| `@try_hook(.has_value, .try_unwrap)` | `try expr` | `func has_value(self): bool`, `func try_unwrap(self): T` |
+| `@or_hook(.unwrap_or)` | `expr or fallback` | `func unwrap_or(self, fallback: T): T` |
+
 ### Hook Rules
 
 1. **One per capability** - Defining a second `@drop_hook` in the same scope is a compile error
 2. **Signature verification** - Compiler checks the trait signature matches expectations
-3. **Module-scoped** - Hooks apply to the defining module and its importers
+3. **Lookup order** - Resolve hooks from local module/imports first; if stdlib is present, std hooks may be used as fallback
+4. **Missing hook behavior** - Hook-dependent sugar is a compile error when no hook is available
 
 ### Example
 

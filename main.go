@@ -1,3 +1,5 @@
+// spec: spec/modules.md, spec/c-interop.md, spec/stdlib.md
+
 package main
 
 import (

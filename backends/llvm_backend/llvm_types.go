@@ -46,3 +46,6 @@ var LLVMStructMap = make(map[string]*LLVMStructInfo)
 // TraitDefinitionOrigins stores the defining package for trait declarations.
 // Maps trait name (e.g., "Iterator") to origin package (e.g., "traits").
 var TraitDefinitionOrigins = make(map[string]string)
+
+// TraitParents stores direct trait inheritance links (child -> parent).
+var TraitParents = make(map[string]string)

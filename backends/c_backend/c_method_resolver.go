@@ -142,9 +142,11 @@ func (r *MethodResolver) ResolveMethod(
 //
 // where T is substituted with a concrete type at monomorphization time.
 // For multiple constraints, it searches to find which trait provides the method.
+// scope is used to select the concrete implemented trait key when inheritance is involved.
 func (r *MethodResolver) ResolveConstrainedGeneric(
 	typeName string,
 	methodName string,
+	scope *ast.Ast,
 ) (string, bool) {
 	if CurrentMonomorphContext == nil {
 		return "", false
@@ -165,6 +167,23 @@ func (r *MethodResolver) ResolveConstrainedGeneric(
 		}
 	}
 
+	// If the concrete type implements a child trait that satisfies the constraint,
+	// we need to use the concrete impl trait key for method mangling.
+	resolvedTraitName := traitName
+	if scope != nil {
+		rootScope := scope.GetRoot()
+		classOpt := rootScope.ResolveClass(concreteType)
+		if !classOpt.IsNil() {
+			class := classOpt.Unwrap()
+			for implementedTraitName := range class.Traits {
+				if TraitMatchesOrExtends(implementedTraitName, traitName) {
+					resolvedTraitName = implementedTraitName
+					break
+				}
+			}
+		}
+	}
+
 	// Build the trait method name: ConcreteType__TraitName__methodName
-	return concreteType + "__" + traitName + "__" + methodName, true
+	return concreteType + "__" + resolvedTraitName + "__" + methodName, true
 }

@@ -591,7 +591,10 @@ func (impl *CBackendImplementation) GenerateMethodDef(scope *ast.Ast, m *tokens.
 	// Process method body
 	if len(m.Value) > 0 {
 		loadPrimitives(&methodScope)
+		prevTypeState := CurrentTypeState
+		CurrentTypeState = mthInfo.TypeState
 		impl.Backend.ProcessEntries(m.Value, &methodScope)
+		CurrentTypeState = prevTypeState
 
 		// Add implicit void return if needed
 		isNaked := tokens.HasAttribute(m.Attributes, "naked")
@@ -638,6 +641,26 @@ func (impl *CBackendImplementation) GenerateClassMethodDef(scope *ast.Ast, class
 		typeParams = classToken.TypeParams
 	}
 	CurrentMonomorphContext = BuildMonomorphContext(typeParams, typeArgs)
+	oldIsTypeParameter := tokens.IsTypeParameter
+	classTypeParams := map[string]bool{}
+	if classToken != nil {
+		classTypeParams[classToken.Name] = true // Allow self-references like Option<T> inside generic class methods
+		for _, tp := range classToken.TypeParams {
+			classTypeParams[tp.Name] = true
+		}
+	}
+	tokens.IsTypeParameter = func(name string) bool {
+		if classTypeParams[name] {
+			return true
+		}
+		if oldIsTypeParameter != nil {
+			return oldIsTypeParameter(name)
+		}
+		return false
+	}
+	defer func() {
+		tokens.IsTypeParameter = oldIsTypeParameter
+	}()
 
 	// Determine return type with substitution
 	returnType := "void"
@@ -732,7 +755,10 @@ func (impl *CBackendImplementation) GenerateClassMethodDef(scope *ast.Ast, class
 	// Process method body
 	if len(m.Value) > 0 {
 		loadPrimitives(&methodScope)
+		prevTypeState := CurrentTypeState
+		CurrentTypeState = mthInfo.TypeState
 		impl.Backend.ProcessEntries(m.Value, &methodScope)
+		CurrentTypeState = prevTypeState
 
 		isNaked := tokens.HasAttribute(m.Attributes, "naked")
 		isNoReturn := tokens.HasAttribute(m.Attributes, "noreturn")
@@ -888,9 +914,54 @@ func (impl *CBackendImplementation) NewEnum(scope *ast.Ast, e *tokens.Enum) {
 
 // NewTrait handles trait definitions
 func (impl *CBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait) {
-	// Store trait token for default implementations
+	// Register early so recursive lookups can resolve this trait while validating inheritance.
+	prevDef, hadPrevDef := TraitDefinitions[t.Name]
+	prevOrigin, hadPrevOrigin := TraitDefinitionOrigins[t.Name]
 	TraitDefinitions[t.Name] = t
 	TraitDefinitionOrigins[t.Name] = scope.GetRoot().Scope
+	restoreOnError := func() {
+		if hadPrevDef {
+			TraitDefinitions[t.Name] = prevDef
+		} else {
+			delete(TraitDefinitions, t.Name)
+		}
+		if hadPrevOrigin {
+			TraitDefinitionOrigins[t.Name] = prevOrigin
+		} else {
+			delete(TraitDefinitionOrigins, t.Name)
+		}
+	}
+
+	// Validate parent trait existence and inheritance cycles.
+	if t.Parent != "" {
+		if t.Parent == t.Name {
+			scope.ErrorScope.NewCompileTimeError(
+				"Trait Inheritance Error",
+				"Trait '"+t.Name+"' cannot inherit from itself",
+				t.Pos,
+			)
+			restoreOnError()
+			return
+		}
+		if _, ok := TraitDefinitions[t.Parent]; !ok && scope.ResolveTrait(t.Parent).IsNil() {
+			scope.ErrorScope.NewCompileTimeError(
+				"Resolution Error",
+				"Could not resolve parent trait '"+t.Parent+"' for trait '"+t.Name+"'",
+				t.Pos,
+			)
+			restoreOnError()
+			return
+		}
+		if TraitExtendsTrait(t.Parent, t.Name) {
+			scope.ErrorScope.NewCompileTimeError(
+				"Trait Inheritance Error",
+				"Circular trait inheritance detected: '"+t.Name+"' and '"+t.Parent+"' depend on each other",
+				t.Pos,
+			)
+			restoreOnError()
+			return
+		}
+	}
 
 	// Set up type parameter checking for traits
 	// Include "Self" and the trait's own name as valid type parameters
@@ -907,8 +978,7 @@ func (impl *CBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait) {
 	}
 	defer func() { tokens.IsTypeParameter = oldIsTypeParameter }()
 
-	// Store trait methods for later implementation
-	mthds := []*ast.Method{}
+	// Validate methods declared directly on this trait.
 	for _, f := range t.Fields {
 		m := f.ToMethodToken()
 
@@ -924,7 +994,23 @@ func (impl *CBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait) {
 			}
 		}
 
-		// Store Gecko type for type checking
+	}
+
+	// Store full trait method set (own + inherited) for implementation checks.
+	allFields, ok := CollectTraitFields(t.Name)
+	if !ok {
+		scope.ErrorScope.NewCompileTimeError(
+			"Trait Inheritance Error",
+			"Could not resolve inherited methods for trait '"+t.Name+"'",
+			t.Pos,
+		)
+		restoreOnError()
+		return
+	}
+
+	mthds := []*ast.Method{}
+	for _, f := range allFields {
+		m := f.ToMethodToken()
 		geckoReturnType := "void"
 		if m.Type != nil {
 			geckoReturnType = m.Type.Type
@@ -1048,7 +1134,10 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 	// Process method body
 	if len(m.Value) > 0 {
 		loadPrimitives(&methodScope)
+		prevTypeState := CurrentTypeState
+		CurrentTypeState = mthInfo.TypeState
 		impl.Backend.ProcessEntries(m.Value, &methodScope)
+		CurrentTypeState = prevTypeState
 
 		if returnType == "void" && !strings.HasSuffix(strings.TrimSpace(mthInfo.Code), "return;") {
 			impl.generateDropCalls(&methodScope, mthInfo)
@@ -1222,7 +1311,10 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 	// Process method body
 	if len(m.Value) > 0 {
 		loadPrimitives(&methodScope)
+		prevTypeState := CurrentTypeState
+		CurrentTypeState = mthInfo.TypeState
 		impl.Backend.ProcessEntries(m.Value, &methodScope)
+		CurrentTypeState = prevTypeState
 
 		// Check if we need to add implicit void return
 		// Don't add return for @naked or @noreturn functions
@@ -1319,6 +1411,11 @@ func (impl *CBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field)
 		f.Type.Check(scope)
 	}
 
+	// Validate explicit initializer type against declared type.
+	if typeWasExplicit && f.Value != nil {
+		impl.CheckVariableInitType(f, scope)
+	}
+
 	// Check for const - either from Type.Const or from Mutability == "const"
 	isConst := (f.Type != nil && f.Type.Const) || f.Mutability == "const"
 
@@ -1364,6 +1461,11 @@ func (impl *CBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field)
 	} else {
 		// Generate local variable declaration
 		impl.NewLocalVariable(scope, f, cType, varName)
+	}
+
+	// Apply move semantics only after RHS codegen has consumed the source.
+	if f.Value != nil {
+		impl.ApplyMoveFromExpression(f.Value, scope)
 	}
 }
 
@@ -1651,7 +1753,17 @@ func (impl *CBackendImplementation) CImplementationForClass(scope *ast.Ast, i *t
 			}
 		}
 
-		for _, f := range traitToken.Fields {
+		traitFields, ok := CollectTraitFields(i.GetName())
+		if !ok {
+			scope.ErrorScope.NewCompileTimeError(
+				"Implementation Error",
+				"Could not resolve inherited methods for trait '"+i.GetName()+"'",
+				i.Pos,
+			)
+			return
+		}
+
+		for _, f := range traitFields {
 			methodName := f.Name
 			isRequired := f.Value == nil || len(f.Value) == 0
 
@@ -2149,11 +2261,27 @@ func (impl *CBackendImplementation) generateForInLoop(scope *ast.Ast, l *tokens.
 	}
 	class := classOpt.Unwrap()
 
-	// Find Iterator trait - look for trait names starting with "Iterator"
+	// Get the iterator hook to find trait and method names.
+	iterHook := hooks.GetHookRegistry().GetHook(scope.GetRoot().Scope, hooks.HookIterator)
+	requiredIteratorTrait := "Iterator"
+	hasNextMethod := "has_next"
+	nextMethod := "next"
+	if iterHook != nil {
+		if iterHook.TraitName != "" {
+			requiredIteratorTrait = iterHook.TraitName
+		}
+		if len(iterHook.Methods) >= 2 {
+			// Hook should define [next, has_next] methods.
+			nextMethod = iterHook.Methods[0]
+			hasNextMethod = iterHook.Methods[1]
+		}
+	}
+
+	// Find a trait implementation that satisfies the iterator requirement.
 	var iteratorTraitName string
 	var elementType string
 	for traitName := range class.Traits {
-		if strings.HasPrefix(traitName, "Iterator") {
+		if TraitMatchesOrExtends(traitName, requiredIteratorTrait) {
 			iteratorTraitName = traitName
 			// Extract element type from Iterator<T>
 			if strings.Contains(traitName, "__") {
@@ -2170,20 +2298,10 @@ func (impl *CBackendImplementation) generateForInLoop(scope *ast.Ast, l *tokens.
 	if iteratorTraitName == "" {
 		scope.ErrorScope.NewCompileTimeError(
 			"Iterator Error",
-			"Type '"+iterTypeName+"' does not implement Iterator trait",
+			"Type '"+iterTypeName+"' does not implement trait '"+requiredIteratorTrait+"'",
 			forIn.Pos,
 		)
 		return
-	}
-
-	// Get the iterator hook to find method names
-	iterHook := hooks.GetHookRegistry().GetHook(scope.GetRoot().Scope, hooks.HookIterator)
-	hasNextMethod := "has_next"
-	nextMethod := "next"
-	if iterHook != nil && len(iterHook.Methods) >= 2 {
-		// Hook should define [next, has_next] methods
-		nextMethod = iterHook.Methods[0]
-		hasNextMethod = iterHook.Methods[1]
 	}
 
 	// Determine element type for the loop variable
@@ -2306,6 +2424,18 @@ func (impl *CBackendImplementation) NewAssignment(scope *ast.Ast, a *tokens.Assi
 
 	value := impl.ExpressionToCString(a.Value, scope)
 
+	applyMoveState := func() {
+		// RHS ownership transfer happens after expression lowering.
+		impl.ApplyMoveFromExpression(a.Value, scope)
+
+		// Direct variable assignment reinitializes the target binding.
+		if a.Field == "" && a.Index == nil && CurrentTypeState != nil {
+			if varOpt := scope.ResolveSymbolAsVariable(a.Name); !varOpt.IsNil() {
+				CurrentTypeState.ClearMoved(varOpt.Unwrap().GetFullName())
+			}
+		}
+	}
+
 	// Handle field assignment (e.g., p.x = value)
 	if a.Field != "" {
 		accessor := "."
@@ -2318,6 +2448,7 @@ func (impl *CBackendImplementation) NewAssignment(scope *ast.Ast, a *tokens.Assi
 		} else {
 			info.Code += fmt.Sprintf("    %s%s%s = %s;\n", varName, accessor, a.Field, value)
 		}
+		applyMoveState()
 		return
 	}
 
@@ -2325,10 +2456,12 @@ func (impl *CBackendImplementation) NewAssignment(scope *ast.Ast, a *tokens.Assi
 	if a.Index != nil {
 		indexStr := impl.ExpressionToCString(a.Index, scope)
 		info.Code += fmt.Sprintf("    %s[%s] = %s;\n", varName, indexStr, value)
+		applyMoveState()
 		return
 	}
 
 	info.Code += fmt.Sprintf("    %s = %s;\n", varName, value)
+	applyMoveState()
 }
 
 // NewAsm handles inline assembly statements

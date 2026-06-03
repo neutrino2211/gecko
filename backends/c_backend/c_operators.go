@@ -5,6 +5,7 @@ package cbackend
 import (
 	"strings"
 
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/tokens"
 )
@@ -43,24 +44,71 @@ var unaryOperatorTraitMap = map[string]OperatorTraitInfo{
 // isPrimitiveType checks if a type name is a primitive type
 func isPrimitiveType(typeName string) bool {
 	primitives := map[string]bool{
-		"int":    true,
-		"int8":   true,
-		"int16":  true,
-		"int32":  true,
-		"int64":  true,
-		"uint":   true,
-		"uint8":  true,
-		"uint16": true,
-		"uint32": true,
-		"uint64": true,
-		"bool":   true,
-		"float":  true,
+		"int":     true,
+		"int8":    true,
+		"int16":   true,
+		"int32":   true,
+		"int64":   true,
+		"uint":    true,
+		"uint8":   true,
+		"uint16":  true,
+		"uint32":  true,
+		"uint64":  true,
+		"bool":    true,
+		"float":   true,
 		"float32": true,
 		"float64": true,
-		"string": true,
-		"void":   true,
+		"string":  true,
+		"void":    true,
 	}
 	return primitives[typeName]
+}
+
+func cloneTypeRefShallow(t *tokens.TypeRef) *tokens.TypeRef {
+	if t == nil {
+		return nil
+	}
+	return &tokens.TypeRef{
+		Array:    t.Array,
+		Size:     t.Size,
+		FuncType: t.FuncType,
+		Module:   t.Module,
+		Type:     t.Type,
+		TypeArgs: t.TypeArgs,
+		Trait:    t.Trait,
+		Const:    t.Const,
+		Volatile: t.Volatile,
+		Pointer:  t.Pointer,
+		NonNull:  t.NonNull,
+	}
+}
+
+// refineTypeWithTypeState upgrades pointer nullability for a symbol if flow analysis
+// has proven it non-null in the current branch.
+func refineTypeWithTypeState(symbol string, baseType *tokens.TypeRef) *tokens.TypeRef {
+	t := cloneTypeRefShallow(baseType)
+	if t == nil || !t.Pointer || t.NonNull || CurrentTypeState == nil {
+		return t
+	}
+	refined := CurrentTypeState.Lookup(symbol)
+	if refined != nil && refined.IsNonNull {
+		t.NonNull = true
+	}
+	return t
+}
+
+func reportUseAfterMoveIfNeeded(scope *ast.Ast, fullVarName string, symbol string, pos lexer.Position) {
+	if CurrentTypeState == nil || scope == nil || scope.ErrorScope == nil {
+		return
+	}
+	if !CurrentTypeState.IsMoved(fullVarName) {
+		return
+	}
+	scope.ErrorScope.NewCompileTimeError(
+		"Move Error",
+		"use after move: '"+symbol+"' has been moved\nhelp: reinitialize '"+symbol+"' before use or use Clone/Rc for shared ownership",
+		pos,
+	)
 }
 
 // GetTypeOfLiteral attempts to determine the type of a literal expression
@@ -113,8 +161,9 @@ func (impl *CBackendImplementation) getBaseLiteralType(l *tokens.Literal, scope 
 			if !varOpt.IsNil() {
 				variable := varOpt.Unwrap()
 				fullName := variable.GetFullName()
+				reportUseAfterMoveIfNeeded(scope, fullName, l.Symbol, l.Pos)
 				if info, ok := (*CProgramValues)[fullName]; ok {
-					currentType = info.GeckoType
+					currentType = refineTypeWithTypeState(l.Symbol, info.GeckoType)
 				}
 			}
 		}
@@ -205,6 +254,7 @@ func (impl *CBackendImplementation) getBaseLiteralType(l *tokens.Literal, scope 
 			if !varOpt.IsNil() {
 				variable := varOpt.Unwrap()
 				fullName := variable.GetFullName()
+				reportUseAfterMoveIfNeeded(scope, fullName, l.SymbolModule, l.Pos)
 				if info, ok := (*CProgramValues)[fullName]; ok && info.GeckoType != nil {
 					typeName := info.GeckoType.Type
 					rootScope := scope.GetRoot()
@@ -226,8 +276,9 @@ func (impl *CBackendImplementation) getBaseLiteralType(l *tokens.Literal, scope 
 			if !varOpt.IsNil() {
 				variable := varOpt.Unwrap()
 				fullName := variable.GetFullName()
+				reportUseAfterMoveIfNeeded(scope, fullName, l.Symbol, l.Pos)
 				if info, ok := (*CProgramValues)[fullName]; ok {
-					return info.GeckoType
+					return refineTypeWithTypeState(l.Symbol, info.GeckoType)
 				}
 			}
 		}
@@ -472,13 +523,7 @@ func (impl *CBackendImplementation) HasOperatorTrait(typeName string, traitName 
 	// Check if the class has this trait implemented
 	// Trait names are mangled as "TraitName__TypeArg" (e.g., "Add__Point")
 	for tName := range class.Traits {
-		// Check exact match or prefix match for generic traits
-		if tName == traitName {
-			return true
-		}
-		// Check if trait name starts with the base trait name followed by "__"
-		prefix := traitName + "__"
-		if len(tName) >= len(prefix) && tName[:len(prefix)] == prefix {
+		if TraitMatchesOrExtends(tName, traitName) {
 			return true
 		}
 	}
@@ -508,11 +553,7 @@ func (impl *CBackendImplementation) GetOperatorTraitName(typeName string, traitN
 
 	// Check if the class has this trait implemented
 	for tName := range class.Traits {
-		if tName == traitName {
-			return tName, true
-		}
-		prefix := traitName + "__"
-		if len(tName) >= len(prefix) && tName[:len(prefix)] == prefix {
+		if TraitMatchesOrExtends(tName, traitName) {
 			return tName, true
 		}
 	}

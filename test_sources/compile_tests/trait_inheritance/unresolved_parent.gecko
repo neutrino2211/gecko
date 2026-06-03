@@ -1,0 +1,5 @@
+package main
+
+trait Child: MissingParent {
+    func value(self): int32
+}

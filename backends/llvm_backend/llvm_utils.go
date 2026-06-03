@@ -360,11 +360,64 @@ func (impl *LLVMBackendImplementation) LLVMTraitGetMethods(t *tokens.Trait) []*t
 }
 
 func (impl *LLVMBackendImplementation) TraitAssignToScope(scope *ast.Ast, t *tokens.Trait) {
-	mthds := []*ast.Method{}
+	// Register parent link first so cycle detection can see the current edge.
+	TraitParents[t.Name] = t.Parent
 
-	for _, m := range impl.LLVMTraitGetMethods(t) {
-		mthds = append(mthds, impl.LLVMGetAstMethod(scope, m))
+	// Validate parent existence and detect simple inheritance cycles.
+	if t.Parent != "" {
+		if scope.ResolveTrait(t.Parent).IsNil() {
+			scope.ErrorScope.NewCompileTimeError(
+				"Resolution Error",
+				"Could not resolve parent trait '"+t.Parent+"' for trait '"+t.Name+"'",
+				t.Pos,
+			)
+			delete(TraitParents, t.Name)
+			return
+		}
+
+		seen := map[string]bool{t.Name: true}
+		current := t.Parent
+		for current != "" {
+			if seen[current] {
+				scope.ErrorScope.NewCompileTimeError(
+					"Trait Inheritance Error",
+					"Circular trait inheritance detected involving '"+t.Name+"'",
+					t.Pos,
+				)
+				delete(TraitParents, t.Name)
+				return
+			}
+			seen[current] = true
+			current = TraitParents[current]
+		}
 	}
+
+	mthds := []*ast.Method{}
+	indexByName := make(map[string]int)
+
+	// Inherit parent methods first.
+	if t.Parent != "" {
+		parentTraitOpt := scope.ResolveTrait(t.Parent)
+		if !parentTraitOpt.IsNil() {
+			parentMethods := parentTraitOpt.Unwrap()
+			for _, method := range *parentMethods {
+				indexByName[method.Name] = len(mthds)
+				mthds = append(mthds, method)
+			}
+		}
+	}
+
+	// Add/override with child methods.
+	for _, m := range impl.LLVMTraitGetMethods(t) {
+		method := impl.LLVMGetAstMethod(scope, m)
+		if idx, exists := indexByName[method.Name]; exists {
+			mthds[idx] = method
+			continue
+		}
+		indexByName[method.Name] = len(mthds)
+		mthds = append(mthds, method)
+	}
+
 	scope.Traits[t.Name] = &mthds
 }
 

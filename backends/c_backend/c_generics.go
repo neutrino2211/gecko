@@ -118,14 +118,8 @@ func (ctx *MonomorphContext) FindTraitWithMethod(paramName string, methodName st
 	}
 
 	for _, traitName := range traits {
-		traitDef, ok := TraitDefinitions[traitName]
-		if !ok {
-			continue
-		}
-		for _, field := range traitDef.Fields {
-			if field.Name == methodName {
-				return traitName
-			}
+		if TraitDefinesMethod(traitName, methodName) {
+			return traitName
 		}
 	}
 	return ""

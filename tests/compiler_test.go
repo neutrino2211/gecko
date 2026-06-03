@@ -146,6 +146,9 @@ var compileTests = []compileTest{
 	// Multiple trait constraints (T is A & B)
 	{"multiple_constraints", "test_sources/compile_tests/multiple_constraints/main.gecko", 31, false},
 
+	// Trait inheritance (trait Child: Parent)
+	{"trait_inheritance", "test_sources/compile_tests/trait_inheritance/main.gecko", 42, false},
+
 	// Circular dependencies - pointer cycles are allowed
 	{"circular_deps_pointer", "test_sources/compile_tests/circular_deps/pointer_cycle.gecko", 0, false},
 
@@ -153,6 +156,9 @@ var compileTests = []compileTest{
 	{"error_handling_or_simple", "test_sources/compile_tests/error_handling_simple/main.gecko", 0, false},
 	{"error_handling_or_generic", "test_sources/compile_tests/error_handling_generic/main.gecko", 0, false},
 	{"error_handling_try_generic", "test_sources/compile_tests/error_handling_try_generic/main.gecko", 0, false},
+
+	// Runtime-checked stdlib FFI boundary constructors
+	{"ffi_runtime_guards", "test_sources/compile_tests/ffi_runtime_guards/main.gecko", 0, false},
 
 	// TODO: Fix these tests
 	// {"integers", "test_sources/compile_tests/ints/int.gecko", 0, false}, // printf declaration issues
@@ -306,6 +312,12 @@ func TestTypeCheckingErrors(t *testing.T) {
 			expectedMsg:   "Cannot reassign constant 'x'",
 		},
 		{
+			name:          "nonnull_init_mismatch",
+			file:          "test_sources/compile_tests/type_checking/nonnull_init_mismatch.gecko",
+			expectedError: "Type Mismatch",
+			expectedMsg:   "Cannot initialize 'safe' of type 'Data*!' with 'Data*'",
+		},
+		{
 			name:          "duplicate_method_in_extension",
 			file:          "test_sources/compile_tests/inherent_impl/duplicate_error.gecko",
 			expectedError: "Duplicate Method",
@@ -372,10 +384,34 @@ func TestTypeCheckingErrors(t *testing.T) {
 			expectedMsg:   "Cannot return 'string' from function expecting 'int32'",
 		},
 		{
+			name:          "return_local_address",
+			file:          "test_sources/compile_tests/type_checking/return_local_address.gecko",
+			expectedError: "Lifetime Error",
+			expectedMsg:   "cannot return address of local variable 'x'",
+		},
+		{
+			name:          "use_after_move",
+			file:          "test_sources/compile_tests/type_checking/use_after_move.gecko",
+			expectedError: "Move Error",
+			expectedMsg:   "use after move: 'a' has been moved",
+		},
+		{
 			name:          "trait_method_conflict",
 			file:          "test_sources/compile_tests/trait_conflicts/conflict.gecko",
 			expectedError: "Trait Method Conflict",
 			expectedMsg:   "do_thing",
+		},
+		{
+			name:          "trait_inheritance_unresolved_parent",
+			file:          "test_sources/compile_tests/trait_inheritance/unresolved_parent.gecko",
+			expectedError: "Resolution Error",
+			expectedMsg:   "Could not resolve parent trait",
+		},
+		{
+			name:          "trait_inheritance_cycle",
+			file:          "test_sources/compile_tests/trait_inheritance/cycle_error.gecko",
+			expectedError: "Trait Inheritance Error",
+			expectedMsg:   "cannot inherit from itself",
 		},
 		{
 			name:          "circular_type_dependency",

@@ -27,6 +27,22 @@ trait Shape {
 }
 ```
 
+## Trait Inheritance
+
+Traits can inherit methods/requirements from a parent trait:
+
+```gecko
+trait Shape {
+    func area(self): int32
+}
+
+trait Drawable: Shape {
+    func draw(self): void
+}
+```
+
+Implementing `Drawable` also satisfies `Shape` constraints.
+
 ## Implementation
 
 ```gecko

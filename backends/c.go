@@ -35,8 +35,12 @@ func (b *CBackend) ProcessEntries(entries []*tokens.Entry, scope *ast.Ast) {
 func (b *CBackend) generateGenericInstantiations(scope *ast.Ast) {
 	impl := b.impls.(*cbackend.CBackendImplementation)
 
-	// Generate class instantiations (struct + methods)
-	for _, inst := range cbackend.Generics.ClassInstantiations {
+	// Generate class instantiations (struct + methods).
+	// Use an index-based queue so nested instantiations requested during codegen
+	// (e.g., Option<Vec<int32>> discovered while generating Vec<int32>) are
+	// processed in the same compilation pass.
+	for i := 0; i < len(cbackend.Generics.ClassInstantiations); i++ {
+		inst := cbackend.Generics.ClassInstantiations[i]
 		classToken, ok := cbackend.Generics.GenericClasses[inst.Name]
 		if !ok {
 			continue
@@ -74,19 +78,21 @@ func (b *CBackend) generateGenericInstantiations(scope *ast.Ast) {
 		}
 	}
 
-	// Generate method instantiations
-	for _, inst := range cbackend.Generics.MethodInstantiations {
+	// Generate method instantiations. Use queue semantics for the same reason as
+	// class instantiations: generation may request additional method monomorphs.
+	for i := 0; i < len(cbackend.Generics.MethodInstantiations); i++ {
+		inst := cbackend.Generics.MethodInstantiations[i]
 		methodToken, ok := cbackend.Generics.GenericMethods[inst.Name]
 		if !ok {
 			continue
 		}
 
-		// Validate trait constraints
-		for i, param := range methodToken.TypeParams {
-			if param.Trait != "" && i < len(inst.TypeArgs) {
-				concreteType := inst.TypeArgs[i]
-				// Remove pointer suffix for class lookup
-				baseType := concreteType
+			// Validate trait constraints
+			for i, param := range methodToken.TypeParams {
+				if len(param.AllTraits()) > 0 && i < len(inst.TypeArgs) {
+					concreteType := inst.TypeArgs[i]
+					// Remove pointer suffix for class lookup
+					baseType := concreteType
 				if len(baseType) > 0 && baseType[len(baseType)-1] == '*' {
 					baseType = baseType[:len(baseType)-1]
 				}
@@ -96,19 +102,27 @@ func (b *CBackend) generateGenericInstantiations(scope *ast.Ast) {
 				}
 
 				// Look up the class and check if it implements the trait
-				classOpt := scope.ResolveClass(baseType)
-				if !classOpt.IsNil() {
-					class := classOpt.Unwrap()
-					_, hasTrait := class.Traits[param.Trait]
-					if !hasTrait {
-						scope.ErrorScope.NewCompileTimeError(
-							"Trait Constraint Error",
-							"Type '"+baseType+"' does not implement trait '"+param.Trait+"' required by type parameter '"+param.Name+"'",
-							lexer.Position{},
-						)
+					classOpt := scope.ResolveClass(baseType)
+					if !classOpt.IsNil() {
+						class := classOpt.Unwrap()
+						for _, requiredTrait := range param.AllTraits() {
+							hasTrait := false
+							for implementedTrait := range class.Traits {
+								if cbackend.TraitMatchesOrExtends(implementedTrait, requiredTrait) {
+									hasTrait = true
+									break
+								}
+							}
+							if !hasTrait {
+								scope.ErrorScope.NewCompileTimeError(
+									"Trait Constraint Error",
+									"Type '"+baseType+"' does not implement trait '"+requiredTrait+"' required by type parameter '"+param.Name+"'",
+									lexer.Position{},
+								)
+							}
+						}
 					}
 				}
-			}
 		}
 
 		impl.GenerateMethodDef(scope, methodToken, inst.FullName, inst.TypeArgs)

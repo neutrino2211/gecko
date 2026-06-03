@@ -176,6 +176,45 @@ trait Add {
 	}
 }
 
+func TestTraitInheritanceParsing(t *testing.T) {
+	code := `package main
+trait Parent {
+    func value(self): int32
+}
+
+trait Child: Parent {
+    func extra(self): int32
+}`
+
+	file, err := parser.Parser.ParseString("test.gecko", code)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	if len(file.Entries) < 2 {
+		t.Fatalf("Expected at least 2 entries, got %d", len(file.Entries))
+	}
+
+	parent := file.Entries[0].Trait
+	if parent == nil || parent.Name != "Parent" {
+		t.Fatalf("First entry should be trait Parent")
+	}
+
+	child := file.Entries[1].Trait
+	if child == nil || child.Name != "Child" {
+		t.Fatalf("Second entry should be trait Child")
+	}
+
+	if child.Parent != "Parent" {
+		t.Fatalf("Expected Child parent to be Parent, got %q", child.Parent)
+	}
+
+	parents := child.AllParents()
+	if len(parents) != 1 || parents[0] != "Parent" {
+		t.Fatalf("Expected AllParents to return [Parent], got %v", parents)
+	}
+}
+
 func TestStringAttributes(t *testing.T) {
 	tests := []struct {
 		name          string

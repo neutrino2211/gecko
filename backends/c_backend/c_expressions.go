@@ -54,13 +54,13 @@ func (impl *CBackendImplementation) OrExpressionToCString(o *tokens.OrExpression
 
 			orHook := hooks.GetHookRegistry().GetHookFromAnyModule(hooks.HookOr)
 			if orHook != nil {
-				_, found := impl.GetOperatorTraitName(typeName, orHook.TraitName, scope)
+				mangledTraitName, found := impl.GetOperatorTraitName(typeName, orHook.TraitName, scope)
 				if found && len(orHook.Methods) > 0 {
 					methodName := orHook.Methods[0]
-
-					// Build the substituted trait name (e.g., Orable__T -> Orable__int32_t)
-					mangledTraitName := orHook.TraitName
-					if len(typeArgStrs) > 0 {
+					// Generic trait impl placeholders are stored with type params (e.g., Orable__T).
+					// Substitute concrete type args for codegen, but keep inherited trait names intact.
+					if len(typeArgStrs) > 0 && traitBaseName(mangledTraitName) == orHook.TraitName {
+						mangledTraitName = orHook.TraitName
 						for _, arg := range typeArgStrs {
 							mangledTraitName += "__" + arg
 						}
@@ -304,9 +304,15 @@ func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, opera
 	}
 
 	// Check if the operand type implements Tryable
-	_, found := impl.GetOperatorTraitName(typeName, tryHook.TraitName, scope)
+	mangledTraitName, found := impl.GetOperatorTraitName(typeName, tryHook.TraitName, scope)
 	if !found {
 		return "", false
+	}
+	if len(typeArgStrs) > 0 && traitBaseName(mangledTraitName) == tryHook.TraitName {
+		mangledTraitName = tryHook.TraitName
+		for _, arg := range typeArgStrs {
+			mangledTraitName += "__" + arg
+		}
 	}
 
 	// Check if the current function's return type implements Tryable
@@ -350,14 +356,6 @@ func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, opera
 	// Build method names: has_value and try_unwrap
 	hasValueMethod := tryHook.Methods[0]  // has_value
 	tryUnwrapMethod := tryHook.Methods[1] // try_unwrap
-
-	// Build the substituted trait name (e.g., Tryable__T -> Tryable__int32_t)
-	mangledTraitName := tryHook.TraitName
-	if len(typeArgStrs) > 0 {
-		for _, arg := range typeArgStrs {
-			mangledTraitName += "__" + arg
-		}
-	}
 
 	// Build method prefix (with or without module prefix for generic types)
 	var methodPrefix string
@@ -433,6 +431,7 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 			structVar := scope.ResolveSymbolAsVariable(l.SymbolModule)
 			if !structVar.IsNil() {
 				variable := structVar.Unwrap()
+				reportUseAfterMoveIfNeeded(scope, variable.GetFullName(), l.SymbolModule, l.Pos)
 				varName := variable.Name
 				if !variable.IsArgument && variable.Parent != scope {
 					varName = variable.GetFullName()
@@ -471,6 +470,7 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 				symbolVariable := scope.ResolveSymbolAsVariable(symbolName)
 				if !symbolVariable.IsNil() {
 					variable := symbolVariable.Unwrap()
+					reportUseAfterMoveIfNeeded(scope, variable.GetFullName(), symbolName, l.Pos)
 					// For local variables and arguments, use just the name (not the full qualified name)
 					if variable.IsArgument || variable.Parent == scope {
 						base = variable.Name
@@ -565,18 +565,16 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 		if indexedTypeName != "" {
 			if classOpt := scope.ResolveClass(indexedTypeName); !classOpt.IsNil() {
 				class := classOpt.Unwrap()
-				// Check for Index trait with any type argument
-				for traitName := range class.Traits {
-					if len(traitName) >= 5 && traitName[:5] == "Index" {
-						// Found Index trait - get the index method from any module (trait may be imported)
-						indexHook := hooks.GetHookRegistry().GetHookFromAnyModule(hooks.HookIndex)
-						if indexHook != nil && len(indexHook.Methods) > 0 {
+				indexHook := hooks.GetHookRegistry().GetHookFromAnyModule(hooks.HookIndex)
+				if indexHook != nil && len(indexHook.Methods) > 0 {
+					for traitName := range class.Traits {
+						if TraitMatchesOrExtends(traitName, indexHook.TraitName) {
 							methodName := indexHook.Methods[0]
 							mangledMethod := indexedTypeName + "__" + traitName + "__" + methodName
 							base = mangledMethod + "(&" + base + ", " + indexExpr + ")"
 							indexed = true
+							break
 						}
-						break
 					}
 				}
 			}
@@ -600,8 +598,8 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 	// Track the current type as we traverse the chain
 	var currentType *tokens.TypeRef
 	var isPointer bool
-	var isModule bool        // Track if base is a module, not a variable
-	var moduleName string    // The module name for module.constant/function patterns
+	var isModule bool     // Track if base is a module, not a variable
+	var moduleName string // The module name for module.constant/function patterns
 
 	// Check if the base symbol is a module or enum (not a variable)
 	if l.Symbol != "" && l.SymbolModule == "" {
@@ -671,6 +669,7 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 			varOpt := scope.ResolveSymbolAsVariable(l.SymbolModule)
 			if !varOpt.IsNil() {
 				variable := varOpt.Unwrap()
+				reportUseAfterMoveIfNeeded(scope, variable.GetFullName(), l.SymbolModule, l.Pos)
 				fullName := variable.GetFullName()
 				if info, ok := (*CProgramValues)[fullName]; ok && info.GeckoType != nil {
 					// Get the class to find the field type
@@ -699,6 +698,7 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 			varOpt := scope.ResolveSymbolAsVariable(symbolName)
 			if !varOpt.IsNil() {
 				variable := varOpt.Unwrap()
+				reportUseAfterMoveIfNeeded(scope, variable.GetFullName(), symbolName, l.Pos)
 				fullName := variable.GetFullName()
 				// First check if the variable itself is a pointer (like self in trait methods)
 				isPointer = variable.IsPointer
@@ -976,6 +976,7 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 		if !varOpt.IsNil() {
 			// It's a variable - check for trait method call
 			variable := varOpt.Unwrap()
+			reportUseAfterMoveIfNeeded(scope, variable.GetFullName(), f.Module, f.Pos)
 			varName := variable.Name
 			if !variable.IsArgument && variable.Parent != scope {
 				varName = variable.GetFullName()
@@ -990,12 +991,11 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 					return code
 				}
 
-
 				typeName := valueInfo.GeckoType.Type
 				resolver := NewMethodResolver(impl)
 
 				// Check if this is a generic type parameter with a trait constraint
-				if constrainedName, ok := resolver.ResolveConstrainedGeneric(typeName, f.Function); ok {
+				if constrainedName, ok := resolver.ResolveConstrainedGeneric(typeName, f.Function, scope); ok {
 					baseFuncName = constrainedName
 					if variable.IsPointer {
 						selfArg = varName

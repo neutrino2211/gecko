@@ -1,0 +1,5 @@
+package main
+
+trait Loop: Loop {
+    func value(self): int32
+}

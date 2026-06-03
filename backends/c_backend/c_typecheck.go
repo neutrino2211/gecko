@@ -17,9 +17,9 @@ type MethodSignature struct {
 	Parameters []*tokens.TypeRef
 	ParamNames []string
 	ReturnType *tokens.TypeRef
-	Throws     *tokens.TypeRef        // Error type that this function can throw
-	IsGeneric  bool                   // True if this is a generic function with type parameters
-	TypeParams []*tokens.TypeParam    // Full type parameters with constraints (e.g., T is Area)
+	Throws     *tokens.TypeRef     // Error type that this function can throw
+	IsGeneric  bool                // True if this is a generic function with type parameters
+	TypeParams []*tokens.TypeParam // Full type parameters with constraints (e.g., T is Area)
 }
 
 // MethodSignatures stores all method signatures for type checking
@@ -81,6 +81,10 @@ func TypesAreCompatible(expected, actual *tokens.TypeRef, scope *ast.Ast) bool {
 
 	// Check for exact match after normalization
 	if expectedNorm == actualNorm && expected.Pointer == actual.Pointer {
+		// Nullability check for pointers: nullable pointer cannot flow into non-null pointer.
+		if expected.Pointer && expected.NonNull && !actual.NonNull {
+			return false
+		}
 		return true
 	}
 
@@ -92,6 +96,10 @@ func TypesAreCompatible(expected, actual *tokens.TypeRef, scope *ast.Ast) bool {
 
 	// Check pointer compatibility
 	if expected.Pointer && actual.Pointer {
+		// Nullability check for pointers: nullable pointer cannot flow into non-null pointer.
+		if expected.NonNull && !actual.NonNull {
+			return false
+		}
 		// void* is compatible with any pointer
 		if expectedNorm == "void" || actualNorm == "void" {
 			return true
@@ -182,18 +190,18 @@ func isTypeParameter(typeName string) bool {
 func normalizeTypeName(t string) string {
 	// Map C types to Gecko types
 	cToGecko := map[string]string{
-		"int64_t":      "int",
-		"int32_t":      "int32",
-		"int16_t":      "int16",
-		"int8_t":       "int8",
-		"uint64_t":     "uint",
-		"uint32_t":     "uint32",
-		"uint16_t":     "uint16",
-		"uint8_t":      "uint8",
-		"double":       "float64",
-		"float":        "float32",
-		"const char*":  "string",
-		"int":          "int", // C's int maps to Gecko's int32, but keep as-is
+		"int64_t":     "int",
+		"int32_t":     "int32",
+		"int16_t":     "int16",
+		"int8_t":      "int8",
+		"uint64_t":    "uint",
+		"uint32_t":    "uint32",
+		"uint16_t":    "uint16",
+		"uint8_t":     "uint8",
+		"double":      "float64",
+		"float":       "float32",
+		"const char*": "string",
+		"int":         "int", // C's int maps to Gecko's int32, but keep as-is
 	}
 
 	if normalized, ok := cToGecko[t]; ok {
@@ -218,6 +226,11 @@ func TypeRefsEqual(a, b *tokens.TypeRef) bool {
 
 	// Check pointer
 	if a.Pointer != b.Pointer {
+		return false
+	}
+
+	// Check non-null pointer modifier
+	if a.NonNull != b.NonNull {
 		return false
 	}
 
@@ -248,6 +261,134 @@ func TypeRefsEqual(a, b *tokens.TypeRef) bool {
 	}
 
 	return true
+}
+
+// CheckVariableInitType validates that a variable initializer matches the declared type.
+func (impl *CBackendImplementation) CheckVariableInitType(f *tokens.Field, scope *ast.Ast) {
+	if f == nil || f.Value == nil || f.Type == nil || scope.ErrorScope == nil {
+		return
+	}
+
+	// For now, enforce initialization checks only for explicit non-null pointer targets.
+	// This preserves existing behavior for complex generic/intrinsic inference paths while
+	// still preventing nullable-to-nonnull flows at declaration sites.
+	expectedType := f.Type
+	if !expectedType.Pointer || !expectedType.NonNull {
+		return
+	}
+
+	actualType := impl.GetTypeOfExpression(f.Value, scope)
+	if actualType == nil {
+		return
+	}
+
+	if !TypesAreCompatible(expectedType, actualType, scope) {
+		scope.ErrorScope.NewCompileTimeError(
+			"Type Mismatch",
+			fmt.Sprintf("Cannot initialize '%s' of type '%s' with '%s'",
+				f.Name, FormatTypeRef(expectedType), FormatTypeRef(actualType)),
+			f.Pos,
+		)
+	}
+}
+
+func (impl *CBackendImplementation) isImplicitCopyTypeForMoves(t *tokens.TypeRef, scope *ast.Ast) bool {
+	if t == nil {
+		return true
+	}
+	// Raw pointers and nullable/non-null pointers are copy-like handles.
+	if t.Pointer {
+		return true
+	}
+
+	normalized := normalizeTypeName(t.Type)
+	switch normalized {
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64", "bool", "string", "void":
+		return true
+	}
+
+	// Keep generic/unknown params permissive in this initial pass to avoid
+	// forcing lifetime markers or breaking polymorphic code.
+	if isTypeParameter(t.Type) || t.Type == "generic" {
+		return true
+	}
+
+	return impl.TypeImplementsTrait(t, "Copy", scope)
+}
+
+func extractPlainSymbolFromExpression(expr *tokens.Expression) (string, bool) {
+	if expr == nil || expr.GetLogicalOr() == nil {
+		return "", false
+	}
+	lo := expr.GetLogicalOr()
+	if lo.Next != nil || lo.LogicalAnd == nil {
+		return "", false
+	}
+	la := lo.LogicalAnd
+	if la.Next != nil || la.Equality == nil {
+		return "", false
+	}
+	eq := la.Equality
+	if eq.Next != nil || eq.Op != "" || eq.Comparison == nil {
+		return "", false
+	}
+	c := eq.Comparison
+	if c.Next != nil || c.Op != "" || c.Addition == nil {
+		return "", false
+	}
+	a := c.Addition
+	if a.Next != nil || a.Op != "" || a.Multiplication == nil {
+		return "", false
+	}
+	m := a.Multiplication
+	if m.Next != nil || m.Op != "" || m.Unary == nil {
+		return "", false
+	}
+	u := m.Unary
+	if u.Op != "" || u.Unary != nil || u.Cast != nil || u.Primary == nil {
+		return "", false
+	}
+	p := u.Primary
+	if p.SubExpression != nil || p.Literal == nil {
+		return "", false
+	}
+	l := p.Literal
+	if l.Symbol == "" || l.SymbolModule != "" || l.IsPointer || l.ArrayIndex != nil || len(l.Chain) > 0 || l.FuncCall != nil || l.Intrinsic != nil {
+		return "", false
+	}
+	return l.Symbol, true
+}
+
+func (impl *CBackendImplementation) ApplyMoveFromExpression(expr *tokens.Expression, scope *ast.Ast) {
+	if CurrentTypeState == nil || expr == nil || scope == nil {
+		return
+	}
+
+	symbol, ok := extractPlainSymbolFromExpression(expr)
+	if !ok {
+		return
+	}
+
+	varOpt := scope.ResolveSymbolAsVariable(symbol)
+	if varOpt.IsNil() {
+		return
+	}
+	v := varOpt.Unwrap()
+	if v.IsGlobal || v.IsExternal {
+		return
+	}
+
+	valueInfo, hasInfo := (*CProgramValues)[v.GetFullName()]
+	if !hasInfo || valueInfo == nil || valueInfo.GeckoType == nil {
+		return
+	}
+	if impl.isImplicitCopyTypeForMoves(valueInfo.GeckoType, scope) {
+		return
+	}
+
+	CurrentTypeState.SetMoved(v.GetFullName())
 }
 
 func isNumericType(t *tokens.TypeRef) bool {
@@ -540,6 +681,26 @@ func (impl *CBackendImplementation) CheckAssignmentType(a *tokens.Assignment, sc
 		rootScope := scope.GetRoot()
 		classOpt := rootScope.ResolveClass(typeName)
 		if classOpt.IsNil() {
+			for _, child := range rootScope.Children {
+				classOpt = child.ResolveClass(typeName)
+				if !classOpt.IsNil() {
+					break
+				}
+			}
+		}
+		if classOpt.IsNil() && strings.Contains(typeName, "__") {
+			baseType := strings.SplitN(typeName, "__", 2)[0]
+			classOpt = rootScope.ResolveClass(baseType)
+			if classOpt.IsNil() {
+				for _, child := range rootScope.Children {
+					classOpt = child.ResolveClass(baseType)
+					if !classOpt.IsNil() {
+						break
+					}
+				}
+			}
+		}
+		if classOpt.IsNil() {
 			TypeCheckError(scope, a.Pos, "field assignment '"+a.Name+"."+a.Field+"'",
 				"cannot resolve type '"+typeName+"'")
 			return
@@ -619,6 +780,10 @@ func (impl *CBackendImplementation) CheckAssignmentType(a *tokens.Assignment, sc
 			a.Pos,
 		)
 	}
+
+	// Move-state updates are applied during assignment code generation after
+	// the RHS expression is consumed. Doing it here is too early and can cause
+	// false positives while lowering the same expression.
 }
 
 // CheckReturnType validates that a return expression matches the function's declared return type
@@ -626,6 +791,8 @@ func (impl *CBackendImplementation) CheckReturnType(expr *tokens.Expression, sco
 	if expr == nil || scope.ErrorScope == nil {
 		return
 	}
+
+	impl.CheckReturnAddressEscape(expr, scope)
 
 	// Walk up scope chain to find the function's return type
 	// Return statements can be nested inside if/while/for blocks
@@ -682,6 +849,139 @@ func (impl *CBackendImplementation) CheckReturnType(expr *tokens.Expression, sco
 			expr.Pos,
 		)
 	}
+}
+
+// CheckReturnAddressEscape prevents returning addresses of local/argument variables.
+// Returning &local or &arg would create a dangling pointer once the function returns.
+func (impl *CBackendImplementation) CheckReturnAddressEscape(expr *tokens.Expression, scope *ast.Ast) {
+	varName, found := findAddressOfLocalSymbolInExpression(expr)
+	if !found || varName == "" {
+		return
+	}
+
+	varOpt := scope.ResolveSymbolAsVariable(varName)
+	if varOpt.IsNil() {
+		return
+	}
+
+	v := varOpt.Unwrap()
+	// Globals and external symbols are allowed to escape by address.
+	if v.IsGlobal || v.IsExternal {
+		return
+	}
+
+	scope.ErrorScope.NewCompileTimeError(
+		"Lifetime Error",
+		fmt.Sprintf("cannot return address of local variable '%s'\nhelp: return an owning type (e.g. Box<T>/Rc<T>) or pass storage from the caller", varName),
+		expr.Pos,
+	)
+}
+
+func findAddressOfLocalSymbolInExpression(expr *tokens.Expression) (string, bool) {
+	if expr == nil || expr.GetLogicalOr() == nil {
+		return "", false
+	}
+	return findAddressOfLocalSymbolInLogicalOr(expr.GetLogicalOr())
+}
+
+func findAddressOfLocalSymbolInLogicalOr(lo *tokens.LogicalOr) (string, bool) {
+	if lo == nil {
+		return "", false
+	}
+	if name, ok := findAddressOfLocalSymbolInLogicalAnd(lo.LogicalAnd); ok {
+		return name, true
+	}
+	return findAddressOfLocalSymbolInLogicalOr(lo.Next)
+}
+
+func findAddressOfLocalSymbolInLogicalAnd(la *tokens.LogicalAnd) (string, bool) {
+	if la == nil {
+		return "", false
+	}
+	if name, ok := findAddressOfLocalSymbolInEquality(la.Equality); ok {
+		return name, true
+	}
+	return findAddressOfLocalSymbolInLogicalAnd(la.Next)
+}
+
+func findAddressOfLocalSymbolInEquality(eq *tokens.Equality) (string, bool) {
+	if eq == nil {
+		return "", false
+	}
+	if name, ok := findAddressOfLocalSymbolInComparison(eq.Comparison); ok {
+		return name, true
+	}
+	return findAddressOfLocalSymbolInEquality(eq.Next)
+}
+
+func findAddressOfLocalSymbolInComparison(c *tokens.Comparison) (string, bool) {
+	if c == nil {
+		return "", false
+	}
+	if name, ok := findAddressOfLocalSymbolInAddition(c.Addition); ok {
+		return name, true
+	}
+	return findAddressOfLocalSymbolInComparison(c.Next)
+}
+
+func findAddressOfLocalSymbolInAddition(a *tokens.Addition) (string, bool) {
+	if a == nil {
+		return "", false
+	}
+	if name, ok := findAddressOfLocalSymbolInMultiplication(a.Multiplication); ok {
+		return name, true
+	}
+	return findAddressOfLocalSymbolInAddition(a.Next)
+}
+
+func findAddressOfLocalSymbolInMultiplication(m *tokens.Multiplication) (string, bool) {
+	if m == nil {
+		return "", false
+	}
+	if name, ok := findAddressOfLocalSymbolInUnary(m.Unary); ok {
+		return name, true
+	}
+	return findAddressOfLocalSymbolInMultiplication(m.Next)
+}
+
+func findAddressOfLocalSymbolInUnary(u *tokens.Unary) (string, bool) {
+	if u == nil {
+		return "", false
+	}
+	if name, ok := findAddressOfLocalSymbolInPrimary(u.Primary); ok {
+		return name, true
+	}
+	return findAddressOfLocalSymbolInUnary(u.Unary)
+}
+
+func findAddressOfLocalSymbolInPrimary(p *tokens.Primary) (string, bool) {
+	if p == nil {
+		return "", false
+	}
+	if name, ok := findAddressOfLocalSymbolInLiteral(p.Literal); ok {
+		return name, true
+	}
+	return findAddressOfLocalSymbolInExpression(p.SubExpression)
+}
+
+func findAddressOfLocalSymbolInLiteral(l *tokens.Literal) (string, bool) {
+	if l == nil {
+		return "", false
+	}
+	// Detect direct &symbol (not &module.symbol or &obj.field/index).
+	if l.IsPointer && l.Symbol != "" && l.SymbolModule == "" && len(l.Chain) == 0 && l.ArrayIndex == nil {
+		return l.Symbol, true
+	}
+
+	// Recurse through intrinsic arguments if present.
+	if l.Intrinsic != nil {
+		for _, arg := range l.Intrinsic.Args {
+			if name, ok := findAddressOfLocalSymbolInExpression(arg); ok {
+				return name, true
+			}
+		}
+	}
+	return "", false
 }
 
 // CheckVoidReturn validates that void return is used in void function
@@ -846,11 +1146,10 @@ func (impl *CBackendImplementation) TypeImplementsTrait(typeRef *tokens.TypeRef,
 
 	class := classOpt.Unwrap()
 
-	// Check if the class has the trait implemented
-	// Traits are stored with mangled names like "TraitName" or "TraitName__TypeArg"
+	// Check if the class has the trait implemented (directly or via trait inheritance).
+	// Traits are stored with mangled names like "TraitName" or "TraitName__TypeArg".
 	for registeredTrait := range class.Traits {
-		// Check for exact match or prefix match (for generic traits)
-		if registeredTrait == traitName || strings.HasPrefix(registeredTrait, traitName+"__") {
+		if TraitMatchesOrExtends(registeredTrait, traitName) {
 			return true
 		}
 	}

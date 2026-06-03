@@ -1,0 +1,35 @@
+package main
+
+trait Shape {
+    func area(self): int32
+}
+
+trait RectangleLike: Shape {
+    func perimeter(self): int32
+}
+
+class Rectangle {
+    let width: int32
+    let height: int32
+}
+
+impl RectangleLike for Rectangle {
+    func area(self): int32 {
+        return self.width * self.height
+    }
+
+    func perimeter(self): int32 {
+        return 2 * (self.width + self.height)
+    }
+}
+
+func assert_shape<T is Shape>(shape: T): void {
+    let area: int32 = shape.area()
+    let _ignore: int32 = area
+}
+
+external func main(): int32 {
+    let rect: Rectangle = Rectangle { width: 6, height: 7 }
+    assert_shape<Rectangle>(rect)
+    return rect.area()
+}

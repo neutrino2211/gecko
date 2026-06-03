@@ -118,10 +118,10 @@ func (i *Import) ModuleName() string {
 
 type Entry struct {
 	baseToken
-	Return         *Expression     `parser:"'return' @@"`
-	VoidReturn     *bool           `parser:"| @'return'"`
-	Break          *bool           `parser:"| @'break'"`
-	Continue       *bool           `parser:"| @'continue'"`
+	Return     *Expression `parser:"'return' @@"`
+	VoidReturn *bool       `parser:"| @'return'"`
+	Break      *bool       `parser:"| @'break'"`
+	Continue   *bool       `parser:"| @'continue'"`
 	// Implementation must come before Assignment to prevent 'impl' being parsed as identifier
 	Implementation *Implementation `parser:"| @@"`
 	Assignment     *Assignment     `parser:"| @@"`
@@ -130,21 +130,21 @@ type Entry struct {
 	If             *If             `parser:"| @@"`
 	// Declarations with optional attributes must come before Intrinsic
 	// so @attr func/class/trait is parsed as declaration, not intrinsic
-	Class          *Class          `parser:"| @@"`
-	Trait          *Trait          `parser:"| @@"`
-	Method         *Method         `parser:"| @@"`
-	Field          *Field          `parser:"| @@"`
-	Declaration    *Declaration    `parser:"| @@"`
-	Enum           *Enum           `parser:"| @@"`
+	Class       *Class       `parser:"| @@"`
+	Trait       *Trait       `parser:"| @@"`
+	Method      *Method      `parser:"| @@"`
+	Field       *Field       `parser:"| @@"`
+	Declaration *Declaration `parser:"| @@"`
+	Enum        *Enum        `parser:"| @@"`
 	// Intrinsic, MethodCall, and FuncCall must come after declarations
 	// MethodCall handles chained calls like self.field.method()
-	Intrinsic      *Intrinsic      `parser:"| @@"`
-	MethodCall     *MethodCall     `parser:"| @@"`
-	FuncCall       *FuncCall       `parser:"| @@"`
-	Loop           *Loop           `parser:"| @@"`
-	CImport        *CImport        `parser:"| @@"`
-	Import         *Import         `parser:"| @@"`
-	Asm            *Asm            `parser:"| @@"`
+	Intrinsic  *Intrinsic  `parser:"| @@"`
+	MethodCall *MethodCall `parser:"| @@"`
+	FuncCall   *FuncCall   `parser:"| @@"`
+	Loop       *Loop       `parser:"| @@"`
+	CImport    *CImport    `parser:"| @@"`
+	Import     *Import     `parser:"| @@"`
+	Asm        *Asm        `parser:"| @@"`
 }
 
 // Generic type parameters
@@ -318,15 +318,25 @@ type Trait struct {
 	Visibility string                 `parser:"[ @'private' | @'public' | @'protected' ]"`
 	Name       string                 `parser:"'trait' @Ident"`
 	TypeParams []*TypeParam           `parser:"[ '<' @@ { ',' @@ } '>' ]"`
+	Parent     string                 `parser:"[ ':' @Ident ]"`
 	Fields     []*ImplementationField `parser:"'{' { @@ } '}'"`
+}
+
+// AllParents returns all inherited trait names.
+func (t *Trait) AllParents() []string {
+	if t == nil || t.Parent == "" {
+		return nil
+	}
+	return []string{t.Parent}
 }
 
 type Implementation struct {
 	baseToken
-	Visibility  string                 `parser:"[ @'private' | @'public' | @'protected' ]"`
-	Default     bool                   `parser:"[ @'default' ]"`
-	Generic     *GenericImpl           `parser:"'impl' ( @@"`
-	NonGeneric  *NonGenericImpl        `parser:"       | @@ )"`
+	DocComment []string        `parser:"{ @DocComment }"`
+	Visibility string          `parser:"[ @'private' | @'public' | @'protected' ]"`
+	Default    bool            `parser:"[ @'default' ]"`
+	Generic    *GenericImpl    `parser:"'impl' ( @@"`
+	NonGeneric *NonGenericImpl `parser:"       | @@ )"`
 }
 
 // GenericImpl handles impl<T> Trait<Args> for Class<Args>
@@ -511,21 +521,21 @@ type FuncType struct {
 
 type Literal struct {
 	baseToken
-	IsPointer    bool              `parser:"[ @'&' ]"`
-	Intrinsic    *Intrinsic        `parser:"( @@"`
-	FuncCall     *FuncCall         `parser:" | @@"`
-	Bool         string            `parser:" | @( 'true' | 'false' )"`
-	String       string            `parser:" | @String"`
+	IsPointer      bool              `parser:"[ @'&' ]"`
+	Intrinsic      *Intrinsic        `parser:"( @@"`
+	FuncCall       *FuncCall         `parser:" | @@"`
+	Bool           string            `parser:" | @( 'true' | 'false' )"`
+	String         string            `parser:" | @String"`
 	StructType     string            `parser:" | ( @Ident"`
-	StructTypeArgs []*TypeRef       `parser:"     [ '<' @@ { ',' @@ } '>' ]"`
+	StructTypeArgs []*TypeRef        `parser:"     [ '<' @@ { ',' @@ } '>' ]"`
 	StructFields   []*ObjectKeyValue `parser:"     '{' [ @@ { ',' @@ } ] '}' )"`
-	SymbolModule string            // Populated during semantic analysis for module.symbol patterns
-	Symbol       string            `parser:" | @Ident"`
-	Number       string            `parser:" | @Number"`
-	Object       []*ObjectKeyValue `parser:" | '{' [ @@ { ',' @@ } ] '}'"`
-	Array        []*Literal        `parser:" | '[' [ @@ { ',' @@ } ] ']' )"`
-	Chain        []*ChainAccess    `parser:"{ @@ }"`
-	ArrayIndex   *Expression       `parser:"[ '[' @@ ']' ]"`
+	SymbolModule   string            // Populated during semantic analysis for module.symbol patterns
+	Symbol         string            `parser:" | @Ident"`
+	Number         string            `parser:" | @Number"`
+	Object         []*ObjectKeyValue `parser:" | '{' [ @@ { ',' @@ } ] '}'"`
+	Array          []*Literal        `parser:" | '[' [ @@ { ',' @@ } ] ']' )"`
+	Chain          []*ChainAccess    `parser:"{ @@ }"`
+	ArrayIndex     *Expression       `parser:"[ '[' @@ ']' ]"`
 }
 
 // ChainAccess represents a chained field or method access: .field or .method()

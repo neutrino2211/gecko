@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What is Gecko
 
@@ -238,11 +238,11 @@ go build -o gecko-lsp ./lsp
 
 ### Not Yet Implemented
 
-- Trait inheritance (`trait Child: Parent`)
+- (none currently tracked in this file)
 
 ## Ground Rules for Development
 
-These rules govern how Codex should approach problems in this codebase:
+These rules govern how Claude should approach problems in this codebase:
 
 1. **HALT on complex problems with easy workarounds**: When encountering a problem that would be complex to solve properly but has an easy shortcut (symlinks, hardcoding, copy-paste), STOP and communicate the issue. Never take shortcuts that mask underlying design problems.
 

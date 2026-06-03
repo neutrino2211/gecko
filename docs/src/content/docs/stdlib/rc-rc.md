@@ -60,6 +60,27 @@ The initial strong count is 1.
 
 **Returns:** `Rc<T>`
 
+### from_inner_checked
+
+```gecko
+func from_inner_checked(inner_ptr: uint64): Option<Rc<T>>
+```
+
+Rebuilds an Rc handle from an existing inner pointer after runtime validation.
+
+FFI-facing invariant checks:
+- pointer must be non-null
+- strong count must be > 0
+- weak count must be >= strong count (current layout invariant)
+
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `inner_ptr` | `uint64` |
+
+**Returns:** `Option<Rc<T>>`
+
 ### is_valid
 
 ```gecko
@@ -177,4 +198,4 @@ Returns the internal pointer for creating `Weak<T>` references.
 
 ---
 
-*Defined in `stdlib/memory/rc.gecko:15`*
+*Defined in `stdlib/memory/rc.gecko:18`*

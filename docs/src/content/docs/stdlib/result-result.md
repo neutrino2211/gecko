@@ -1,29 +1,61 @@
 ---
 title: Result
-description: Result<T, E> - Represents either success or failure
+description: Result<T, E> - Represents either a success (Ok) or failure (Err).
 ---
 
-# Result
-
-`Result<T, E>` represents an operation that can succeed with value `T` or fail with error `E`.
-
-## Import
-
 ```gecko
-import std.result use { Result }
+class Result<T, E>
 ```
 
-## Type Definition
+Result<T, E> - Represents either a success (Ok) or failure (Err).
 
-```gecko
-public class Result<T, E> {
-    let value: T
-    let error: E
-    let is_ok: bool
+Use Result for operations that can fail with a meaningful error type.
+
+Example:
+```
+func divide(a: int32, b: int32): Result<int32, string> {
+    if (b == 0) {
+        return Result<int32, string>::err("division by zero")
+    }
+    return Result<int32, string>::ok(a / b)
 }
+
+// Using try - propagates errors automatically
+func calculate(x: int32): Result<int32, string> {
+    let val = try divide(x, 2)  // Returns early if error
+    return Result<int32, string>::ok(val * 10)
+}
+
+// Using or - provides default on error
+let val = divide(10, 0) or 0  // Returns 0 on error
 ```
 
-## Static Methods
+## Type Parameters
+
+- **T**
+- **E**
+
+## Fields
+
+### value
+
+```gecko
+let value: T
+```
+
+### error
+
+```gecko
+let error: E
+```
+
+### is_ok
+
+```gecko
+let is_ok: bool
+```
+
+## Methods
 
 ### ok
 
@@ -33,6 +65,14 @@ func ok(val: T): Result<T, E>
 
 Creates a success Result containing a value.
 
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `val` | `T` |
+
+**Returns:** `Result<T, E>`
+
 ### err
 
 ```gecko
@@ -41,108 +81,131 @@ func err(e: E): Result<T, E>
 
 Creates an error Result containing an error.
 
-## Instance Methods
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `e` | `E` |
+
+**Returns:** `Result<T, E>`
 
 ### is_success
 
 ```gecko
-func is_success(self): bool
+func is_success(self: void): bool
 ```
 
 Returns true if this Result is Ok.
 
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `self` | `void` |
+
+**Returns:** `bool`
+
 ### is_error
 
 ```gecko
-func is_error(self): bool
+func is_error(self: void): bool
 ```
 
 Returns true if this Result is Err.
 
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `self` | `void` |
+
+**Returns:** `bool`
+
 ### unwrap
 
 ```gecko
-func unwrap(self): T
+func unwrap(self: void): T
 ```
 
-Returns the contained value. Behavior is undefined if the Result is Err.
+Returns the contained value.
+Behavior is undefined if the Result is Err.
+
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `self` | `void` |
+
+**Returns:** `T`
 
 ### unwrap_err
 
 ```gecko
-func unwrap_err(self): E
+func unwrap_err(self: void): E
 ```
 
-Returns the contained error. Behavior is undefined if the Result is Ok.
+Returns the contained error.
+Behavior is undefined if the Result is Ok.
+
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `self` | `void` |
+
+**Returns:** `E`
 
 ### unwrap_or
 
 ```gecko
-func unwrap_or(self, default_val: T): T
+func unwrap_or(self: void, default_val: T): T
 ```
 
 Returns the contained value, or a default if Err.
 
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `self` | `void` |
+| `default_val` | `T` |
+
+**Returns:** `T`
+
 ### map
 
 ```gecko
-func map<U>(self, mapper: func(T): U): Result<U, E>
+func map<U>(self: void, mapper: func(T): U): Result<U, E>
 ```
 
 Maps the success value with a function.
 
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `self` | `void` |
+| `mapper` | `func(T): U` |
+
+**Returns:** `Result<U, E>`
+
 ### map_err
 
 ```gecko
-func map_err<F>(self, mapper: func(E): F): Result<T, F>
+func map_err<F>(self: void, mapper: func(E): F): Result<T, F>
 ```
 
 Maps the error value with a function.
 
-## Trait Implementations
+**Arguments:**
 
-### Tryable<T>
+| Name | Type |
+|------|------|
+| `self` | `void` |
+| `mapper` | `func(E): F` |
 
-Enables `try` keyword for early return on error:
+**Returns:** `Result<T, F>`
 
-```gecko
-func process(): Result<int, string> {
-    let val = try some_operation()  // Early returns if error
-    return Result<int, string>::ok(val * 2)
-}
-```
+---
 
-### Orable<T>
-
-Enables `or` keyword for default values:
-
-```gecko
-let val = some_operation() or 0  // Returns 0 on error
-```
-
-## Example
-
-```gecko
-import std.result use { Result }
-
-func divide(a: int32, b: int32): Result<int32, string> {
-    if (b == 0) {
-        return Result<int32, string>::err("division by zero")
-    }
-    return Result<int32, string>::ok(a / b)
-}
-
-func main(): int {
-    // Explicit handling
-    let result = divide(10, 2)
-    if (result.is_success()) {
-        let val = result.unwrap()
-        // use val
-    }
-    
-    // Using or
-    let safe_val = divide(10, 0) or 0
-    
-    return 0
-}
-```
+*Defined in `stdlib/result.gecko:7`*

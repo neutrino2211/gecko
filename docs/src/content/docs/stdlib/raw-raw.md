@@ -249,4 +249,4 @@ Sets `count` elements at this pointer to zero.
 
 ---
 
-*Defined in `stdlib/memory/raw.gecko:3`*
+*Defined in `stdlib/memory/raw.gecko:5`*

@@ -202,4 +202,4 @@ func get(self: void, index: uint64): uint8
 
 ---
 
-*Defined in `stdlib/collections/string.gecko:313`*
+*Defined in `stdlib/collections/string.gecko:315`*

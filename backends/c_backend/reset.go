@@ -18,6 +18,7 @@ func ResetState() {
 	EnumToCType = make(map[string]string)
 	MethodReturnTypes = make(map[string]*tokens.TypeRef)
 	LastCImportLibraries = nil
+	LastCImportObjects = nil
 
 	CurrentBackend = nil
 	Methods = make(map[string]*ast.Method)

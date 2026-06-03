@@ -80,6 +80,64 @@ Creates a new Vec with the specified initial capacity.
 
 **Returns:** `Vec<T>`
 
+### validate_raw_parts
+
+```gecko
+func validate_raw_parts(data_ptr: uint64, length: uint64, capacity: uint64): bool
+```
+
+Returns true when raw Vec parts satisfy runtime invariants.
+
+FFI-facing invariant checks:
+- len <= cap
+- data must be non-null when cap > 0
+
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `data_ptr` | `uint64` |
+| `length` | `uint64` |
+| `capacity` | `uint64` |
+
+**Returns:** `bool`
+
+### from_raw_checked
+
+```gecko
+func from_raw_checked(data_ptr: uint64, length: uint64, capacity: uint64): Option<Vec<T>>
+```
+
+Creates a Vec from raw parts with runtime checks.
+
+If validation fails, returns None.
+
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `data_ptr` | `uint64` |
+| `length` | `uint64` |
+| `capacity` | `uint64` |
+
+**Returns:** `Option<Vec<T>>`
+
+### is_valid
+
+```gecko
+func is_valid(self: void): bool
+```
+
+Returns true if this Vec instance satisfies raw memory invariants.
+
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `self` | `void` |
+
+**Returns:** `bool`
+
 ### is_empty
 
 ```gecko
@@ -302,4 +360,4 @@ Frees the memory owned by this vector.
 
 ---
 
-*Defined in `stdlib/collections/vec.gecko:10`*
+*Defined in `stdlib/collections/vec.gecko:13`*

@@ -106,12 +106,24 @@ Include C headers directly in your Gecko code:
 // System headers (uses pkg-config for include paths)
 cimport "<stdio.h>"
 cimport "<gtk/gtk.h>" withlibrary "gtk4"
+cimport "swift_bridge.h" withobject "build/swift_bridge.o"
 
 // Local headers
 cimport "myheader.h"
 ```
 
-### With Library (pkg-config)
+`cimport` accepts zero or more native link clauses:
+
+- `withlibrary "pkg-name"`: resolves include/lib flags through `pkg-config`
+- `withobject "path/to/file.o"`: links a specific object file
+
+Both can appear on the same statement:
+
+```gecko
+cimport "swift_bridge.h" withlibrary "swiftlib" withobject "build/swift_bridge.o"
+```
+
+### withlibrary (pkg-config)
 
 The `withlibrary` clause automatically runs `pkg-config` to get include paths and linker flags:
 
@@ -123,6 +135,16 @@ This is equivalent to compiling with:
 ```bash
 gcc $(pkg-config --cflags --libs libadwaita-1) ...
 ```
+
+### withobject (direct object linking)
+
+Use `withobject` when you already have a compiled C-ABI object file:
+
+```gecko
+cimport "mylib.h" withobject "build/mylib.o"
+```
+
+Relative `withobject` paths are resolved from the source file location.
 
 ## Example: File I/O
 

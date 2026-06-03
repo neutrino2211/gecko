@@ -77,6 +77,8 @@ let end: int* = // ...
 let start = @ptr_sub(end, 10)  // 10 elements before end
 ```
 
+Raw pointer arithmetic operators (`ptr + n`, `ptr - n`) are disallowed; use `@ptr_add` / `@ptr_sub` explicitly.
+
 ## Volatile Operations
 
 For memory-mapped I/O and hardware registers:
@@ -119,7 +121,7 @@ Check if a pointer is not null (enables type narrowing):
 ```gecko
 let ptr: int* = // ...
 if @is_not_null(ptr) {
-    // ptr is narrowed to int*! (non-null) in this block
+    // ptr is known to be non-null in this block
     let value = @deref(ptr)
 }
 ```

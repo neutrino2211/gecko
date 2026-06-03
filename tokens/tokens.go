@@ -85,9 +85,36 @@ func (f *File) GetBackend() string {
 
 type CImport struct {
 	baseToken
-	Header      string `parser:"'cimport' @String"`
-	WithObject  string `parser:"[ 'withobject' @String"`
-	WithLibrary string `parser:"| 'withlibrary' @String ]"`
+	Header  string           `parser:"'cimport' @String"`
+	Clauses []*CImportClause `parser:"{ @@ }"`
+}
+
+type CImportClause struct {
+	baseToken
+	WithObject  string `parser:"'withobject' @String"`
+	WithLibrary string `parser:"| 'withlibrary' @String"`
+}
+
+// GetWithObjects returns all withobject values in declaration order.
+func (c *CImport) GetWithObjects() []string {
+	var objects []string
+	for _, clause := range c.Clauses {
+		if clause.WithObject != "" {
+			objects = append(objects, clause.WithObject)
+		}
+	}
+	return objects
+}
+
+// GetWithLibraries returns all withlibrary values in declaration order.
+func (c *CImport) GetWithLibraries() []string {
+	var libs []string
+	for _, clause := range c.Clauses {
+		if clause.WithLibrary != "" {
+			libs = append(libs, clause.WithLibrary)
+		}
+	}
+	return libs
 }
 
 type Import struct {

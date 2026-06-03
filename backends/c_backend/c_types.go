@@ -35,6 +35,7 @@ type CScopeInformation struct {
 	TypeDefs              []string            // typedef declarations for external types
 	Includes              []string            // C header includes from cimport
 	CImportLibraries      []string            // Libraries from cimport for pkg-config
+	CImportObjects        []string            // Objects from cimport for linker input
 	CurrentFunc           string
 	CurrentFuncReturnType *tokens.TypeRef   // Return type of current function for validation
 	LocalVars             map[string]string // variable name -> C type
@@ -83,6 +84,9 @@ var CScopeDataMap = &CScopeData{}
 // This allows the build command to access pkg-config libraries from cimport statements
 var LastCImportLibraries []string
 
+// LastCImportObjects holds object files from the most recent compilation.
+var LastCImportObjects []string
+
 // CProgramValues holds all value info
 var CProgramValues = &CValuesMap{}
 
@@ -127,6 +131,8 @@ func (info *CScopeInformation) Init() {
 	info.StructDefs = make([]*StructDefinition, 0)
 	info.TypeDefs = make([]string, 0)
 	info.Includes = make([]string, 0)
+	info.CImportLibraries = make([]string, 0)
+	info.CImportObjects = make([]string, 0)
 	info.LocalVars = make(map[string]string)
 	info.ChildContexts = make(map[string]*CScopeInformation)
 	info.TypeState = ast.NewTypeState()

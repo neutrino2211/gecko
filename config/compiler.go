@@ -8,6 +8,7 @@ type CompileCfg struct {
 	Arch      string
 	Platform  string
 	Vendor    string
+	TargetKey string
 	CFlags    []string
 	CLFlags   []string
 	CObjects  []string

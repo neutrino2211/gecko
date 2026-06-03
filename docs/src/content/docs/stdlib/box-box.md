@@ -77,6 +77,25 @@ the memory and will free it when dropped.
 
 **Returns:** `Box<T>`
 
+### from_raw_checked
+
+```gecko
+func from_raw_checked(raw_ptr: uint64): Option<Box<T>>
+```
+
+Creates a Box from a raw pointer with runtime validation.
+
+FFI-facing invariant checks:
+- pointer must be non-null
+
+**Arguments:**
+
+| Name | Type |
+|------|------|
+| `raw_ptr` | `uint64` |
+
+**Returns:** `Option<Box<T>>`
+
 ### is_valid
 
 ```gecko
@@ -181,4 +200,4 @@ the Box goes out of scope.
 
 ---
 
-*Defined in `stdlib/memory/box.gecko:8`*
+*Defined in `stdlib/memory/box.gecko:11`*

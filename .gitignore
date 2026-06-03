@@ -20,6 +20,7 @@ gecko-lsp
 # Dependency directories
 # vendor/
 .gecko/
+.gecko_build/
 
 # VS Code extension build artifacts
 editors/vscode/node_modules/
@@ -29,6 +30,7 @@ editors/vscode/*.vsix
 # Example build outputs (compiled binaries)
 examples/*/demo
 examples/*/shapes
+examples/*/main
 examples/*/*.bin
 examples/*/*.iso
 

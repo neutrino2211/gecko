@@ -35,4 +35,4 @@ let value: T
 
 ---
 
-*Defined in `stdlib/memory/rc.gecko:8`*
+*Defined in `stdlib/memory/rc.gecko:11`*

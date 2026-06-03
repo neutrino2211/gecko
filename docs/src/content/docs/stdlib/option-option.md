@@ -26,6 +26,10 @@ let result = find(arr, 42)
 if (result.is_some()) {
     let idx = result.unwrap()
 }
+
+// Using try and or:
+let val = try find(arr, 42)        // Propagates None
+let val2 = find(arr, 42) or 0      // Uses default on None
 ```
 
 ## Type Parameters
@@ -164,4 +168,4 @@ Note: In Gecko, this takes the computed default directly.
 
 ---
 
-*Defined in `stdlib/option.gecko:3`*
+*Defined in `stdlib/option.gecko:7`*

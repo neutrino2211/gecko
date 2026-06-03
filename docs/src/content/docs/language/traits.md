@@ -15,6 +15,22 @@ trait Printable {
 }
 ```
 
+## Trait Inheritance
+
+Traits can inherit required methods and defaults from parent traits:
+
+```gecko
+trait Shape {
+    func area(self): int32
+}
+
+trait RectangleLike: Shape {
+    func perimeter(self): int32
+}
+```
+
+Implementing `RectangleLike` also satisfies `Shape` constraints. Inheritance is transitive (`Top: Middle` and `Middle: Core` means `Top` also includes `Core`).
+
 ## Implementing Traits
 
 Use `impl` to implement a trait for a class:
@@ -31,6 +47,8 @@ impl Printable for Point {
     }
 }
 ```
+
+If an inherited method name is redeclared with a different signature, compilation fails with a trait inheritance error.
 
 ## Generic Traits
 
@@ -51,6 +69,22 @@ impl Add<Point> for Point {
 }
 ```
 
+## Default Methods
+
+Trait methods with bodies are inherited automatically:
+
+```gecko
+trait Counter {
+    func value(self): int32
+
+    func twice(self): int32 {
+        return self.value() * 2
+    }
+}
+```
+
+Implementations only need to provide required methods (the ones without bodies).
+
 ## Trait Constraints
 
 Constrain generic types to require trait implementations:
@@ -61,6 +95,8 @@ func print_twice<T is Printable>(item: T) {
     item.print()
 }
 ```
+
+Constraints against parent traits also work when a type implements a child trait.
 
 ## Operator Overloading
 
@@ -89,13 +125,13 @@ Implement operator traits for custom operators:
 ### Example: Vector Addition
 
 ```gecko
-import core
+import std.core.ops use { Add }
 
 class Vec2 {
-    let x: float64
-    let y: float64
+    let x: int32
+    let y: int32
 
-    func new(x: float64, y: float64): Vec2 {
+    func new(x: int32, y: int32): Vec2 {
         let v: Vec2
         v.x = x
         v.y = y
@@ -110,9 +146,9 @@ impl Add<Vec2> for Vec2 {
 }
 
 // Usage
-let a: Vec2 = Vec2::new(1.0, 2.0)
-let b: Vec2 = Vec2::new(3.0, 4.0)
-let c: Vec2 = a + b  // Vec2 { x: 4.0, y: 6.0 }
+let a: Vec2 = Vec2::new(1, 2)
+let b: Vec2 = Vec2::new(3, 4)
+let c: Vec2 = a + b  // Vec2 { x: 4, y: 6 }
 ```
 
 ## Core Traits

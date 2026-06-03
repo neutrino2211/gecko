@@ -5,6 +5,7 @@ package backends
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/alecthomas/participle/v2/lexer"
@@ -18,6 +19,22 @@ import (
 type CBackend struct {
 	impls    interfaces.BackendCodegenImplementations
 	features *FeatureSet
+}
+
+func dedupeStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := make(map[string]bool, len(values))
+	for _, v := range values {
+		if v == "" {
+			continue
+		}
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
 }
 
 func (b *CBackend) Init() {
@@ -87,12 +104,12 @@ func (b *CBackend) generateGenericInstantiations(scope *ast.Ast) {
 			continue
 		}
 
-			// Validate trait constraints
-			for i, param := range methodToken.TypeParams {
-				if len(param.AllTraits()) > 0 && i < len(inst.TypeArgs) {
-					concreteType := inst.TypeArgs[i]
-					// Remove pointer suffix for class lookup
-					baseType := concreteType
+		// Validate trait constraints
+		for i, param := range methodToken.TypeParams {
+			if len(param.AllTraits()) > 0 && i < len(inst.TypeArgs) {
+				concreteType := inst.TypeArgs[i]
+				// Remove pointer suffix for class lookup
+				baseType := concreteType
 				if len(baseType) > 0 && baseType[len(baseType)-1] == '*' {
 					baseType = baseType[:len(baseType)-1]
 				}
@@ -102,27 +119,27 @@ func (b *CBackend) generateGenericInstantiations(scope *ast.Ast) {
 				}
 
 				// Look up the class and check if it implements the trait
-					classOpt := scope.ResolveClass(baseType)
-					if !classOpt.IsNil() {
-						class := classOpt.Unwrap()
-						for _, requiredTrait := range param.AllTraits() {
-							hasTrait := false
-							for implementedTrait := range class.Traits {
-								if cbackend.TraitMatchesOrExtends(implementedTrait, requiredTrait) {
-									hasTrait = true
-									break
-								}
+				classOpt := scope.ResolveClass(baseType)
+				if !classOpt.IsNil() {
+					class := classOpt.Unwrap()
+					for _, requiredTrait := range param.AllTraits() {
+						hasTrait := false
+						for implementedTrait := range class.Traits {
+							if cbackend.TraitMatchesOrExtends(implementedTrait, requiredTrait) {
+								hasTrait = true
+								break
 							}
-							if !hasTrait {
-								scope.ErrorScope.NewCompileTimeError(
-									"Trait Constraint Error",
-									"Type '"+baseType+"' does not implement trait '"+requiredTrait+"' required by type parameter '"+param.Name+"'",
-									lexer.Position{},
-								)
-							}
+						}
+						if !hasTrait {
+							scope.ErrorScope.NewCompileTimeError(
+								"Trait Constraint Error",
+								"Type '"+baseType+"' does not implement trait '"+requiredTrait+"' required by type parameter '"+param.Name+"'",
+								lexer.Position{},
+							)
 						}
 					}
 				}
+			}
 		}
 
 		impl.GenerateMethodDef(scope, methodToken, inst.FullName, inst.TypeArgs)
@@ -401,7 +418,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 
 	// Collect all import info in dependency order (importScopes is already ordered correctly)
 	// Then prepend the combined import info to main's info
-	var allImportTypeDefs, allImportTypes, allImportDecls, allImportGlobals, allImportFuncs, allImportIncludes []string
+	var allImportTypeDefs, allImportTypes, allImportDecls, allImportGlobals, allImportFuncs, allImportIncludes, allImportObjects []string
 	var allImportStructDefs []*cbackend.StructDefinition
 	var allCImportLibraries []string
 
@@ -415,6 +432,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 		allImportFuncs = append(allImportFuncs, importInfo.Functions...)
 		allImportIncludes = append(allImportIncludes, importInfo.Includes...)
 		allCImportLibraries = append(allCImportLibraries, importInfo.CImportLibraries...)
+		allImportObjects = append(allImportObjects, importInfo.CImportObjects...)
 	}
 
 	// Prepend combined import info so imports come before main
@@ -426,6 +444,17 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	info.Functions = append(allImportFuncs, info.Functions...)
 	info.Includes = append(allImportIncludes, info.Includes...)
 	info.CImportLibraries = append(allCImportLibraries, info.CImportLibraries...)
+	info.CImportObjects = append(allImportObjects, info.CImportObjects...)
+
+	// Append project-level native headers from gecko.toml.
+	if file.Config != nil && file.Config.Project != nil {
+		info.Includes = append(info.Includes, file.Config.Project.GetNativeHeadersForTarget(file.Config.TargetKey)...)
+	}
+
+	// Normalize include/library/object lists while preserving declaration order.
+	info.Includes = dedupeStrings(info.Includes)
+	info.CImportLibraries = dedupeStrings(info.CImportLibraries)
+	info.CImportObjects = dedupeStrings(info.CImportObjects)
 
 	// Check for circular value dependencies (infinite size cycles)
 	cycles := cbackend.DetectCircularValueDependencies(info.StructDefs)
@@ -452,6 +481,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 
 	// Store CImportLibraries for access by build command
 	cbackend.LastCImportLibraries = info.CImportLibraries
+	cbackend.LastCImportObjects = info.CImportObjects
 
 	// Generate C code
 	cCode := generateCCode(info)
@@ -485,12 +515,12 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	}
 
 	if c.Ctx.Bool("ir-only") {
-		// Copy to same directory as source file (not current dir, to avoid Go finding .c files)
-		sourceDir := "."
-		if idx := strings.LastIndex(c.File, "/"); idx != -1 {
-			sourceDir = c.File[:idx]
+		// Copy generated C into project-local artifact directory when available.
+		destFile := c.File + ".c"
+		if c.SourceFile.Config != nil && c.SourceFile.Config.Project != nil {
+			destFile = c.SourceFile.Config.Project.GetArtifactPath(c.File, ".c")
 		}
-		destFile := sourceDir + "/" + c.File[strings.LastIndex(c.File, "/")+1:] + ".c"
+		_ = os.MkdirAll(filepath.Dir(destFile), 0o755)
 
 		cmd := exec.Command("cp", outFile, destFile)
 		streamErr := streamCommand(cmd)
@@ -524,7 +554,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 
 	// Add CFlags from project config (includes pkg-config)
 	if file.Config.Project != nil {
-		if cflags, err := file.Config.Project.GetCFlags(); err == nil {
+		if cflags, err := file.Config.Project.GetCFlagsForTarget(file.Config.TargetKey); err == nil {
 			gccArgs = append(gccArgs, cflags...)
 		}
 	}

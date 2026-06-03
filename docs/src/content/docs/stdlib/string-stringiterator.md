@@ -76,4 +76,4 @@ func has_next(self: void): bool
 
 ---
 
-*Defined in `stdlib/collections/string.gecko:16`*
+*Defined in `stdlib/collections/string.gecko:18`*

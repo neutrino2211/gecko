@@ -19,12 +19,13 @@ The Gecko standard library provides essential types for memory management:
 | **Box\<T\>** | Unique ownership heap allocation |
 | **Rc\<T\>** | Reference-counted shared ownership |
 | **Weak\<T\>** | Non-owning references to Rc data |
+| **Buffer\<T\>** | Typed raw-pointer view for indexed access |
 | **Raw\<T\>** | Unsafe pointer wrapper for low-level operations |
 
 ## Quick Example
 
 ```gecko
-import box
+import std.memory.box use { Box }
 
 let b: Box<int32> = Box<int32>::new(42)
 let val: int32 = b.get()

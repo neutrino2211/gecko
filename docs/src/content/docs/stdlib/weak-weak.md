@@ -191,4 +191,4 @@ the underlying memory allocation is freed.
 
 ---
 
-*Defined in `stdlib/memory/weak.gecko:6`*
+*Defined in `stdlib/memory/weak.gecko:8`*

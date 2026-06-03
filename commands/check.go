@@ -24,15 +24,18 @@ var CheckCommand = &cli.Command{
 			return nil
 		}
 
+		targetKey := resolveTargetKey(ctx, nil)
+
 		for _, pos := range ctx.Args().Slice() {
 			compiler.Compile(pos, &config.CompileCfg{
-				Arch:     ctx.String("target-arch"),
-				Platform: ctx.String("target-platform"),
-				Vendor:   ctx.String("target-vendor"),
-				CFlags:   []string{},
-				CLFlags:  []string{},
-				CObjects: []string{},
-				Ctx:      ctx,
+				Arch:      ctx.String("target-arch"),
+				Platform:  ctx.String("target-platform"),
+				Vendor:    ctx.String("target-vendor"),
+				TargetKey: targetKey,
+				CFlags:    []string{},
+				CLFlags:   []string{},
+				CObjects:  []string{},
+				Ctx:       ctx,
 				CheckOnly: true,
 			})
 		}

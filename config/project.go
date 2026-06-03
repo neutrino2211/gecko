@@ -40,6 +40,7 @@ type BuildConfig struct {
 	CFlags        []string                 `toml:"cflags"`     // Additional C compiler flags
 	LdFlags       []string                 `toml:"ldflags"`    // Additional linker flags
 	Static        bool                     `toml:"static"`     // Link statically
+	Native        *NativeConfig            `toml:"native"`     // Native C ABI integration settings
 	Scripts       *BuildScripts            `toml:"scripts"`    // Build scripts
 }
 
@@ -56,8 +57,21 @@ type BuildProfile struct {
 
 // TargetConfig holds target-specific settings
 type TargetConfig struct {
-	Freestanding bool   `toml:"freestanding"`
-	LinkerScript string `toml:"linker_script"`
+	Freestanding bool          `toml:"freestanding"`
+	LinkerScript string        `toml:"linker_script"`
+	Native       *NativeConfig `toml:"native"` // Target-specific native overrides
+}
+
+// NativeConfig holds C ABI integration settings for headers/libraries/objects.
+type NativeConfig struct {
+	Headers     []string `toml:"headers"`
+	PkgConfig   []string `toml:"pkg_config"`
+	IncludeDirs []string `toml:"include_dirs"`
+	LibDirs     []string `toml:"lib_dirs"`
+	Libs        []string `toml:"libs"`
+	Objects     []string `toml:"objects"`
+	CFlags      []string `toml:"cflags"`
+	LdFlags     []string `toml:"ldflags"`
 }
 
 // Dependency represents a project dependency
@@ -191,6 +205,32 @@ func (c *ProjectConfig) GetDepsDir() string {
 	return filepath.Join(c.ProjectRoot, ".gecko", "deps")
 }
 
+// GetBuildArtifactsDir returns the path to the build artifacts directory.
+func (c *ProjectConfig) GetBuildArtifactsDir() string {
+	return filepath.Join(c.ProjectRoot, ".gecko_build")
+}
+
+// GetArtifactPath returns a deterministic artifact path for a source file.
+// Artifacts are rooted under .gecko_build and preserve the source-relative path.
+func (c *ProjectConfig) GetArtifactPath(sourcePath string, suffix string) string {
+	if c == nil || c.ProjectRoot == "" {
+		return sourcePath + suffix
+	}
+
+	absSource, err := filepath.Abs(sourcePath)
+	if err != nil {
+		absSource = sourcePath
+	}
+
+	rel, relErr := filepath.Rel(c.ProjectRoot, absSource)
+	if relErr != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
+		rel = filepath.Base(absSource)
+	}
+
+	rel = filepath.Clean(rel)
+	return filepath.Join(c.GetBuildArtifactsDir(), rel+suffix)
+}
+
 // GetModuleSearchPaths returns all paths to search for module imports
 func (c *ProjectConfig) GetModuleSearchPaths() []string {
 	paths := []string{
@@ -206,45 +246,219 @@ func (c *ProjectConfig) GetModuleSearchPaths() []string {
 	return paths
 }
 
-// GetCFlags returns all C compiler flags including those from pkg-config
+// GetCFlags returns C compiler flags for the default target.
 func (c *ProjectConfig) GetCFlags() ([]string, error) {
+	return c.GetCFlagsForTarget("")
+}
+
+// GetCFlagsForTarget returns all C compiler flags for a specific target.
+func (c *ProjectConfig) GetCFlagsForTarget(target string) ([]string, error) {
 	var flags []string
 
-	// Add explicit cflags
+	// Base build-level C flags.
 	flags = append(flags, c.Build.CFlags...)
 
-	// Add pkg-config --cflags
-	if len(c.Build.PkgConfig) > 0 {
-		pkgFlags, err := runPkgConfig("--cflags", c.Build.PkgConfig)
+	// Native include dirs and extra C flags.
+	if native := c.mergedNativeConfig(target); native != nil {
+		for _, includeDir := range native.IncludeDirs {
+			includeDir = strings.TrimSpace(includeDir)
+			if includeDir == "" {
+				continue
+			}
+			flags = append(flags, "-I"+c.resolveProjectPath(includeDir))
+		}
+		flags = append(flags, native.CFlags...)
+	}
+
+	// pkg-config flags (build + native).
+	pkgPackages := append([]string{}, c.Build.PkgConfig...)
+	if native := c.mergedNativeConfig(target); native != nil {
+		pkgPackages = append(pkgPackages, native.PkgConfig...)
+	}
+	pkgPackages = dedupeStrings(pkgPackages)
+	if len(pkgPackages) > 0 {
+		pkgFlags, err := runPkgConfig("--cflags", pkgPackages)
 		if err != nil {
 			return nil, err
 		}
 		flags = append(flags, pkgFlags...)
 	}
 
-	return flags, nil
+	return dedupeStrings(flags), nil
 }
 
-// GetLdFlags returns all linker flags including those from pkg-config
+// GetLdFlags returns linker flags for the default target.
 func (c *ProjectConfig) GetLdFlags() ([]string, error) {
+	return c.GetLdFlagsForTarget("", false)
+}
+
+// GetLdFlagsForTarget returns all linker flags for a specific target.
+func (c *ProjectConfig) GetLdFlagsForTarget(target string, staticLink bool) ([]string, error) {
 	var flags []string
 
-	// Add explicit ldflags
+	// Base build-level linker flags.
 	flags = append(flags, c.Build.LdFlags...)
 
-	// Add pkg-config --libs
-	if len(c.Build.PkgConfig) > 0 {
-		pkgFlags, err := runPkgConfig("--libs", c.Build.PkgConfig)
+	// Native linker settings.
+	if native := c.mergedNativeConfig(target); native != nil {
+		for _, libDir := range native.LibDirs {
+			libDir = strings.TrimSpace(libDir)
+			if libDir == "" {
+				continue
+			}
+			flags = append(flags, "-L"+c.resolveProjectPath(libDir))
+		}
+		for _, lib := range native.Libs {
+			lib = strings.TrimSpace(lib)
+			if lib == "" {
+				continue
+			}
+			if strings.HasPrefix(lib, "-") || strings.Contains(lib, "/") {
+				flags = append(flags, lib)
+			} else {
+				flags = append(flags, "-l"+lib)
+			}
+		}
+		flags = append(flags, native.LdFlags...)
+	}
+
+	// pkg-config flags (build + native).
+	pkgPackages := append([]string{}, c.Build.PkgConfig...)
+	if native := c.mergedNativeConfig(target); native != nil {
+		pkgPackages = append(pkgPackages, native.PkgConfig...)
+	}
+	pkgPackages = dedupeStrings(pkgPackages)
+	if len(pkgPackages) > 0 {
+		pkgFlag := "--libs"
+		if staticLink {
+			pkgFlag = "--libs --static"
+		}
+		pkgFlags, err := runPkgConfigWithFlags(pkgFlag, pkgPackages)
 		if err != nil {
 			return nil, err
 		}
 		flags = append(flags, pkgFlags...)
 	}
 
-	return flags, nil
+	return dedupeStrings(flags), nil
 }
 
-// runPkgConfig executes pkg-config with the given flag and packages
+// GetNativeHeadersForTarget returns include directives configured in gecko.toml.
+func (c *ProjectConfig) GetNativeHeadersForTarget(target string) []string {
+	native := c.mergedNativeConfig(target)
+	if native == nil {
+		return nil
+	}
+
+	var includes []string
+	for _, header := range native.Headers {
+		header = strings.TrimSpace(header)
+		if header == "" {
+			continue
+		}
+
+		switch {
+		case strings.HasPrefix(header, "#include "):
+			includes = append(includes, header)
+		case strings.HasPrefix(header, "<") && strings.HasSuffix(header, ">"):
+			includes = append(includes, "#include "+header)
+		case strings.HasPrefix(header, "\"") && strings.HasSuffix(header, "\""):
+			includes = append(includes, "#include "+header)
+		default:
+			includes = append(includes, "#include \""+header+"\"")
+		}
+	}
+
+	return dedupeStrings(includes)
+}
+
+// GetNativeObjectsForTarget returns object file paths configured in gecko.toml.
+func (c *ProjectConfig) GetNativeObjectsForTarget(target string) []string {
+	native := c.mergedNativeConfig(target)
+	if native == nil {
+		return nil
+	}
+
+	var objects []string
+	for _, obj := range native.Objects {
+		obj = strings.TrimSpace(obj)
+		if obj == "" {
+			continue
+		}
+		objects = append(objects, c.resolveProjectPath(obj))
+	}
+
+	return dedupeStrings(objects)
+}
+
+func (c *ProjectConfig) mergedNativeConfig(target string) *NativeConfig {
+	var merged NativeConfig
+
+	if c.Build.Native != nil {
+		merged.Headers = append(merged.Headers, c.Build.Native.Headers...)
+		merged.PkgConfig = append(merged.PkgConfig, c.Build.Native.PkgConfig...)
+		merged.IncludeDirs = append(merged.IncludeDirs, c.Build.Native.IncludeDirs...)
+		merged.LibDirs = append(merged.LibDirs, c.Build.Native.LibDirs...)
+		merged.Libs = append(merged.Libs, c.Build.Native.Libs...)
+		merged.Objects = append(merged.Objects, c.Build.Native.Objects...)
+		merged.CFlags = append(merged.CFlags, c.Build.Native.CFlags...)
+		merged.LdFlags = append(merged.LdFlags, c.Build.Native.LdFlags...)
+	}
+
+	if target == "" {
+		target = c.Build.DefaultTarget
+	}
+	if target != "" && c.Targets != nil {
+		if targetCfg, ok := c.Targets[target]; ok && targetCfg != nil && targetCfg.Native != nil {
+			merged.Headers = append(merged.Headers, targetCfg.Native.Headers...)
+			merged.PkgConfig = append(merged.PkgConfig, targetCfg.Native.PkgConfig...)
+			merged.IncludeDirs = append(merged.IncludeDirs, targetCfg.Native.IncludeDirs...)
+			merged.LibDirs = append(merged.LibDirs, targetCfg.Native.LibDirs...)
+			merged.Libs = append(merged.Libs, targetCfg.Native.Libs...)
+			merged.Objects = append(merged.Objects, targetCfg.Native.Objects...)
+			merged.CFlags = append(merged.CFlags, targetCfg.Native.CFlags...)
+			merged.LdFlags = append(merged.LdFlags, targetCfg.Native.LdFlags...)
+		}
+	}
+
+	if len(merged.Headers) == 0 &&
+		len(merged.PkgConfig) == 0 &&
+		len(merged.IncludeDirs) == 0 &&
+		len(merged.LibDirs) == 0 &&
+		len(merged.Libs) == 0 &&
+		len(merged.Objects) == 0 &&
+		len(merged.CFlags) == 0 &&
+		len(merged.LdFlags) == 0 {
+		return nil
+	}
+
+	return &merged
+}
+
+func (c *ProjectConfig) resolveProjectPath(path string) string {
+	if path == "" || filepath.IsAbs(path) || strings.HasPrefix(path, "$") {
+		return path
+	}
+	return filepath.Join(c.ProjectRoot, path)
+}
+
+func dedupeStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := make(map[string]bool, len(values))
+	for _, v := range values {
+		if v == "" {
+			continue
+		}
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
+}
+
+// runPkgConfig executes pkg-config with the given flag and packages.
 func runPkgConfig(flag string, packages []string) ([]string, error) {
 	args := append([]string{flag}, packages...)
 	cmd := exec.Command("pkg-config", args...)
@@ -262,5 +476,23 @@ func runPkgConfig(flag string, packages []string) ([]string, error) {
 		return nil, nil
 	}
 
+	return strings.Fields(flagStr), nil
+}
+
+// runPkgConfigWithFlags executes pkg-config with multiple flags.
+func runPkgConfigWithFlags(flags string, packages []string) ([]string, error) {
+	args := append(strings.Fields(flags), packages...)
+	cmd := exec.Command("pkg-config", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("pkg-config %s %v failed: %s", flags, packages, string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("pkg-config not found or failed: %w", err)
+	}
+	flagStr := strings.TrimSpace(string(output))
+	if flagStr == "" {
+		return nil, nil
+	}
 	return strings.Fields(flagStr), nil
 }

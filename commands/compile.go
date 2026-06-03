@@ -85,6 +85,82 @@ func copyFileContents(src, dst string) (err error) {
 	return
 }
 
+func resolveTargetKey(ctx *cli.Context, projectCfg *config.ProjectConfig) string {
+	if ctx.IsSet("target-arch") || ctx.IsSet("target-platform") || ctx.IsSet("target-vendor") {
+		arch := ctx.String("target-arch")
+		platform := ctx.String("target-platform")
+		vendor := ctx.String("target-vendor")
+		if arch != "" && platform != "" {
+			if vendor != "" {
+				return arch + "-" + vendor + "-" + platform
+			}
+			return arch + "-" + platform
+		}
+	}
+
+	if projectCfg != nil && projectCfg.Build.DefaultTarget != "" {
+		return projectCfg.Build.DefaultTarget
+	}
+
+	return ""
+}
+
+func dedupeStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := make(map[string]bool, len(values))
+	for _, v := range values {
+		if v == "" {
+			continue
+		}
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
+}
+
+func collectCImportPkgCFlags() []string {
+	if len(cbackend.LastCImportLibraries) == 0 {
+		return nil
+	}
+	var flags []string
+	for _, lib := range dedupeStrings(cbackend.LastCImportLibraries) {
+		if pkgCFlags, err := runPkgConfig("--cflags", []string{lib}); err == nil {
+			flags = append(flags, pkgCFlags...)
+		}
+	}
+	return flags
+}
+
+func collectCImportPkgLibFlags(staticLink bool) []string {
+	if len(cbackend.LastCImportLibraries) == 0 {
+		return nil
+	}
+	pkgFlag := "--libs"
+	if staticLink {
+		pkgFlag = "--libs --static"
+	}
+
+	var flags []string
+	for _, lib := range dedupeStrings(cbackend.LastCImportLibraries) {
+		if pkgLibs, err := runPkgConfigWithFlags(pkgFlag, []string{lib}); err == nil {
+			flags = append(flags, pkgLibs...)
+		}
+	}
+	return flags
+}
+
+func collectObjectInputs(projectCfg *config.ProjectConfig, targetKey string) []string {
+	var objects []string
+	if projectCfg != nil {
+		objects = append(objects, projectCfg.GetNativeObjectsForTarget(targetKey)...)
+	}
+	objects = append(objects, cbackend.LastCImportObjects...)
+	return dedupeStrings(objects)
+}
+
 var CompileCommand = &cli.Command{
 	Name:        "compile",
 	Aliases:     []string{"c"},
@@ -99,6 +175,7 @@ var CompileCommand = &cli.Command{
 
 		// Determine sources to compile
 		var sources []string
+		targetKey := resolveTargetKey(ctx, projectCfg)
 
 		if ctx.Args().Len() > 0 {
 			// Explicit sources provided
@@ -133,18 +210,24 @@ var CompileCommand = &cli.Command{
 
 		for _, pos := range sources {
 			outFile := compiler.Compile(pos, &config.CompileCfg{
-				Arch:     ctx.String("target-arch"),
-				Platform: ctx.String("target-platform"),
-				Vendor:   ctx.String("target-vendor"),
-				CFlags:   []string{},
-				CLFlags:  []string{},
-				CObjects: []string{},
-				Ctx:      ctx,
-				Project:  projectCfg,
+				Arch:      ctx.String("target-arch"),
+				Platform:  ctx.String("target-platform"),
+				Vendor:    ctx.String("target-vendor"),
+				TargetKey: targetKey,
+				CFlags:    []string{},
+				CLFlags:   []string{},
+				CObjects:  []string{},
+				Ctx:       ctx,
+				Project:   projectCfg,
 			})
 
 			if outFile != "" {
-				CopyFile(outFile, pos+".o")
+				destObj := pos + ".o"
+				if projectCfg != nil {
+					destObj = projectCfg.GetArtifactPath(pos, ".o")
+				}
+				_ = os.MkdirAll(filepath.Dir(destObj), 0o755)
+				CopyFile(outFile, destObj)
 			}
 		}
 
@@ -262,6 +345,8 @@ var commonFlags = []cli.Flag{
 
 // compileToC compiles a gecko file to C and returns the C file path
 func compileToC(ctx *cli.Context, source string, projectCfg *config.ProjectConfig) (string, error) {
+	targetKey := resolveTargetKey(ctx, projectCfg)
+
 	// Collect CFlags from CLI
 	cflags := ctx.StringSlice("cflags")
 
@@ -275,20 +360,22 @@ func compileToC(ctx *cli.Context, source string, projectCfg *config.ProjectConfi
 
 	// Create a modified context with ir-only set
 	compiler.Compile(source, &config.CompileCfg{
-		Arch:     ctx.String("target-arch"),
-		Platform: ctx.String("target-platform"),
-		Vendor:   ctx.String("target-vendor"),
-		CFlags:   cflags,
-		CLFlags:  ctx.StringSlice("ldflags"),
-		CObjects: []string{},
-		Ctx:      ctx,
-		Project:  projectCfg,
+		Arch:      ctx.String("target-arch"),
+		Platform:  ctx.String("target-platform"),
+		Vendor:    ctx.String("target-vendor"),
+		TargetKey: targetKey,
+		CFlags:    cflags,
+		CLFlags:   ctx.StringSlice("ldflags"),
+		CObjects:  []string{},
+		Ctx:       ctx,
+		Project:   projectCfg,
 	})
 
-	// The C file is generated next to the source
-	sourceDir := filepath.Dir(source)
-	sourceName := filepath.Base(source)
-	cFile := filepath.Join(sourceDir, sourceName+".c")
+	// The generated C file location follows project artifact layout when available.
+	cFile := source + ".c"
+	if projectCfg != nil {
+		cFile = projectCfg.GetArtifactPath(source, ".c")
+	}
 
 	return cFile, nil
 }
@@ -390,12 +477,12 @@ var BuildCommand = &cli.Command{
 			}
 		}
 
-		// Compile C to executable with gcc
-		gccArgs := []string{"-o", output, cFile}
+		targetKey := resolveTargetKey(ctx, projectCfg)
 
 		// Add optimization based on --release flag or profile
+		var gccArgs []string
 		if ctx.Bool("release") {
-			gccArgs = append([]string{"-O2"}, gccArgs...)
+			gccArgs = append(gccArgs, "-O2")
 		}
 
 		// Check for static linking (CLI flag or project config)
@@ -404,62 +491,49 @@ var BuildCommand = &cli.Command{
 			isStatic = true
 		}
 		if isStatic {
-			gccArgs = append([]string{"-static"}, gccArgs...)
+			gccArgs = append(gccArgs, "-static")
 		}
 
-		// Add pkg-config --cflags for cimport libraries (for include paths)
-		if len(cbackend.LastCImportLibraries) > 0 {
-			// Deduplicate libraries
-			libSet := make(map[string]bool)
-			for _, lib := range cbackend.LastCImportLibraries {
-				libSet[lib] = true
-			}
-			for lib := range libSet {
-				if pkgCFlags, err := runPkgConfig("--cflags", []string{lib}); err == nil {
-					gccArgs = append(pkgCFlags, gccArgs...)
-				}
-			}
-		}
-
-		// Add linker flags from CLI
-		ldflags := ctx.StringSlice("ldflags")
-
-		// Determine pkg-config flags (use --static for static linking)
-		pkgConfigLibsFlag := "--libs"
-		if isStatic {
-			pkgConfigLibsFlag = "--libs --static"
-		}
-
-		// Add pkg-config --libs if specified via CLI
+		// Add compile flags from CLI + project + cimport pkg-config libraries.
+		cflags := ctx.StringSlice("cflags")
 		pkgConfigPkgs := ctx.StringSlice("pkg-config")
 		if len(pkgConfigPkgs) > 0 {
-			if pkgLibs, err := runPkgConfigWithFlags(pkgConfigLibsFlag, pkgConfigPkgs); err == nil {
+			if pkgCFlags, err := runPkgConfig("--cflags", pkgConfigPkgs); err == nil {
+				cflags = append(cflags, pkgCFlags...)
+			}
+		}
+		if projectCfg != nil {
+			if projCFlags, err := projectCfg.GetCFlagsForTarget(targetKey); err == nil {
+				cflags = append(cflags, projCFlags...)
+			}
+		}
+		cflags = append(cflags, collectCImportPkgCFlags()...)
+		gccArgs = append(gccArgs, dedupeStrings(cflags)...)
+
+		// Add linker flags from CLI + project + cimport pkg-config libraries.
+		ldflags := ctx.StringSlice("ldflags")
+		if len(pkgConfigPkgs) > 0 {
+			pkgLibsFlag := "--libs"
+			if isStatic {
+				pkgLibsFlag = "--libs --static"
+			}
+			if pkgLibs, err := runPkgConfigWithFlags(pkgLibsFlag, pkgConfigPkgs); err == nil {
 				ldflags = append(ldflags, pkgLibs...)
 			}
 		}
-
-		// Add linker flags from project config
 		if projectCfg != nil {
-			if projLdFlags, err := projectCfg.GetLdFlags(); err == nil {
+			if projLdFlags, err := projectCfg.GetLdFlagsForTarget(targetKey, isStatic); err == nil {
 				ldflags = append(ldflags, projLdFlags...)
 			}
 		}
+		ldflags = append(ldflags, collectCImportPkgLibFlags(isStatic)...)
 
-		// Add pkg-config --libs for cimport libraries (for linking)
-		if len(cbackend.LastCImportLibraries) > 0 {
-			libSet := make(map[string]bool)
-			for _, lib := range cbackend.LastCImportLibraries {
-				libSet[lib] = true
-			}
-			for lib := range libSet {
-				if pkgLibs, err := runPkgConfigWithFlags(pkgConfigLibsFlag, []string{lib}); err == nil {
-					ldflags = append(ldflags, pkgLibs...)
-				}
-			}
-		}
+		// Compile C source and link additional object inputs.
+		gccArgs = append(gccArgs, "-o", output, cFile)
+		gccArgs = append(gccArgs, collectObjectInputs(projectCfg, targetKey)...)
 
-		// Append linker flags after the source file
-		gccArgs = append(gccArgs, ldflags...)
+		// Append linker flags after source/object inputs.
+		gccArgs = append(gccArgs, dedupeStrings(ldflags)...)
 
 		cmd := exec.Command("gcc", gccArgs...)
 		cmd.Stdout = os.Stdout
@@ -472,7 +546,7 @@ var BuildCommand = &cli.Command{
 		fmt.Printf("Built: %s\n", output)
 
 		// Clean up C file unless --keep-c is set
-		if !ctx.Bool("keep-c") {
+		if !ctx.Bool("keep-c") && projectCfg == nil {
 			os.Remove(cFile)
 		}
 
@@ -577,27 +651,42 @@ var RunCommand = &cli.Command{
 		tmpExe := filepath.Join(tmpDir, "gecko_"+exeName)
 
 		// Build gcc args with linker flags
-		gccArgs := []string{"-o", tmpExe, cFile}
+		targetKey := resolveTargetKey(ctx, projectCfg)
+		gccArgs := []string{}
 
-		// Add linker flags from CLI
-		ldflags := ctx.StringSlice("ldflags")
-
-		// Add pkg-config --libs if specified via CLI
+		// Add compile flags from CLI + project + cimport pkg-config libraries.
+		cflags := ctx.StringSlice("cflags")
 		pkgConfigPkgs := ctx.StringSlice("pkg-config")
+		if len(pkgConfigPkgs) > 0 {
+			if pkgCFlags, err := runPkgConfig("--cflags", pkgConfigPkgs); err == nil {
+				cflags = append(cflags, pkgCFlags...)
+			}
+		}
+		if projectCfg != nil {
+			if projCFlags, err := projectCfg.GetCFlagsForTarget(targetKey); err == nil {
+				cflags = append(cflags, projCFlags...)
+			}
+		}
+		cflags = append(cflags, collectCImportPkgCFlags()...)
+		gccArgs = append(gccArgs, dedupeStrings(cflags)...)
+
+		// Add linker flags from CLI + project + cimport pkg-config libraries.
+		ldflags := ctx.StringSlice("ldflags")
 		if len(pkgConfigPkgs) > 0 {
 			if pkgLibs, err := runPkgConfig("--libs", pkgConfigPkgs); err == nil {
 				ldflags = append(ldflags, pkgLibs...)
 			}
 		}
-
-		// Add linker flags from project config
 		if projectCfg != nil {
-			if projLdFlags, err := projectCfg.GetLdFlags(); err == nil {
+			if projLdFlags, err := projectCfg.GetLdFlagsForTarget(targetKey, false); err == nil {
 				ldflags = append(ldflags, projLdFlags...)
 			}
 		}
+		ldflags = append(ldflags, collectCImportPkgLibFlags(false)...)
 
-		gccArgs = append(gccArgs, ldflags...)
+		gccArgs = append(gccArgs, "-o", tmpExe, cFile)
+		gccArgs = append(gccArgs, collectObjectInputs(projectCfg, targetKey)...)
+		gccArgs = append(gccArgs, dedupeStrings(ldflags)...)
 
 		// Compile C to executable
 		cmd := exec.Command("gcc", gccArgs...)
@@ -606,8 +695,10 @@ var RunCommand = &cli.Command{
 			return fmt.Errorf("gcc linking failed: %w", err)
 		}
 
-		// Clean up C file
-		os.Remove(cFile)
+		// Keep generated C for project builds in .gecko_build; clean up ad-hoc runs.
+		if projectCfg == nil {
+			os.Remove(cFile)
+		}
 
 		// Run the executable
 		// Get args after -- if present

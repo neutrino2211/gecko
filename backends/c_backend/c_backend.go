@@ -4,6 +4,7 @@ package cbackend
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/alecthomas/participle/v2/lexer"
@@ -957,6 +958,47 @@ func (impl *CBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait) {
 				"Trait Inheritance Error",
 				"Circular trait inheritance detected: '"+t.Name+"' and '"+t.Parent+"' depend on each other",
 				t.Pos,
+			)
+			restoreOnError()
+			return
+		}
+
+		// Validate child overrides against inherited method signatures.
+		inheritedFields, ok := CollectTraitFields(t.Parent)
+		if !ok {
+			scope.ErrorScope.NewCompileTimeError(
+				"Trait Inheritance Error",
+				"Could not resolve inherited methods for trait '"+t.Name+"'",
+				t.Pos,
+			)
+			restoreOnError()
+			return
+		}
+		inheritedByName := make(map[string]*tokens.ImplementationField)
+		inheritedOwner := make(map[string]string)
+		for _, field := range inheritedFields {
+			inheritedByName[field.Name] = field
+			owner := FindTraitMethodOwner(t.Parent, field.Name)
+			if owner == "" {
+				owner = t.Parent
+			}
+			inheritedOwner[field.Name] = owner
+		}
+		for _, childField := range t.Fields {
+			parentField, exists := inheritedByName[childField.Name]
+			if !exists {
+				continue
+			}
+			signaturesMatch, reason := TraitMethodSignaturesCompatible(parentField, childField)
+			if signaturesMatch {
+				continue
+			}
+			owner := inheritedOwner[childField.Name]
+			scope.ErrorScope.NewCompileTimeError(
+				"Trait Inheritance Error",
+				"Method '"+childField.Name+"' in trait '"+t.Name+"' conflicts with inherited method '"+owner+"."+childField.Name+
+					"': "+reason+" (parent: "+TraitMethodSignature(parentField)+", child: "+TraitMethodSignature(childField)+")",
+				childField.Pos,
 			)
 			restoreOnError()
 			return
@@ -2511,14 +2553,32 @@ func (impl *CBackendImplementation) NewCImport(scope *ast.Ast, cimport *tokens.C
 		info.Includes = append(info.Includes, "#include \""+header+"\"")
 	}
 
-	// Track library for pkg-config cflags (needed for include paths)
-	if cimport.WithLibrary != "" {
-		lib := cimport.WithLibrary
+	// Track libraries/objects for compile/link stages.
+	for _, lib := range cimport.GetWithLibraries() {
 		// Strip quotes if present
 		if len(lib) >= 2 && lib[0] == '"' && lib[len(lib)-1] == '"' {
 			lib = lib[1 : len(lib)-1]
 		}
-		info.CImportLibraries = append(info.CImportLibraries, lib)
+		if lib != "" {
+			info.CImportLibraries = append(info.CImportLibraries, lib)
+		}
+	}
+
+	for _, obj := range cimport.GetWithObjects() {
+		// Strip quotes if present
+		if len(obj) >= 2 && obj[0] == '"' && obj[len(obj)-1] == '"' {
+			obj = obj[1 : len(obj)-1]
+		}
+		if obj == "" {
+			continue
+		}
+
+		// Resolve relative object paths against the current source file.
+		if !filepath.IsAbs(obj) && scope.SourceFile != "" {
+			obj = filepath.Join(filepath.Dir(scope.SourceFile), obj)
+		}
+
+		info.CImportObjects = append(info.CImportObjects, obj)
 	}
 }
 

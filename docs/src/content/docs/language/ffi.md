@@ -40,6 +40,16 @@ func main(): void {
 }
 ```
 
+### Combining Clauses
+
+You can use both `withlibrary` and `withobject` in the same `cimport`:
+
+```gecko
+cimport "swift_bridge.h" withlibrary "swiftlib" withobject "build/swift_bridge.o"
+```
+
+`withlibrary` uses `pkg-config` for include/link flags; `withobject` adds a direct object file to the linker inputs.
+
 ## External Declarations
 
 Explicitly declare C functions without importing a header:
@@ -293,3 +303,4 @@ func safe_read_file(path: string): Option<string> {
 3. **Wrap unsafe C APIs** in safe Gecko interfaces
 4. **Test thoroughly** - FFI bugs can be subtle and dangerous
 5. **Match struct layouts exactly** - Use @packed when needed
+6. **Use gecko.toml `[build.native]`** for project-wide headers/objects/libs instead of repeating per-file linker setup

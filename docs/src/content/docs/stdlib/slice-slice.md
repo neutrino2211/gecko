@@ -26,4 +26,4 @@ let len: uint64
 
 ---
 
-*Defined in `stdlib/collections/slice.gecko:8`*
+*Defined in `stdlib/collections/slice.gecko:10`*

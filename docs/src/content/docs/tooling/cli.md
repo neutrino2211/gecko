@@ -117,6 +117,8 @@ gecko compile --pkg-config gtk4 src/main.gecko
 gecko compile --cflags "-I/opt/include" src/main.gecko
 ```
 
+When compiling inside a project with `gecko.toml`, generated C/object artifacts are written under `.gecko_build/`.
+
 ## gecko build
 
 Compiles Gecko source to an executable binary.

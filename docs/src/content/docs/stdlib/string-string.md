@@ -320,4 +320,4 @@ Returns an iterator over the bytes of this string.
 
 ---
 
-*Defined in `stdlib/collections/string.gecko:55`*
+*Defined in `stdlib/collections/string.gecko:57`*

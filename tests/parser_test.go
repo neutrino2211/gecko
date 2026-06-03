@@ -3,10 +3,18 @@
 package tests
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/neutrino2211/gecko/parser"
 )
+
+func stripQuotes(v string) string {
+	if len(v) >= 2 && strings.HasPrefix(v, "\"") && strings.HasSuffix(v, "\"") {
+		return v[1 : len(v)-1]
+	}
+	return v
+}
 
 func TestDotNotationImports(t *testing.T) {
 	tests := []struct {
@@ -91,6 +99,97 @@ import std.collections.hash.map`,
 							t.Errorf("Use object %d: expected %q, got %q", i, expected, imp.Objects[i])
 						}
 					}
+				}
+			}
+		})
+	}
+}
+
+func TestCImportClausesParsing(t *testing.T) {
+	tests := []struct {
+		name          string
+		code          string
+		expectedLibs  []string
+		expectedObjs  []string
+		expectedCount int
+	}{
+		{
+			name: "header only",
+			code: `package main
+cimport "<stdio.h>"`,
+			expectedCount: 0,
+		},
+		{
+			name: "withlibrary only",
+			code: `package main
+cimport "<gtk/gtk.h>" withlibrary "gtk4"`,
+			expectedLibs:  []string{"gtk4"},
+			expectedCount: 1,
+		},
+		{
+			name: "withobject only",
+			code: `package main
+cimport "mylib.h" withobject "build/mylib.o"`,
+			expectedObjs:  []string{"build/mylib.o"},
+			expectedCount: 1,
+		},
+		{
+			name: "both clauses same statement",
+			code: `package main
+cimport "swiftlib.h" withlibrary "swiftlib" withobject "build/swiftlib.o"`,
+			expectedLibs:  []string{"swiftlib"},
+			expectedObjs:  []string{"build/swiftlib.o"},
+			expectedCount: 2,
+		},
+		{
+			name: "both clauses reverse order",
+			code: `package main
+cimport "swiftlib.h" withobject "build/swiftlib.o" withlibrary "swiftlib"`,
+			expectedLibs:  []string{"swiftlib"},
+			expectedObjs:  []string{"build/swiftlib.o"},
+			expectedCount: 2,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			file, err := parser.Parser.ParseString("test.gecko", tc.code)
+			if err != nil {
+				t.Fatalf("Parse error: %v", err)
+			}
+			if len(file.Entries) == 0 || file.Entries[0].CImport == nil {
+				t.Fatal("First entry is not cimport")
+			}
+
+			cimp := file.Entries[0].CImport
+			if len(cimp.Clauses) != tc.expectedCount {
+				t.Fatalf("Expected %d clauses, got %d", tc.expectedCount, len(cimp.Clauses))
+			}
+
+			var libs []string
+			for _, lib := range cimp.GetWithLibraries() {
+				libs = append(libs, stripQuotes(lib))
+			}
+			var objs []string
+			for _, obj := range cimp.GetWithObjects() {
+				objs = append(objs, stripQuotes(obj))
+			}
+
+			if len(libs) != len(tc.expectedLibs) {
+				t.Fatalf("Expected %d libs, got %d: %v", len(tc.expectedLibs), len(libs), libs)
+			}
+			for i, lib := range tc.expectedLibs {
+				if libs[i] != lib {
+					t.Fatalf("Library %d mismatch: expected %q got %q", i, lib, libs[i])
+				}
+			}
+
+			if len(objs) != len(tc.expectedObjs) {
+				t.Fatalf("Expected %d objects, got %d: %v", len(tc.expectedObjs), len(objs), objs)
+			}
+			for i, obj := range tc.expectedObjs {
+				if objs[i] != obj {
+					t.Fatalf("Object %d mismatch: expected %q got %q", i, obj, objs[i])
 				}
 			}
 		})

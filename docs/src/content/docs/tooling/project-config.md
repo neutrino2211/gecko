@@ -131,6 +131,39 @@ gecko build main.gecko --pkg-config gtk4 --pkg-config libadwaita-1
 gecko build main.gecko --cflags "-I/usr/include/custom" --ldflags "-L/usr/lib/custom -lmylib"
 ```
 
+### Native C ABI Configuration
+
+Use `[build.native]` to define project-wide native headers/libraries/objects used by C interop:
+
+```toml
+[build.native]
+headers = ["<sqlite3.h>", "swift_bridge.h"]          # Injected as #include lines
+pkg_config = ["sqlite3"]                             # pkg-config packages
+include_dirs = ["vendor/swift/include"]              # Adds -I...
+lib_dirs = ["vendor/swift/lib"]                      # Adds -L...
+libs = ["swiftbridge"]                               # Adds -lswiftbridge
+objects = ["vendor/swift/lib/swiftbridge.o"]         # Extra linker objects
+cflags = ["-DSWIFT_BRIDGE=1"]                        # Extra compile flags
+ldflags = ["-Wl,-rpath,@loader_path/../lib"]         # Extra linker flags
+```
+
+This integrates with `cimport`:
+
+- `cimport` is source-level declaration (`#include` + optional `withlibrary` / `withobject`)
+- `[build.native]` is project-level build policy
+
+Both are merged and deduplicated during compilation/linking.
+
+### Build Artifacts Directory
+
+For project builds, Gecko stores generated artifacts under:
+
+```text
+.gecko_build/
+```
+
+This includes generated C files and copied object outputs, using the source-relative path layout inside `.gecko_build`.
+
 ### Static Linking
 
 Build standalone binaries without dynamic library dependencies:
@@ -273,6 +306,14 @@ Configure settings for specific targets:
 [target.i386-none-elf]
 freestanding = true
 linker_script = "linker.ld"
+```
+
+Target sections can also override native settings:
+
+```toml
+[target.x86_64-unknown-linux-gnu.native]
+include_dirs = ["native/linux/include"]
+objects = ["native/linux/bridge.o"]
 ```
 
 ### Freestanding Targets

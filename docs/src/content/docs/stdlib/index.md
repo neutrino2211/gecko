@@ -1,107 +1,54 @@
 ---
 title: Standard Library
-description: Gecko standard library reference
+description: Module-oriented Gecko standard library reference
 ---
 
-The standard library provides memory management primitives for Gecko programs.
+Gecko stdlib docs are organized by **module path**.
+Navigate by package/module first, then by exported symbols, similar to a module-first API browser.
 
-## Packages
+## Module Tree
 
-### memory
+```text
+std
+├── core
+│   ├── traits
+│   └── ops
+├── collections
+│   ├── vec
+│   ├── slice
+│   └── string
+├── memory
+│   ├── box
+│   ├── buffer
+│   ├── raw
+│   ├── rc
+│   └── weak
+├── option
+└── result
+```
 
+## Modules
 
-### raw
+### `std.core`
 
-- [**Raw**](/stdlib/raw-raw/) - Raw<T> - Unsafe pointer wrapper for low-level memory operations.
+- [`std.core.traits`](/stdlib/std-core-traits/) - Foundational traits used across the language.
+- [`std.core.ops`](/stdlib/std-core-ops/) - Operator traits used by hooks and overloaded operators.
 
-### weak
+### `std.collections`
 
-- [**Weak**](/stdlib/weak-weak/) - Weak<T> - Non-owning reference to `Rc<T>` data.
+- [`std.collections.vec`](/stdlib/std-collections-vec/) - Dynamic array type.
+- [`std.collections.slice`](/stdlib/std-collections-slice/) - Borrowed view over contiguous data.
+- [`std.collections.string`](/stdlib/std-collections-string/) - String and string-building utilities.
 
-### string
+### `std.memory`
 
-- [**StringIterator**](/stdlib/string-stringiterator/) - StringIterator - Iterator over bytes in a String.
-- [**String**](/stdlib/string-string/) - String - A growable, heap-allocated string.
-- [**StringBuilder**](/stdlib/string-stringbuilder/) - StringBuilder - A simple growable byte buffer for building strings.
-- [**Add** (trait)](/stdlib/string-add/) - Add<T> - Trait for the `+` operator.
+- [`std.memory.box`](/stdlib/std-memory-box/) - Unique ownership smart pointer.
+- [`std.memory.buffer`](/stdlib/std-memory-buffer/) - Typed pointer+length view.
+- [`std.memory.raw`](/stdlib/std-memory-raw/) - Low-level raw pointer wrapper.
+- [`std.memory.rc`](/stdlib/std-memory-rc/) - Reference-counted shared ownership.
+- [`std.memory.weak`](/stdlib/std-memory-weak/) - Non-owning weak references.
 
-### rc
+### Top-Level Modules
 
-- [**RcInner**](/stdlib/rc-rcinner/) - Internal structure holding reference counts and value.
-- [**Rc**](/stdlib/rc-rc/) - Rc<T> - Reference Counted Smart Pointer.
-
-### result
-
-- [**Result**](/stdlib/result-result/) - Result<T, E> - Represents either a success (Ok) or failure (Err).
-
-### option
-
-- [**Option**](/stdlib/option-option/) - Option<T> - Represents an optional value.
-
-### slice
-
-- [**Slice**](/stdlib/slice-slice/) - 
-
-### vec
-
-- [**Vec**](/stdlib/vec-vec/) - Vec<T> - A growable, heap-allocated array.
-
-### ops
-
-- [**Add** (trait)](/stdlib/ops-add/) - Add<T> - Trait for the `+` operator.
-- [**Sub** (trait)](/stdlib/ops-sub/) - Sub<T> - Trait for the `-` operator.
-- [**Mul** (trait)](/stdlib/ops-mul/) - Mul<T> - Trait for the `*` operator.
-- [**Div** (trait)](/stdlib/ops-div/) - Div<T> - Trait for the `/` operator.
-- [**Neg** (trait)](/stdlib/ops-neg/) - Neg - Trait for unary `-` operator.
-- [**Not** (trait)](/stdlib/ops-not/) - Not - Trait for unary `!` operator.
-- [**BitAnd** (trait)](/stdlib/ops-bitand/) - BitAnd<T> - Trait for the `&` operator.
-- [**BitOr** (trait)](/stdlib/ops-bitor/) - BitOr<T> - Trait for the `|` operator.
-- [**BitXor** (trait)](/stdlib/ops-bitxor/) - BitXor<T> - Trait for the `^` operator.
-- [**Shl** (trait)](/stdlib/ops-shl/) - Shl<T> - Trait for the `<<` operator.
-- [**Shr** (trait)](/stdlib/ops-shr/) - Shr<T> - Trait for the `>>` operator.
-- [**Eq** (trait)](/stdlib/ops-eq/) - Eq<T> - Trait for the `==` operator.
-- [**Ne** (trait)](/stdlib/ops-ne/) - Ne<T> - Trait for the `!=` operator.
-- [**Lt** (trait)](/stdlib/ops-lt/) - Lt<T> - Trait for the `<` operator.
-- [**Gt** (trait)](/stdlib/ops-gt/) - Gt<T> - Trait for the `>` operator.
-- [**Le** (trait)](/stdlib/ops-le/) - Le<T> - Trait for the `<=` operator.
-- [**Ge** (trait)](/stdlib/ops-ge/) - Ge<T> - Trait for the `>=` operator.
-
-### box
-
-- [**Box**](/stdlib/box-box/) - Box<T> - Unique ownership smart pointer.
-
-### buffer
-
-- [**Buffer**](/stdlib/buffer-buffer/) - Buffer<T> is a typed view over a raw pointer + length.
-
-### std
-
-
-### collections
-
-
-### core
-
-
-### traits
-
-- [**Drop** (trait)](/stdlib/traits-drop/) - Drop - Trait for types that need cleanup when going out of scope.
-- [**Clone** (trait)](/stdlib/traits-clone/) - Clone - Trait for types that can be explicitly duplicated.
-- [**Copy** (trait)](/stdlib/traits-copy/) - Copy - Marker trait for types that are safe to copy bitwise.
-- [**Default** (trait)](/stdlib/traits-default/) - Default - Trait for types with a default value.
-- [**From** (trait)](/stdlib/traits-from/) - From<T> - Trait for converting from type T.
-- [**Into** (trait)](/stdlib/traits-into/) - Into<T> - Trait for converting into type T.
-- [**TryFrom** (trait)](/stdlib/traits-tryfrom/) - TryFrom<T> - Fallible conversion from type T.
-- [**Iterator** (trait)](/stdlib/traits-iterator/) - Iterator<T> - Trait for types that produce a sequence of values.
-- [**IntoIterator** (trait)](/stdlib/traits-intoiterator/) - IntoIterator<T> - Trait for types convertible to an iterator.
-- [**Index** (trait)](/stdlib/traits-index/) - Index<I, T> - Trait for read indexing (a[i]).
-- [**IndexMut** (trait)](/stdlib/traits-indexmut/) - IndexMut<I, T> - Trait for write indexing (a[i] = v).
-- [**Sized** (trait)](/stdlib/traits-sized/) - Sized - Trait for types with known size at compile time.
-- [**Hash** (trait)](/stdlib/traits-hash/) - Hash - Trait for types that can be hashed.
-- [**Debug** (trait)](/stdlib/traits-debug/) - Debug - Trait for debug formatting.
-- [**Display** (trait)](/stdlib/traits-display/) - Display - Trait for user-facing formatting.
-- [**FnOnce** (trait)](/stdlib/traits-fnonce/) - FnOnce<A, R> - Callable types consumed on call.
-- [**Fn** (trait)](/stdlib/traits-fn/) - Fn<A, R> - Callable types (multiple calls allowed).
-- [**Tryable** (trait)](/stdlib/traits-tryable/) - Tryable<T> - Trait for types that can be "tried" (unwrap or propagate).
-- [**Orable** (trait)](/stdlib/traits-orable/) - Orable<T> - Trait for types that can use `or` for default values.
-
+- [`std.option`](/stdlib/std-option/) - Optional value type.
+- [`std.result`](/stdlib/std-result/) - Success/error result type.

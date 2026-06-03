@@ -59,7 +59,36 @@ export default defineConfig({
         },
         {
           label: 'Standard Library',
-          autogenerate: { directory: 'stdlib' },
+          items: [
+            { label: 'Overview', slug: 'stdlib' },
+            {
+              label: 'std.core',
+              items: [
+                { label: 'traits', slug: 'stdlib/std-core-traits' },
+                { label: 'ops', slug: 'stdlib/std-core-ops' },
+              ],
+            },
+            {
+              label: 'std.collections',
+              items: [
+                { label: 'vec', slug: 'stdlib/std-collections-vec' },
+                { label: 'slice', slug: 'stdlib/std-collections-slice' },
+                { label: 'string', slug: 'stdlib/std-collections-string' },
+              ],
+            },
+            {
+              label: 'std.memory',
+              items: [
+                { label: 'box', slug: 'stdlib/std-memory-box' },
+                { label: 'buffer', slug: 'stdlib/std-memory-buffer' },
+                { label: 'raw', slug: 'stdlib/std-memory-raw' },
+                { label: 'rc', slug: 'stdlib/std-memory-rc' },
+                { label: 'weak', slug: 'stdlib/std-memory-weak' },
+              ],
+            },
+            { label: 'std.option', slug: 'stdlib/std-option' },
+            { label: 'std.result', slug: 'stdlib/std-result' },
+          ],
         },
       ],
     }),

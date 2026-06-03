@@ -12,15 +12,14 @@ hero:
 
 ## Standard Library
 
-The Gecko standard library provides essential types for memory management:
+The standard library docs are organized by module path:
 
-| Type | Description |
-|------|-------------|
-| **Box\<T\>** | Unique ownership heap allocation |
-| **Rc\<T\>** | Reference-counted shared ownership |
-| **Weak\<T\>** | Non-owning references to Rc data |
-| **Buffer\<T\>** | Typed raw-pointer view for indexed access |
-| **Raw\<T\>** | Unsafe pointer wrapper for low-level operations |
+- `std.core` - fundamental traits and operators
+- `std.collections` - `Vec`, `Slice`, and `String` utilities
+- `std.memory` - ownership and pointer abstractions
+- `std.option` and `std.result` - optional/error-aware values
+
+Start from the module index at `/stdlib/`.
 
 ## Quick Example
 

@@ -26,11 +26,11 @@ enum Status {
 
 ## Using Enums
 
-Access enum variants with the `::` operator:
+Access enum variants with `.`:
 
 ```gecko
-let primary: Color = Color::Red
-let state: Status = Status::Active
+let primary: Color = Color.Red
+let state: Status = Status.Active
 ```
 
 ## Enums as Types
@@ -44,7 +44,7 @@ func status_message(s: Status): string {
 }
 
 func get_default_color(): Color {
-    return Color::Blue
+    return Color.Blue
 }
 ```
 
@@ -81,24 +81,24 @@ class Connection {
 impl Connection {
     func new(addr: string): Connection {
         return Connection {
-            state: ConnectionState::Disconnected,
+            state: ConnectionState.Disconnected,
             address: addr
         }
     }
 
     func connect(self): void {
-        self.state = ConnectionState::Connecting
+        self.state = ConnectionState.Connecting
         // ... perform connection
-        self.state = ConnectionState::Connected
+        self.state = ConnectionState.Connected
     }
 
     func disconnect(self): void {
-        self.state = ConnectionState::Disconnected
+        self.state = ConnectionState.Disconnected
     }
 
     func is_connected(self): bool {
         // Compare enum values
-        return self.state == ConnectionState::Connected
+        return self.state == ConnectionState.Connected
     }
 }
 ```
@@ -139,8 +139,8 @@ func execute(cmd: Command): void {
     // Handle each command
 }
 
-execute(Command::Start)
-execute(Command::Stop)
+execute(Command.Start)
+execute(Command.Stop)
 ```
 
 ## Comparing Enums
@@ -148,9 +148,9 @@ execute(Command::Stop)
 Enum values can be compared for equality:
 
 ```gecko
-let c1: Color = Color::Red
-let c2: Color = Color::Red
-let c3: Color = Color::Blue
+let c1: Color = Color.Red
+let c2: Color = Color.Red
+let c3: Color = Color.Blue
 
 if c1 == c2 {
     // true - both are Red
@@ -164,6 +164,6 @@ if c1 != c3 {
 ## Best Practices
 
 1. **Use enums for fixed sets of values** - When you have a known, limited set of options
-2. **Name variants descriptively** - `ConnectionState::Connected` is clearer than `State::S2`
+2. **Name variants descriptively** - `ConnectionState.Connected` is clearer than `State.S2`
 3. **Consider Option<T>** - For values that might be absent, use the stdlib Option type
 4. **Group related enums** - Keep related enums in the same module

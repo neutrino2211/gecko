@@ -548,7 +548,7 @@ var BuildCommand = &cli.Command{
 			}
 		}
 		cflags = append(cflags, collectCImportPkgCFlags()...)
-		gccArgs = append(gccArgs, dedupeStrings(cflags)...)
+		gccArgs = append(gccArgs, cflags...)
 
 		// Add linker flags from CLI + project + cimport pkg-config libraries.
 		ldflags := ctx.StringSlice("ldflags")
@@ -573,7 +573,7 @@ var BuildCommand = &cli.Command{
 		gccArgs = append(gccArgs, collectObjectInputs(projectCfg, targetKey)...)
 
 		// Append linker flags after source/object inputs.
-		gccArgs = append(gccArgs, dedupeStrings(ldflags)...)
+		gccArgs = append(gccArgs, ldflags...)
 
 		cmd := exec.Command("gcc", gccArgs...)
 		cmd.Stdout = os.Stdout
@@ -684,7 +684,7 @@ var RunCommand = &cli.Command{
 			}
 		}
 		cflags = append(cflags, collectCImportPkgCFlags()...)
-		gccArgs = append(gccArgs, dedupeStrings(cflags)...)
+		gccArgs = append(gccArgs, cflags...)
 
 		// Add linker flags from CLI + project + cimport pkg-config libraries.
 		ldflags := ctx.StringSlice("ldflags")
@@ -702,7 +702,7 @@ var RunCommand = &cli.Command{
 
 		gccArgs = append(gccArgs, "-o", tmpExe, cFile)
 		gccArgs = append(gccArgs, collectObjectInputs(projectCfg, targetKey)...)
-		gccArgs = append(gccArgs, dedupeStrings(ldflags)...)
+		gccArgs = append(gccArgs, ldflags...)
 
 		// Compile C to executable
 		cmd := exec.Command("gcc", gccArgs...)

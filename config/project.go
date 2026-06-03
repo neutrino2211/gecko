@@ -284,7 +284,7 @@ func (c *ProjectConfig) GetCFlagsForTarget(target string) ([]string, error) {
 		flags = append(flags, pkgFlags...)
 	}
 
-	return dedupeStrings(flags), nil
+	return flags, nil
 }
 
 // GetLdFlags returns linker flags for the default target.
@@ -340,7 +340,7 @@ func (c *ProjectConfig) GetLdFlagsForTarget(target string, staticLink bool) ([]s
 		flags = append(flags, pkgFlags...)
 	}
 
-	return dedupeStrings(flags), nil
+	return flags, nil
 }
 
 // GetNativeHeadersForTarget returns include directives configured in gecko.toml.

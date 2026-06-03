@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -78,4 +79,25 @@ func TestProjectConfigNativeFlagsAndPaths(t *testing.T) {
 		"/tmp/gecko-project/build/swiftlib.o",
 		"/tmp/gecko-project/linux/native.o",
 	})
+}
+
+func TestProjectConfigPreservesPairedLinkerFlags(t *testing.T) {
+	cfg := &config.ProjectConfig{
+		ProjectRoot: "/tmp/gecko-project",
+		Build: config.BuildConfig{
+			Native: &config.NativeConfig{
+				LdFlags: []string{"-framework", "WebKit", "-framework", "Cocoa"},
+			},
+		},
+	}
+
+	ldflags, err := cfg.GetLdFlagsForTarget("", false)
+	if err != nil {
+		t.Fatalf("GetLdFlagsForTarget failed: %v", err)
+	}
+
+	want := []string{"-framework", "WebKit", "-framework", "Cocoa"}
+	if !reflect.DeepEqual(ldflags, want) {
+		t.Fatalf("expected linker flags %v, got %v", want, ldflags)
+	}
 }

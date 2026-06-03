@@ -292,6 +292,9 @@ func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens
 	// Track full return type for generic type support
 	if m.Type != nil {
 		MethodReturnTypes[scope.FullScopeName()+"#"+m.Name] = m.Type
+		funcAlias := astMth.GetFullName()
+		MethodReturnTypes[funcAlias] = m.Type
+		MethodReturnTypes[scope.FullScopeName()+"#"+funcAlias] = m.Type
 	}
 }
 
@@ -1164,6 +1167,7 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 	// Track full return type for generic type support
 	if m.Type != nil {
 		MethodReturnTypes[scope.FullScopeName()+"#"+mangledName] = m.Type
+		MethodReturnTypes[mangledName] = m.Type
 		// Alias for static method return-type lookup by source-level name (Type::method).
 		MethodReturnTypes[className+"#"+m.Name] = m.Type
 	}
@@ -1372,6 +1376,11 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 
 	// Generate function signature with attributes
 	funcName := astMth.GetFullName()
+	if m.Type != nil {
+		// Keep emitted C symbol aliases stable after body generation as well.
+		MethodReturnTypes[funcName] = m.Type
+		MethodReturnTypes[scope.FullScopeName()+"#"+funcName] = m.Type
+	}
 	attrStr := tokens.ToCAttributes(m.Attributes)
 	isStatic := tokens.HasAttribute(m.Attributes, "static")
 	var funcDecl string

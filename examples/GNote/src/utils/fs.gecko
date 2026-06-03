@@ -16,8 +16,9 @@ impl File {
             return Option<File>::none()
         }
 
-        let f: File
-        f.internal_ptr = fp
+        let f: File = File {
+            internal_ptr: fp
+        }
         return Option<File>::some(f)
     }
 

@@ -44,8 +44,8 @@ func get_value(): Option<int32> {
     return Option<int32>::some(42)
 }
 
-// ERROR: This function returns int32, not a Tryable type
-// Using try here should cause a compile error
+// This function returns int32, not a Tryable type.
+// `try` should compile and trap/panic at runtime if `get_value()` is empty.
 func bad_function(): int32 {
     let val: int32 = try get_value()
     return val

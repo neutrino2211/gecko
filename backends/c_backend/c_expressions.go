@@ -376,21 +376,19 @@ func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, opera
 	if len(operandType.TypeArgs) == 0 {
 		if parenIdx := strings.Index(operandCode, "("); parenIdx > 0 {
 			callee := strings.TrimSpace(operandCode[:parenIdx])
+			if fullType, ok := MethodReturnTypes[callee]; ok && fullType != nil {
+				if fullType.Type == operandType.Type && len(fullType.TypeArgs) > 0 {
+					operandType = fullType
+				}
+			}
 			for key, fullType := range MethodReturnTypes {
-				if !strings.HasSuffix(key, "#"+callee) || fullType == nil {
+				if (key != callee && !strings.HasSuffix(key, "#"+callee)) || fullType == nil {
 					continue
 				}
 				if fullType.Type == operandType.Type && len(fullType.TypeArgs) > 0 {
 					operandType = fullType
 					break
 				}
-			}
-		}
-		// If still unresolved, inherit generic args from the enclosing function's
-		// return type when the base type matches (common for `try` propagation).
-		if len(operandType.TypeArgs) == 0 && funcReturnType != nil {
-			if funcReturnType.Type == operandType.Type && len(funcReturnType.TypeArgs) > 0 {
-				operandType = funcReturnType
 			}
 		}
 	}
@@ -452,15 +450,6 @@ func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, opera
 
 	// Check if the function's return type implements Tryable
 	_, returnTypeHasTryable := impl.GetOperatorTraitName(returnTypeName, tryHook.TraitName, scope)
-	if !returnTypeHasTryable {
-		scope.ErrorScope.NewCompileTimeError(
-			"Try Expression Error",
-			"'try' can only be used in functions that return a type implementing Tryable (e.g., Option<T>, Result<T, E>). "+
-				"Function returns '"+funcReturnType.Type+"' which does not implement @try_hook trait.",
-			pos,
-		)
-		return "", false
-	}
 
 	// Build method names: has_value and try_unwrap
 	hasValueMethod := tryHook.Methods[0]  // has_value
@@ -488,11 +477,57 @@ func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, opera
 	tryTempCounter++
 	tempVar := "__try_tmp_" + strconv.Itoa(tryTempCounter)
 
+	// Some inference paths still lose generic args for stdlib Option/Result.
+	// In that case, fall back to field-based access with __auto_type.
+	useStdTryFieldFallback := len(typeArgStrs) == 0 && (baseTypeName == "Option" || baseTypeName == "Result")
+	hasValueExpr := hasValueCall + "(&" + tempVar + ")"
+	tryUnwrapExpr := tryUnwrapCall + "(&" + tempVar + ")"
+	tempDeclType := cTypeName
+	if useStdTryFieldFallback {
+		tempDeclType = "__auto_type"
+		if baseTypeName == "Option" {
+			hasValueExpr = tempVar + ".has_value"
+		} else {
+			hasValueExpr = tempVar + ".is_ok"
+		}
+		tryUnwrapExpr = tempVar + ".value"
+	}
+
+	// Decide failure behavior:
+	// - If enclosing function returns a compatible Tryable, propagate.
+	// - Otherwise, trap (panic ergonomics for non-Tryable returns).
+	failureAction := "__builtin_trap();"
+	if returnTypeHasTryable {
+		// Exact same concrete type: propagate directly.
+		if returnTypeName == typeName {
+			failureAction = "return " + tempVar + ";"
+		} else if baseTypeName == "Option" && funcReturnType.Type == "Option" {
+			// Option<T1> tried in Option<T2> function: propagate None as Option<T2>::none().
+			returnModulePrefix := getTypeOriginModule(returnTypeName, scope)
+			if returnModulePrefix != "" {
+				returnModulePrefix += "__"
+			}
+			failureAction = "return " + returnModulePrefix + returnTypeName + "__none();"
+		} else if baseTypeName == "Result" && funcReturnType.Type == "Result" &&
+			len(operandType.TypeArgs) >= 2 && len(funcReturnType.TypeArgs) >= 2 {
+			// Result<T1, E> tried in Result<T2, E>: propagate Err by re-wrapping error.
+			operandErrType := TypeRefToCType(operandType.TypeArgs[1], scope)
+			returnErrType := TypeRefToCType(funcReturnType.TypeArgs[1], scope)
+			if operandErrType == returnErrType {
+				returnModulePrefix := getTypeOriginModule(returnTypeName, scope)
+				if returnModulePrefix != "" {
+					returnModulePrefix += "__"
+				}
+				failureAction = "return " + returnModulePrefix + returnTypeName + "__err(" + tempVar + ".error);"
+			}
+		}
+	}
+
 	// Generate GCC statement expression with early return:
-	// ({ Type tmp = expr; if (!has_value(&tmp)) return tmp; try_unwrap(&tmp); })
-	code := "({ " + cTypeName + " " + tempVar + " = " + operandCode + "; " +
-		"if (!" + hasValueCall + "(&" + tempVar + ")) return " + tempVar + "; " +
-		tryUnwrapCall + "(&" + tempVar + "); })"
+	// ({ Type tmp = expr; if (!has_value(&tmp)) { ... } try_unwrap(&tmp); })
+	code := "({ " + tempDeclType + " " + tempVar + " = " + operandCode + "; " +
+		"if (!(" + hasValueExpr + ")) { " + failureAction + " } " +
+		tryUnwrapExpr + "; })"
 
 	return code, true
 }

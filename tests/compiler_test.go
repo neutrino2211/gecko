@@ -191,6 +191,7 @@ var compileOnlyTests = []compileOnlyTest{
 	{"strings_args", "test_sources/compile_tests/strings/args.gecko"},
 	{"strings_greeting", "test_sources/compile_tests/strings/greeting.gecko"},
 	{"volatile_pointer", "test_sources/compile_tests/volatile/volatile_pointer.gecko"},
+	{"error_handling_try_invalid", "test_sources/compile_tests/error_handling_try_invalid/main.gecko"},
 }
 
 var errorsGeneratedPattern = regexp.MustCompile(`\b([0-9]+) errors generated\b`)
@@ -528,12 +529,6 @@ func TestTypeCheckingErrors(t *testing.T) {
 			file:          "test_sources/compile_tests/circular_deps/three_way_cycle.gecko",
 			expectedError: "Circular Type Dependency",
 			expectedMsg:   "infinite size",
-		},
-		{
-			name:          "try_in_non_tryable_function",
-			file:          "test_sources/compile_tests/error_handling_try_invalid/main.gecko",
-			expectedError: "Try Expression Error",
-			expectedMsg:   "does not implement @try_hook trait",
 		},
 	}
 

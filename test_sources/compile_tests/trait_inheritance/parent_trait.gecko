@@ -1,0 +1,9 @@
+package parent_trait
+
+public trait ParentNamed {
+    func parent_value(self): int32
+
+    func parent_plus_one(self): int32 {
+        return self.parent_value() + 1
+    }
+}

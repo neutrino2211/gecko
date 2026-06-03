@@ -14,10 +14,10 @@ import (
 type TypePattern int
 
 const (
-	PatternPointer    TypePattern = iota // T* - any pointer
-	PatternNonNull                       // T*! - non-null pointer
-	PatternArray                         // [N]T - fixed array
-	PatternPrimitive                     // int, uint, etc.
+	PatternPointer   TypePattern = iota // T* - any pointer
+	PatternNonNull                      // T*! - non-null pointer
+	PatternArray                        // [N]T - fixed array
+	PatternPrimitive                    // int, uint, etc.
 )
 
 // GetTypePattern determines the pattern for a given type
@@ -77,12 +77,6 @@ func (impl *CBackendImplementation) tryPointerMethod(
 		return fmt.Sprintf("(*(%s))", receiver), true
 	case "is_null":
 		return fmt.Sprintf("(%s == (void*)0)", receiver), true
-	case "offset":
-		if len(args) != 1 {
-			return receiver, true
-		}
-		offset := impl.ExpressionToCString(args[0].Value, scope)
-		return fmt.Sprintf("((%s) + (%s))", receiver, offset), true
 	}
 	return "", false
 }
@@ -102,12 +96,6 @@ func (impl *CBackendImplementation) tryNonNullMethod(
 		return fmt.Sprintf("(*(%s))", receiver), true
 	case "is_null":
 		return "0", true // Non-null pointers are never null
-	case "offset":
-		if len(args) != 1 {
-			return receiver, true
-		}
-		offset := impl.ExpressionToCString(args[0].Value, scope)
-		return fmt.Sprintf("((%s) + (%s))", receiver, offset), true
 	}
 	return "", false
 }

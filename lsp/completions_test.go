@@ -385,6 +385,68 @@ func test(): void {
 	}
 }
 
+func TestTraitInheritanceMethodCompletions(t *testing.T) {
+	content := `package test
+
+trait Parent {
+    func base(self): int32
+
+    func doubled(self): int32 {
+        return self.base() * 2
+    }
+}
+
+trait Child: Parent {
+    func tripled(self): int32 {
+        return self.base() * 3
+    }
+}
+
+class Counter {
+    let n: int32
+}
+
+impl Counter {
+    func base(self): int32 {
+        return self.n
+    }
+}
+
+default impl Child for Counter
+
+func demo(): void {
+    let c: Counter = Counter { n: 7 }
+    c.
+}
+`
+
+	dotIdx := strings.Index(content, "c.")
+	if dotIdx == -1 {
+		t.Fatal("failed to locate member access for completion test")
+	}
+	wordIdx := dotIdx + 2 // position after "c."
+	line := strings.Count(content[:wordIdx], "\n")
+	lastNewline := strings.LastIndex(content[:wordIdx], "\n")
+	col := wordIdx
+	if lastNewline >= 0 {
+		col = wordIdx - lastNewline - 1
+	}
+
+	items := GetCompletions(content, "test.gecko", line, col)
+
+	found := make(map[string]bool)
+	for _, item := range items {
+		found[item.Label] = true
+	}
+
+	expected := []string{"base", "doubled", "tripled"}
+	for _, method := range expected {
+		if !found[method] {
+			t.Errorf("Expected inherited trait method completion '%s' not found. Got: %v", method, getLabels(items))
+		}
+	}
+}
+
 func TestSignatureHelpFreeFunction(t *testing.T) {
 	content := `package test
 

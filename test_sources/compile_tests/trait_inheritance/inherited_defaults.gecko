@@ -1,0 +1,32 @@
+package main
+
+trait ParentDefault {
+    func base(self): int32
+
+    func twice(self): int32 {
+        return self.base() * 2
+    }
+}
+
+trait ChildDefault: ParentDefault {
+    func triple(self): int32 {
+        return self.base() * 3
+    }
+}
+
+class Meter {
+    let value: int32
+}
+
+impl Meter {
+    func base(self): int32 {
+        return self.value
+    }
+}
+
+default impl ChildDefault for Meter
+
+external func main(): int32 {
+    let meter: Meter = Meter { value: 6 }
+    return meter.twice() + meter.triple()
+}

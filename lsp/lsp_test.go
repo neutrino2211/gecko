@@ -290,6 +290,123 @@ func main(): void {
 	}
 }
 
+func TestHoverInheritedTraitMethod(t *testing.T) {
+	content := `package test
+
+trait Parent {
+    func base(self): int32
+
+    func doubled(self): int32 {
+        return self.base() * 2
+    }
+}
+
+trait Child: Parent {
+    func tripled(self): int32 {
+        return self.base() * 3
+    }
+}
+
+class Counter {
+    let n: int32
+}
+
+impl Counter {
+    func base(self): int32 {
+        return self.n
+    }
+}
+
+default impl Child for Counter
+
+func demo(): int32 {
+    let c: Counter = Counter { n: 7 }
+    return c.doubled()
+}
+`
+
+	callIdx := strings.Index(content, "c.doubled()")
+	if callIdx == -1 {
+		t.Fatal("failed to locate inherited method call")
+	}
+	wordIdx := callIdx + 2 // skip "c."
+	line := strings.Count(content[:wordIdx], "\n")
+	lastNewline := strings.LastIndex(content[:wordIdx], "\n")
+	col := wordIdx
+	if lastNewline >= 0 {
+		col = wordIdx - lastNewline - 1
+	}
+
+	info := GetHoverInfo(content, line, col)
+	if info == nil {
+		t.Fatal("Expected hover info for inherited trait method, got nil")
+	}
+	if !strings.Contains(info.Type, "doubled") {
+		t.Fatalf("Expected hover to include inherited method signature, got: %q", info.Type)
+	}
+	if !strings.Contains(info.Type, "int32") {
+		t.Fatalf("Expected hover to include return type int32, got: %q", info.Type)
+	}
+}
+
+func TestDefinitionInheritedTraitMethod(t *testing.T) {
+	content := `package test
+
+trait Parent {
+    func base(self): int32
+
+    func doubled(self): int32 {
+        return self.base() * 2
+    }
+}
+
+trait Child: Parent {
+    func tripled(self): int32 {
+        return self.base() * 3
+    }
+}
+
+class Counter {
+    let n: int32
+}
+
+impl Counter {
+    func base(self): int32 {
+        return self.n
+    }
+}
+
+default impl Child for Counter
+
+func demo(): int32 {
+    let c: Counter = Counter { n: 7 }
+    return c.doubled()
+}
+`
+
+	callIdx := strings.Index(content, "c.doubled()")
+	if callIdx == -1 {
+		t.Fatal("failed to locate inherited method call")
+	}
+	wordIdx := callIdx + 2 // skip "c."
+	line := strings.Count(content[:wordIdx], "\n")
+	lastNewline := strings.LastIndex(content[:wordIdx], "\n")
+	col := wordIdx
+	if lastNewline >= 0 {
+		col = wordIdx - lastNewline - 1
+	}
+
+	loc := GetDefinitionLocation(content, line, col, "file:///test.gecko")
+	if loc == nil {
+		t.Fatal("Expected definition location for inherited trait method, got nil")
+	}
+
+	// The definition should resolve to `func doubled(self): int32 {` in Parent.
+	if loc.Range.Start.Line != 5 {
+		t.Fatalf("Expected definition on line 5 (0-indexed), got %d", loc.Range.Start.Line)
+	}
+}
+
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================

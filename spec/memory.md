@@ -65,14 +65,16 @@ let vga: uint16 volatile* = 0xB8000 as uint16 volatile*
 
 ## Pointer Arithmetic
 
-Pointer arithmetic is explicit and currently done via casts:
+Raw pointer arithmetic via `+` / `-` is disallowed.
+
+Use explicit intrinsics when low-level address stepping is required:
 
 ```gecko
 let base: uint8* = buffer as uint8*
-let offset: uint8* = (base as uint64 + 10) as uint8*
+let offset: uint8* = @ptr_add(base, 10) as uint8*
 ```
 
-Dedicated pointer arithmetic intrinsics are planned.
+For regular typed access, prefer `std.memory.buffer.Buffer<T>` over direct pointer math.
 
 ## Heap Allocation
 

@@ -178,7 +178,10 @@ func (impl *CBackendImplementation) AdditionToCString(a *tokens.Addition, scope 
 	if a.Next != nil {
 		// Try operator overloading first
 		leftType := impl.GetTypeOfMultiplication(a.Multiplication, scope)
+		rightType := impl.GetTypeOfAddition(a.Next, scope)
 		rightCode := impl.AdditionToCString(a.Next, scope)
+
+		impl.reportPointerArithmeticIfNeeded(a.Op, leftType, rightType, scope, a.Pos)
 
 		if traitCall, ok := impl.GetOperatorTraitMethodCall(base, leftType, rightCode, a.Op, scope); ok {
 			return traitCall
@@ -189,6 +192,34 @@ func (impl *CBackendImplementation) AdditionToCString(a *tokens.Addition, scope 
 	}
 
 	return base
+}
+
+func (impl *CBackendImplementation) reportPointerArithmeticIfNeeded(
+	op string,
+	leftType *tokens.TypeRef,
+	rightType *tokens.TypeRef,
+	scope *ast.Ast,
+	pos lexer.Position,
+) {
+	if op != "+" && op != "-" {
+		return
+	}
+	if scope == nil || scope.ErrorScope == nil {
+		return
+	}
+
+	leftIsPtr := leftType != nil && leftType.Pointer
+	rightIsPtr := rightType != nil && rightType.Pointer
+	if !leftIsPtr && !rightIsPtr {
+		return
+	}
+
+	scope.ErrorScope.NewCompileTimeError(
+		"Pointer Arithmetic Error",
+		"Raw pointer arithmetic is not allowed in expression operators.\n"+
+			"help: use @ptr_add/@ptr_sub intrinsics or std.memory.buffer.Buffer<T> for typed indexed access.",
+		pos,
+	)
 }
 
 // MultiplicationToCString converts multiplication expressions

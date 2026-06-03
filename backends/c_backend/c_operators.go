@@ -177,9 +177,6 @@ func (impl *CBackendImplementation) getBaseLiteralType(l *tokens.Literal, scope 
 			// Handle builtin pointer methods before class lookup
 			if currentType.Pointer && chain.IsMethodCall() {
 				switch chain.Name {
-				case "offset":
-					// ptr.offset(n) returns the same pointer type
-					continue
 				case "read":
 					// ptr.read() returns the element type (dereference)
 					currentType = &tokens.TypeRef{Type: currentType.Type}
@@ -326,9 +323,6 @@ func (impl *CBackendImplementation) GetTypeOfFuncCall(f *tokens.FuncCall, scope 
 				// Handle builtin pointer methods first
 				if valueInfo.GeckoType.Pointer {
 					switch f.Function {
-					case "offset":
-						// ptr.offset(n) returns the same pointer type
-						return valueInfo.GeckoType
 					case "read":
 						// ptr.read() returns the element type (dereference)
 						return &tokens.TypeRef{Type: valueInfo.GeckoType.Type}

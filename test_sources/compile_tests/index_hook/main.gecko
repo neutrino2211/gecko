@@ -19,7 +19,7 @@ public class IntArray {
 
 impl Index<int32, int32> for IntArray {
     func get(self, index: int32): int32 {
-        return @deref((self.data + index) as int32*)
+        return @deref(@ptr_add(self.data, index) as int32*)
     }
 }
 
@@ -30,8 +30,8 @@ external func main(): int32 {
     let arr = IntArray::new(3)
 
     @write_volatile(arr.data, 10)
-    @write_volatile((arr.data + 1) as int32*, 20)
-    @write_volatile((arr.data + 2) as int32*, 12)
+    @write_volatile(@ptr_add(arr.data, 1) as int32*, 20)
+    @write_volatile(@ptr_add(arr.data, 2) as int32*, 12)
 
     let sum: int32 = arr[0] + arr[1] + arr[2]
     printf(&"Sum: %d\n", sum)

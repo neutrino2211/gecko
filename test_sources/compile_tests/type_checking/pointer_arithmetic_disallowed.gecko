@@ -1,0 +1,9 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/control-flow.md, spec/pointers.md
+
+package main
+
+external func main(): int32 {
+    let p: uint8* = 0 as uint8*
+    let q: uint8* = p + 1
+    return 0
+}

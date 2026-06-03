@@ -90,8 +90,8 @@ func replaceTypeParam(str, param, replacement string) string {
 
 // HoverInfo contains information for hover tooltips
 type HoverInfo struct {
-	Name    string
-	Type    string
+	Name       string
+	Type       string
 	DocComment string
 }
 
@@ -425,6 +425,18 @@ func findInEntry(entry *tokens.Entry, name string) *HoverInfo {
 		}
 	}
 
+	if entry.Trait != nil {
+		for _, field := range entry.Trait.Fields {
+			if field.Name == name {
+				return &HoverInfo{
+					Name:       field.Name,
+					Type:       fmt.Sprintf("func %s%s", field.Name, strings.TrimPrefix(formatImplMethodSignature(field), "func")),
+					DocComment: strings.Join(field.DocComment, "\n"),
+				}
+			}
+		}
+	}
+
 	if entry.Method != nil && entry.Method.Name == name {
 		return &HoverInfo{
 			Name:       entry.Method.Name,
@@ -447,6 +459,18 @@ func findInEntry(entry *tokens.Entry, name string) *HoverInfo {
 				Name:       entry.Declaration.Method.Name,
 				Type:       "declare " + analysis.FormatMethodSignature(entry.Declaration.Method),
 				DocComment: strings.Join(entry.Declaration.Method.DocComment, "\n"),
+			}
+		}
+	}
+
+	if entry.Implementation != nil {
+		for _, field := range entry.Implementation.GetFields() {
+			if field.Name == name {
+				return &HoverInfo{
+					Name:       field.Name,
+					Type:       fmt.Sprintf("func %s%s", field.Name, strings.TrimPrefix(formatImplMethodSignature(field), "func")),
+					DocComment: strings.Join(field.DocComment, "\n"),
+				}
 			}
 		}
 	}
@@ -1393,10 +1417,69 @@ func isImplForClass(impl *tokens.Implementation, className string) bool {
 	return false
 }
 
+func buildTraitMap(file *tokens.File) map[string]*tokens.Trait {
+	traits := make(map[string]*tokens.Trait)
+	if file == nil {
+		return traits
+	}
+
+	for _, entry := range file.Entries {
+		if entry.Trait != nil {
+			traits[entry.Trait.Name] = entry.Trait
+		}
+	}
+
+	return traits
+}
+
+func collectTraitFieldsForCompletions(traitName string, traits map[string]*tokens.Trait, visiting map[string]bool) []*tokens.ImplementationField {
+	if traitName == "" {
+		return nil
+	}
+	if visiting[traitName] {
+		return nil
+	}
+
+	trait, ok := traits[traitName]
+	if !ok || trait == nil {
+		return nil
+	}
+
+	visiting[traitName] = true
+	defer delete(visiting, traitName)
+
+	fields := make([]*tokens.ImplementationField, 0, len(trait.Fields))
+	indexByMethod := make(map[string]int)
+
+	for _, parent := range trait.AllParents() {
+		parentFields := collectTraitFieldsForCompletions(parent, traits, visiting)
+		for _, field := range parentFields {
+			if idx, exists := indexByMethod[field.Name]; exists {
+				fields[idx] = field
+				continue
+			}
+			indexByMethod[field.Name] = len(fields)
+			fields = append(fields, field)
+		}
+	}
+
+	for _, field := range trait.Fields {
+		if idx, exists := indexByMethod[field.Name]; exists {
+			fields[idx] = field
+			continue
+		}
+		indexByMethod[field.Name] = len(fields)
+		fields = append(fields, field)
+	}
+
+	return fields
+}
+
 // getTraitMethodCompletions returns completions for trait methods implemented for a class
 func getTraitMethodCompletions(file *tokens.File, className, prefix string, typeArgs []string) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 	addedMethods := make(map[string]bool)
+	traitMap := buildTraitMap(file)
 
 	// Get type parameters from the class definition for substitution
 	var typeParams []string
@@ -1425,6 +1508,28 @@ func getTraitMethodCompletions(file *tokens.File, className, prefix string, type
 					if entry.Implementation.GetFor() != "" && entry.Implementation.GetName() != "" {
 						detail = fmt.Sprintf("(%s) %s", entry.Implementation.GetName(), detail)
 					}
+					items = append(items, protocol.CompletionItem{
+						Label:  name,
+						Kind:   protocol.CompletionItemKindMethod,
+						Detail: detail,
+					})
+				}
+			}
+
+			// Add methods from the implemented trait hierarchy (handles inherited/default methods).
+			if entry.Implementation.GetFor() != "" && entry.Implementation.GetName() != "" {
+				traitName := entry.Implementation.GetName()
+				for _, field := range collectTraitFieldsForCompletions(traitName, traitMap, map[string]bool{}) {
+					name := field.Name
+					if !strings.HasPrefix(name, prefix) || addedMethods[name] {
+						continue
+					}
+					addedMethods[name] = true
+					detail := formatImplMethodSignature(field)
+					if len(typeArgs) > 0 {
+						detail = substituteTypeParams(detail, typeParams, typeArgs)
+					}
+					detail = fmt.Sprintf("(%s) %s", traitName, detail)
 					items = append(items, protocol.CompletionItem{
 						Label:  name,
 						Kind:   protocol.CompletionItemKindMethod,
@@ -2125,6 +2230,20 @@ func findDefinitionInEntry(entry *tokens.Entry, name string, uri string) *protoc
 		}
 	}
 
+	if entry.Trait != nil {
+		for _, field := range entry.Trait.Fields {
+			if field.Name == name {
+				return &protocol.Location{
+					URI: protocol.DocumentURI(uri),
+					Range: protocol.Range{
+						Start: protocol.Position{Line: uint32(field.Pos.Line - 1), Character: uint32(field.Pos.Column - 1)},
+						End:   protocol.Position{Line: uint32(field.Pos.Line - 1), Character: uint32(field.Pos.Column - 1 + len(field.Name))},
+					},
+				}
+			}
+		}
+	}
+
 	if entry.Method != nil && entry.Method.Name == name {
 		return &protocol.Location{
 			URI: protocol.DocumentURI(uri),
@@ -2153,6 +2272,20 @@ func findDefinitionInEntry(entry *tokens.Entry, name string, uri string) *protoc
 					Start: protocol.Position{Line: uint32(entry.Declaration.Method.Pos.Line - 1), Character: uint32(entry.Declaration.Method.Pos.Column - 1)},
 					End:   protocol.Position{Line: uint32(entry.Declaration.Method.Pos.Line - 1), Character: uint32(entry.Declaration.Method.Pos.Column - 1 + len(entry.Declaration.Method.Name))},
 				},
+			}
+		}
+	}
+
+	if entry.Implementation != nil {
+		for _, field := range entry.Implementation.GetFields() {
+			if field.Name == name {
+				return &protocol.Location{
+					URI: protocol.DocumentURI(uri),
+					Range: protocol.Range{
+						Start: protocol.Position{Line: uint32(field.Pos.Line - 1), Character: uint32(field.Pos.Column - 1)},
+						End:   protocol.Position{Line: uint32(field.Pos.Line - 1), Character: uint32(field.Pos.Column - 1 + len(field.Name))},
+					},
+				}
 			}
 		}
 	}

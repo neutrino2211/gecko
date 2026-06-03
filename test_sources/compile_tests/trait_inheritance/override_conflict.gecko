@@ -1,0 +1,23 @@
+package main
+
+trait Parent {
+    func value(self): int32
+}
+
+trait Child: Parent {
+    func value(self): bool
+}
+
+class Item {
+    let value: int32
+}
+
+impl Child for Item {
+    func value(self): bool {
+        return true
+    }
+}
+
+external func main(): int32 {
+    return 0
+}

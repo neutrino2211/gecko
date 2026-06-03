@@ -59,6 +59,24 @@ let addr: uint64 = bytes as uint64
 let restored: uint8* = addr as uint8*
 ```
 
+### Pointer Arithmetic Policy
+
+Raw pointer arithmetic in expression operators is disallowed:
+
+```gecko
+let p: uint8* = ...
+let q = p + 1   // error
+```
+
+Use explicit intrinsics for low-level offset operations:
+
+```gecko
+let q: uint8* = @ptr_add(p, 1) as uint8*
+let r: uint8* = @ptr_sub(q, 1) as uint8*
+```
+
+For typed, bounds-aware access patterns, prefer `std.memory.buffer.Buffer<T>`.
+
 ### Equality
 
 ```gecko
@@ -108,4 +126,4 @@ free(p as void*)
 - No ownership or borrow checking
 - No pointer provenance checking
 - No built-in bounds checks for pointer indexing
-- Dedicated pointer arithmetic intrinsics are planned
+- Intrinsics remain low-level escape hatches; `Buffer<T>` is the preferred typed abstraction

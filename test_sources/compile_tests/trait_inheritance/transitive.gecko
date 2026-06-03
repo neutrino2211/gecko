@@ -1,0 +1,42 @@
+package main
+
+trait Core {
+    func core(self): int32
+}
+
+trait Middle: Core {
+    func middle(self): int32
+}
+
+trait Top: Middle {
+    func top(self): int32
+}
+
+class Node {
+    let value: int32
+}
+
+impl Top for Node {
+    func core(self): int32 {
+        return self.value
+    }
+
+    func middle(self): int32 {
+        return self.value + 1
+    }
+
+    func top(self): int32 {
+        return self.value + 2
+    }
+}
+
+func assert_core<T is Core>(value: T): void {
+    let observed: int32 = value.core()
+    let _ignore: int32 = observed
+}
+
+external func main(): int32 {
+    let node: Node = Node { value: 40 }
+    assert_core<Node>(node)
+    return node.top()
+}

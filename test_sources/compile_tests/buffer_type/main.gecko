@@ -1,0 +1,36 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/control-flow.md, spec/pointers.md, spec/memory.md, spec/stdlib.md
+
+package main
+
+import std.memory.buffer use { Buffer }
+
+declare external func malloc(size: uint64): void*
+declare external func free(ptr: void*): void
+
+external func main(): int32 {
+    let mem: void* = malloc(4 * @size_of<uint32>())
+    if (@is_null(mem)) {
+        return 1
+    }
+
+    let ptr: uint32* = mem as uint32*
+    let buf: Buffer<uint32> = Buffer<uint32>::from_raw(ptr, 4)
+
+    if (!buf.set(0, 10)) {
+        free(mem)
+        return 2
+    }
+    if (!buf.set(1, 12)) {
+        free(mem)
+        return 3
+    }
+    if (!buf.set(2, 20)) {
+        free(mem)
+        return 4
+    }
+
+    let sum: uint32 = buf.get(0) + buf.get(1) + buf.get(2)
+
+    free(mem)
+    return sum as int32
+}

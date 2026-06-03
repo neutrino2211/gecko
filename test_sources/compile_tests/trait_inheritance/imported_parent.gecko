@@ -1,0 +1,34 @@
+package main
+
+import parent_trait use { ParentNamed }
+
+trait ChildNamed: ParentNamed {
+    func child_value(self): int32
+}
+
+class ImportedBox {
+    let value: int32
+}
+
+impl ImportedBox {
+    func parent_value(self): int32 {
+        return self.value
+    }
+
+    func child_value(self): int32 {
+        return self.value + 1
+    }
+}
+
+default impl ChildNamed for ImportedBox
+
+func assert_parent<T is ParentNamed>(value: T): void {
+    let observed: int32 = value.parent_plus_one()
+    let _ignore: int32 = observed
+}
+
+external func main(): int32 {
+    let box: ImportedBox = ImportedBox { value: 41 }
+    assert_parent<ImportedBox>(box)
+    return box.parent_plus_one()
+}

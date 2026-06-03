@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -15,6 +17,11 @@ type compileTest struct {
 	file         string
 	expectedExit int
 	shouldFail   bool
+}
+
+type compileOnlyTest struct {
+	name string
+	file string
 }
 
 var compileTests = []compileTest{
@@ -51,6 +58,7 @@ var compileTests = []compileTest{
 	{"box_type", "test_sources/compile_tests/box_type/main.gecko", 0, false},
 	{"rc_type", "test_sources/compile_tests/rc_type/main.gecko", 0, false},
 	{"weak_type", "test_sources/compile_tests/weak_type/main.gecko", 0, false},
+	{"buffer_type", "test_sources/compile_tests/buffer_type/main.gecko", 42, false},
 
 	// Type inference
 	{"type_inference", "test_sources/compile_tests/type_inference/main.gecko", 0, false},
@@ -148,6 +156,9 @@ var compileTests = []compileTest{
 
 	// Trait inheritance (trait Child: Parent)
 	{"trait_inheritance", "test_sources/compile_tests/trait_inheritance/main.gecko", 42, false},
+	{"trait_inheritance_transitive", "test_sources/compile_tests/trait_inheritance/transitive.gecko", 42, false},
+	{"trait_inheritance_inherited_defaults", "test_sources/compile_tests/trait_inheritance/inherited_defaults.gecko", 30, false},
+	{"trait_inheritance_imported_parent", "test_sources/compile_tests/trait_inheritance/imported_parent.gecko", 42, false},
 
 	// Circular dependencies - pointer cycles are allowed
 	{"circular_deps_pointer", "test_sources/compile_tests/circular_deps/pointer_cycle.gecko", 0, false},
@@ -164,6 +175,25 @@ var compileTests = []compileTest{
 	// {"integers", "test_sources/compile_tests/ints/int.gecko", 0, false}, // printf declaration issues
 }
 
+var compileOnlyTests = []compileOnlyTest{
+	// Backlog directories that are compile-valid but may be platform/runtime dependent.
+	{"array_index", "test_sources/compile_tests/array_index/array_index.gecko"},
+	{"asm", "test_sources/compile_tests/asm/asm.gecko"},
+	{"attributes_entry_point", "test_sources/compile_tests/attributes/entry_point.gecko"},
+	{"attributes_packed", "test_sources/compile_tests/attributes/packed.gecko"},
+	{"casts", "test_sources/compile_tests/casts/cast.gecko"},
+	{"comprehensive", "test_sources/compile_tests/comprehensive/test.gecko"},
+	{"globals", "test_sources/compile_tests/globals/globals.gecko"},
+	{"globals_simple", "test_sources/compile_tests/globals/simple_globals.gecko"},
+	{"imports", "test_sources/compile_tests/imports/main.gecko"},
+	{"loops_break_continue", "test_sources/compile_tests/loops/break_continue.gecko"},
+	{"strings_args", "test_sources/compile_tests/strings/args.gecko"},
+	{"strings_greeting", "test_sources/compile_tests/strings/greeting.gecko"},
+	{"volatile_pointer", "test_sources/compile_tests/volatile/volatile_pointer.gecko"},
+}
+
+var errorsGeneratedPattern = regexp.MustCompile(`\b([0-9]+) errors generated\b`)
+
 func TestCompileAndRun(t *testing.T) {
 	// Build the compiler first
 	geckoPath := buildGecko(t)
@@ -171,6 +201,17 @@ func TestCompileAndRun(t *testing.T) {
 	for _, tc := range compileTests {
 		t.Run(tc.name, func(t *testing.T) {
 			runCompileTest(t, geckoPath, tc)
+		})
+	}
+}
+
+func TestCompileOnly(t *testing.T) {
+	// Build the compiler first
+	geckoPath := buildGecko(t)
+
+	for _, tc := range compileOnlyTests {
+		t.Run(tc.name, func(t *testing.T) {
+			runCompileOnlyTest(t, geckoPath, tc)
 		})
 	}
 }
@@ -220,6 +261,7 @@ func runCompileTest(t *testing.T, geckoPath string, tc compileTest) {
 	// Run gecko run command
 	cmd := exec.Command(geckoPath, "run", sourcePath)
 	cmd.Dir = projectRoot
+	cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
 	output, err := cmd.CombinedOutput()
 
 	exitCode := 0
@@ -253,6 +295,54 @@ func runCompileTest(t *testing.T, geckoPath string, tc compileTest) {
 	}
 }
 
+func runCompileOnlyTest(t *testing.T, geckoPath string, tc compileOnlyTest) {
+	t.Helper()
+
+	// Get project root
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	projectRoot := filepath.Dir(wd)
+	if filepath.Base(wd) != "tests" {
+		projectRoot = wd
+	}
+
+	sourcePath := filepath.Join(projectRoot, tc.file)
+
+	// Compile to C IR only so tests remain portable even when runtime/linking is target-specific.
+	cmd := exec.Command(geckoPath, "compile", "--backend", "c", "--ir-only", sourcePath)
+	cmd.Dir = projectRoot
+	cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Compilation failed unexpectedly: %v\n%s", err, output)
+	}
+
+	outputStr := string(output)
+	matches := errorsGeneratedPattern.FindAllStringSubmatch(outputStr, -1)
+	if len(matches) == 0 {
+		// Fallback guard in case summary format changes.
+		if strings.Contains(outputStr, "error:") || strings.Contains(outputStr, "Error:") {
+			t.Fatalf("Compilation output contains errors:\n%s", outputStr)
+		}
+		return
+	}
+
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		errorCount, convErr := strconv.Atoi(match[1])
+		if convErr != nil {
+			t.Fatalf("Failed to parse error count from output:\n%s", outputStr)
+		}
+		if errorCount > 0 {
+			t.Fatalf("Expected zero compile errors, got %d\nOutput:\n%s", errorCount, outputStr)
+		}
+	}
+}
+
 func TestTraitConstraintError(t *testing.T) {
 	geckoPath := buildGecko(t)
 
@@ -266,6 +356,7 @@ func TestTraitConstraintError(t *testing.T) {
 
 	cmd := exec.Command(geckoPath, "compile", "--backend", "c", "--ir-only", sourcePath)
 	cmd.Dir = projectRoot
+	cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
 	output, _ := cmd.CombinedOutput()
 
 	outputStr := string(output)
@@ -396,6 +487,12 @@ func TestTypeCheckingErrors(t *testing.T) {
 			expectedMsg:   "use after move: 'a' has been moved",
 		},
 		{
+			name:          "pointer_arithmetic_disallowed",
+			file:          "test_sources/compile_tests/type_checking/pointer_arithmetic_disallowed.gecko",
+			expectedError: "Pointer Arithmetic Error",
+			expectedMsg:   "Raw pointer arithmetic is not allowed",
+		},
+		{
 			name:          "trait_method_conflict",
 			file:          "test_sources/compile_tests/trait_conflicts/conflict.gecko",
 			expectedError: "Trait Method Conflict",
@@ -412,6 +509,12 @@ func TestTypeCheckingErrors(t *testing.T) {
 			file:          "test_sources/compile_tests/trait_inheritance/cycle_error.gecko",
 			expectedError: "Trait Inheritance Error",
 			expectedMsg:   "cannot inherit from itself",
+		},
+		{
+			name:          "trait_inheritance_override_conflict",
+			file:          "test_sources/compile_tests/trait_inheritance/override_conflict.gecko",
+			expectedError: "Trait Inheritance Error",
+			expectedMsg:   "conflicts with inherited method",
 		},
 		{
 			name:          "circular_type_dependency",
@@ -439,6 +542,7 @@ func TestTypeCheckingErrors(t *testing.T) {
 
 			cmd := exec.Command(geckoPath, "compile", "--backend", "c", "--ir-only", sourcePath)
 			cmd.Dir = projectRoot
+			cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
 			output, _ := cmd.CombinedOutput()
 
 			outputStr := string(output)

@@ -25,7 +25,7 @@ impl<T> Slice<T> {
     }
 
     func get(self, index: uint64): T {
-        let ptr: T* = self.data + index
+        let ptr: T* = @ptr_add(self.data, index) as T*
         return @deref(ptr)
     }
 }
@@ -43,7 +43,7 @@ impl<T> Clone for Slice<T> {
 
 impl<T> Index<uint64, T> for Slice<T> {
     func index(self, idx: uint64): T {
-        let ptr: T* = self.data + idx
+        let ptr: T* = @ptr_add(self.data, idx) as T*
         return @deref(ptr)
     }
 }

@@ -1,0 +1,82 @@
+// spec: spec/types.md, spec/traits.md, spec/modules.md, spec/operators.md, spec/pointers.md, spec/memory.md, spec/stdlib.md
+
+package buffer
+
+import std.core.traits use { Index, IndexMut }
+
+/// Buffer<T> is a typed view over a raw pointer + length.
+///
+/// This is the safe-by-default alternative to direct pointer arithmetic.
+/// Pointer movement is explicit via ptr intrinsics inside this abstraction.
+public class Buffer<T> {
+    let ptr: T*
+    let length: uint64
+}
+
+impl<T> Buffer<T> {
+    /// Creates a typed buffer view from a raw pointer and element length.
+    func from_raw(ptr: T*, length: uint64): Buffer<T> {
+        let b: Buffer<T>
+        b.ptr = ptr
+        b.length = length
+        return b
+    }
+
+    /// Returns the number of elements in this buffer view.
+    func len(self): uint64 {
+        return self.length
+    }
+
+    /// Returns true if this buffer is empty.
+    func is_empty(self): bool {
+        return self.length == 0
+    }
+
+    /// Returns the underlying raw pointer.
+    func as_ptr(self): T* {
+        return self.ptr
+    }
+
+    /// Bounds-checked read. Returns zero value when out of bounds.
+    func get(self, index: uint64): T {
+        if (index >= self.length) {
+            return 0 as T
+        }
+        let p: T* = @ptr_add(self.ptr, index) as T*
+        return @deref(p)
+    }
+
+    /// Bounds-checked write. Returns false when out of bounds.
+    func set(self, index: uint64, value: T): bool {
+        if (index >= self.length) {
+            return false
+        }
+        let p: T* = @ptr_add(self.ptr, index) as T*
+        @write_volatile(p, value)
+        return true
+    }
+
+    /// Unchecked read for low-level hot paths.
+    func get_unchecked(self, index: uint64): T {
+        let p: T* = @ptr_add(self.ptr, index) as T*
+        return @deref(p)
+    }
+
+    /// Unchecked write for low-level hot paths.
+    func set_unchecked(self, index: uint64, value: T): void {
+        let p: T* = @ptr_add(self.ptr, index) as T*
+        @write_volatile(p, value)
+    }
+}
+
+impl<T> Index<uint64, T> for Buffer<T> {
+    func index(self, idx: uint64): T {
+        return self.get(idx)
+    }
+}
+
+impl<T> IndexMut<uint64, T> for Buffer<T> {
+    func index_mut(self, idx: uint64, value: T): void {
+        self.set_unchecked(idx, value)
+    }
+}

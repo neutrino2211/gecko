@@ -4,12 +4,20 @@ Tracking implementation of the new module system per specs in `spec/modules.md`,
 
 ## Current Priorities (2026-06-03)
 
-1. Finish remaining test directory enablement and syntax migrations
-2. Pointer arithmetic overflow handling (low priority)
+1. Pointer arithmetic overflow handling for `@ptr_add`/`@ptr_sub` (spec + diagnostics, low priority)
 
 ### Recently Completed
 
 - Trait inheritance: `trait Child: Parent` (implemented 2026-06-03)
+- Compile test directory enablement for `array_index/`, `asm/`, `attributes/`, `casts/`,
+  `comprehensive/`, `globals/`, `imports/`, `loops/`, `strings/`, `volatile/` (compile-only coverage)
+- Trait inheritance edge-case coverage:
+  transitive inheritance, inherited defaults, override-conflict diagnostics, imported parent traits
+- LSP inherited-trait parity:
+  completions, hover, go-to-definition, and diagnostics for inherited trait methods
+- Pointer arithmetic policy Phase 1:
+  raw pointer `+`/`-` disallowed in expressions, `@ptr_add`/`@ptr_sub` documented as escape hatches,
+  `std.memory.buffer.Buffer<T>` introduced as typed abstraction, tests migrated and expanded
 
 ## Phase 1: Parser Changes ✅ COMPLETE
 
@@ -179,7 +187,7 @@ These issues allowed incorrect code to compile silently:
   - Fixed bug in `errors.go` where warnings were appended to errors list
   - Created global ErrorScope registry for centralized error collection
   - Fixed generic field access: register fields AND methods for generic classes
-  - Fixed pointer builtin methods: `ptr.offset()`, `ptr.read()`, `ptr.write()` in `GetTypeOfFuncCall`
+  - Fixed pointer builtin methods: `ptr.offset()`, `ptr.read()`, `ptr.write()` in `GetTypeOfFuncCall` (historical; `.offset()` has since been removed in favor of `@ptr_add`/`@ptr_sub`)
   - Fixed generic method return types: substitute `T` with actual type arg (e.g., `Vec<int32>.get()` returns `int32`)
   - All 36 compile tests + type checking error tests pass
 
@@ -196,11 +204,10 @@ These issues allowed incorrect code to compile silently:
   - Syntax: `cimport "<stdio.h>"` for system headers, `cimport "local.h"` for local
   - Supports `withobject` and `withlibrary` for linking (stored in token for build stage)
 
-- [x] **Enable unrun test directories** - Partially complete ✅
-  - Added: `packed/`, `struct_literal/`, `struct_inline/`, `fixed_arrays/`, `typecheck_valid/`, `enums/`
-  - Remaining (need work): `array_index/` (no main), `asm/` (x86 only), `attributes/` (section attr),
-    `casts/` (old syntax), `comprehensive/` (old syntax), `globals/` (section attr),
-    `imports/` (no main), `loops/` (no main), `strings/` (conflict), `volatile/` (C error)
+- [x] **Enable unrun test directories** - Complete ✅
+  - Added runtime coverage: `packed/`, `struct_literal/`, `struct_inline/`, `fixed_arrays/`, `typecheck_valid/`, `enums/`
+  - Added compile-only coverage: `array_index/`, `asm/`, `attributes/`, `casts/`, `comprehensive/`,
+    `globals/`, `imports/`, `loops/`, `strings/`, `volatile/`
   - `effects_basic/` is deprecated for current error handling; `try`/`or` via trait hooks is the supported model.
 
 - [x] **Add examples to test suite** ✅
@@ -233,7 +240,7 @@ These issues allowed incorrect code to compile silently:
 
 - [x] **Generic type checking gaps** ✅
   - Generic class fields/methods now registered for type checking
-  - Pointer builtin methods (offset, read, write) handled in `GetTypeOfFuncCall`
+  - Pointer builtin methods (`read`, `write`) handled in `GetTypeOfFuncCall` (`offset` removed in favor of `@ptr_add`/`@ptr_sub`)
   - Generic return types substituted: `T` → actual type arg
 
 ### P3 - Low (Edge Cases) - MOSTLY COMPLETED 2026-04-20
@@ -261,7 +268,7 @@ These issues allowed incorrect code to compile silently:
   - C codegen: typedef uses simple name (`Circle`), methods use scoped name (`shapes__Circle__new`)
   - Test: `test_sources/compile_tests/qualified_types/main.gecko`
 
-- [ ] **Pointer arithmetic overflow** - Low priority for systems language (intrinsics-only currently)
+- [ ] **Pointer arithmetic overflow** - Low priority (remaining work for explicit `@ptr_add`/`@ptr_sub` overflow policy + diagnostics)
 
 - [x] **Circular type dependencies** ✅
   - Detects cycles in non-pointer (value) field dependencies

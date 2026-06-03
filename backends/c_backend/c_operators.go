@@ -303,10 +303,64 @@ func (impl *CBackendImplementation) GetTypeOfFuncCall(f *tokens.FuncCall, scope 
 	// Static method call: Type::method()
 	if f.StaticType != "" {
 		rootScope := scope.GetRoot()
-		classOpt := rootScope.ResolveClass(f.StaticType)
+		classOpt := scope.ResolveClass(f.StaticType)
+		if classOpt.IsNil() {
+			classOpt = rootScope.ResolveClass(f.StaticType)
+		}
+		if classOpt.IsNil() {
+			for _, child := range rootScope.Children {
+				classOpt = child.ResolveClass(f.StaticType)
+				if !classOpt.IsNil() {
+					break
+				}
+			}
+		}
 		if !classOpt.IsNil() {
 			class := classOpt.Unwrap()
 			if method, ok := class.Methods[f.Function]; ok {
+				aliasKey := f.StaticType + "#" + f.Function
+				if fullType, ok := MethodReturnTypes[aliasKey]; ok && fullType != nil {
+					return fullType
+				}
+
+				// Inherent impl methods are emitted with mangled names (Type__method)
+				// and tracked in MethodReturnTypes under scope#MangledName.
+				mangledMethodName := class.GetFullName() + "__" + f.Function
+				for key, fullType := range MethodReturnTypes {
+					if strings.HasSuffix(key, "#"+mangledMethodName) {
+						return fullType
+					}
+				}
+
+				// Prefer full TypeRef (with type args) when available.
+				// Class methods are keyed by ClassFullScope#methodName.
+				fullKey := class.FullScopeName() + "#" + f.Function
+				if fullType, ok := MethodReturnTypes[fullKey]; ok {
+					return fullType
+				}
+
+				// Imported module scopes may carry additional prefixes (e.g., main.fs.File#open).
+				// Fall back to suffix-based lookup to recover the precise generic return type.
+				qualifiedSuffix := "." + f.StaticType + "#" + f.Function
+				plainSuffix := f.StaticType + "#" + f.Function
+				for key, fullType := range MethodReturnTypes {
+					if strings.HasSuffix(key, qualifiedSuffix) || strings.HasSuffix(key, plainSuffix) {
+						if fullType != nil && fullType.Type == method.Type {
+							return fullType
+						}
+					}
+				}
+
+				// Inherent impl methods are usually keyed as scope#<module__Type__method>.
+				// Match by mangled method-name suffix when class scope metadata is incomplete.
+				mangledSuffix := "__" + f.StaticType + "__" + f.Function
+				for key, fullType := range MethodReturnTypes {
+					if strings.HasSuffix(key, mangledSuffix) {
+						if fullType != nil && fullType.Type == method.Type {
+							return fullType
+						}
+					}
+				}
 				return &tokens.TypeRef{Type: method.Type}
 			}
 		}

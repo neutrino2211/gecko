@@ -20,6 +20,67 @@ func (impl *CBackendImplementation) ExpressionToCString(e *tokens.Expression, sc
 	return impl.OrExpressionToCString(e.OrExpr, scope)
 }
 
+// getTypeOriginModule resolves the package/module that owns a type.
+// For monomorphized generic names (e.g., Option__int32_t), it falls back
+// to the base generic class name.
+func getTypeOriginModule(typeName string, scope *ast.Ast) string {
+	if scope == nil {
+		return ""
+	}
+
+	rootScope := scope.GetRoot()
+	classOpt := rootScope.ResolveClass(typeName)
+	if !classOpt.IsNil() {
+		return classOpt.Unwrap().GetOriginModule()
+	}
+
+	if idx := strings.Index(typeName, "__"); idx > 0 {
+		baseTypeName := typeName[:idx]
+		classOpt = rootScope.ResolveClass(baseTypeName)
+		if !classOpt.IsNil() {
+			return classOpt.Unwrap().GetOriginModule()
+		}
+		if originModule, ok := Generics.GenericClassOrigins[baseTypeName]; ok {
+			return originModule
+		}
+	}
+
+	if originModule, ok := Generics.GenericClassOrigins[typeName]; ok {
+		return originModule
+	}
+
+	return ""
+}
+
+// concretizeGenericTraitName replaces generic placeholder trait args (e.g., T)
+// with concrete type args from the owning generic class.
+func concretizeGenericTraitName(traitName string, baseTypeName string, typeArgStrs []string) string {
+	if traitName == "" || len(typeArgStrs) == 0 {
+		return traitName
+	}
+
+	classToken, ok := Generics.GenericClasses[baseTypeName]
+	if !ok || classToken == nil || len(classToken.TypeParams) == 0 {
+		return traitName
+	}
+
+	paramToArg := make(map[string]string, len(classToken.TypeParams))
+	for i, param := range classToken.TypeParams {
+		if i < len(typeArgStrs) {
+			paramToArg[param.Name] = typeArgStrs[i]
+		}
+	}
+
+	parts := strings.Split(traitName, "__")
+	for i := 1; i < len(parts); i++ {
+		if concrete, ok := paramToArg[parts[i]]; ok {
+			parts[i] = concrete
+		}
+	}
+
+	return strings.Join(parts, "__")
+}
+
 // OrExpressionToCString handles the 'or' keyword for error handling
 func (impl *CBackendImplementation) OrExpressionToCString(o *tokens.OrExpression, scope *ast.Ast) string {
 	if o == nil {
@@ -58,18 +119,13 @@ func (impl *CBackendImplementation) OrExpressionToCString(o *tokens.OrExpression
 				if found && len(orHook.Methods) > 0 {
 					methodName := orHook.Methods[0]
 					// Generic trait impl placeholders are stored with type params (e.g., Orable__T).
-					// Substitute concrete type args for codegen, but keep inherited trait names intact.
-					if len(typeArgStrs) > 0 && traitBaseName(mangledTraitName) == orHook.TraitName {
-						mangledTraitName = orHook.TraitName
-						for _, arg := range typeArgStrs {
-							mangledTraitName += "__" + arg
-						}
-					}
+					// Replace placeholders with concrete class type args.
+					mangledTraitName = concretizeGenericTraitName(mangledTraitName, baseTypeName, typeArgStrs)
 
 					// Only add module prefix for generic types (detected by having type args)
 					var fullMethodName string
 					if len(typeArgStrs) > 0 {
-						modulePrefix := scope.GetRoot().Scope
+						modulePrefix := getTypeOriginModule(typeName, scope)
 						if modulePrefix != "" {
 							modulePrefix += "__"
 						}
@@ -311,6 +367,34 @@ func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, opera
 		return "", false
 	}
 
+	// Determine enclosing function return type up front; used both for validation
+	// and to recover missing generic args in operand type inference.
+	funcReturnType := getCurrentFuncReturnType(scope)
+
+	// If type inference lost generic args (e.g., Option<File> -> Option),
+	// recover the full return type from the called function symbol.
+	if len(operandType.TypeArgs) == 0 {
+		if parenIdx := strings.Index(operandCode, "("); parenIdx > 0 {
+			callee := strings.TrimSpace(operandCode[:parenIdx])
+			for key, fullType := range MethodReturnTypes {
+				if !strings.HasSuffix(key, "#"+callee) || fullType == nil {
+					continue
+				}
+				if fullType.Type == operandType.Type && len(fullType.TypeArgs) > 0 {
+					operandType = fullType
+					break
+				}
+			}
+		}
+		// If still unresolved, inherit generic args from the enclosing function's
+		// return type when the base type matches (common for `try` propagation).
+		if len(operandType.TypeArgs) == 0 && funcReturnType != nil {
+			if funcReturnType.Type == operandType.Type && len(funcReturnType.TypeArgs) > 0 {
+				operandType = funcReturnType
+			}
+		}
+	}
+
 	// Get the try hook (requires both has_value and try_unwrap methods)
 	tryHook := hooks.GetHookRegistry().GetHookFromAnyModule(hooks.HookTry)
 	if tryHook == nil || len(tryHook.Methods) < 2 {
@@ -339,15 +423,9 @@ func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, opera
 	if !found {
 		return "", false
 	}
-	if len(typeArgStrs) > 0 && traitBaseName(mangledTraitName) == tryHook.TraitName {
-		mangledTraitName = tryHook.TraitName
-		for _, arg := range typeArgStrs {
-			mangledTraitName += "__" + arg
-		}
-	}
+	mangledTraitName = concretizeGenericTraitName(mangledTraitName, baseTypeName, typeArgStrs)
 
 	// Check if the current function's return type implements Tryable
-	funcReturnType := getCurrentFuncReturnType(scope)
 	if funcReturnType == nil {
 		scope.ErrorScope.NewCompileTimeError(
 			"Try Expression Error",
@@ -391,7 +469,7 @@ func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, opera
 	// Build method prefix (with or without module prefix for generic types)
 	var methodPrefix string
 	if len(typeArgStrs) > 0 {
-		modulePrefix := scope.GetRoot().Scope
+		modulePrefix := getTypeOriginModule(typeName, scope)
 		if modulePrefix != "" {
 			modulePrefix += "__"
 		}

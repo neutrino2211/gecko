@@ -1,0 +1,32 @@
+package fs
+
+import std.option use { Option }
+
+declare external type FILE
+declare external func fopen(file: string, mode: string): FILE*
+
+public class File {
+    private let internal_ptr: FILE*
+}
+
+impl File {
+    public func open(path: string, mode: string): Option<File> {
+        let fp: FILE* = fopen(path, mode)
+        if (@is_null(fp as void*)) {
+            return Option<File>::none()
+        }
+
+        let f: File
+        f.internal_ptr = fp
+        return Option<File>::some(f)
+    }
+
+    public func is_open(self): bool {
+        return !@is_null(self.internal_ptr as void*)
+    }
+}
+
+public func open_checked(path: string, mode: string): Option<File> {
+    let file: File = try File::open(path, mode)
+    return Option<File>::some(file)
+}

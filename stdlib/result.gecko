@@ -32,7 +32,7 @@ public class Result<T, E> {
     let is_ok: bool
 
     /// Creates a success Result containing a value.
-    func ok(val: T): Result<T, E> {
+    public func ok(val: T): Result<T, E> {
         let res: Result<T, E>
         res.value = val
         res.is_ok = true
@@ -40,7 +40,7 @@ public class Result<T, E> {
     }
 
     /// Creates an error Result containing an error.
-    func err(e: E): Result<T, E> {
+    public func err(e: E): Result<T, E> {
         let res: Result<T, E>
         res.error = e
         res.is_ok = false
@@ -48,29 +48,29 @@ public class Result<T, E> {
     }
 
     /// Returns true if this Result is Ok.
-    func is_success(self): bool {
+    public func is_success(self): bool {
         return self.is_ok
     }
 
     /// Returns true if this Result is Err.
-    func is_error(self): bool {
+    public func is_error(self): bool {
         return !self.is_ok
     }
 
     /// Returns the contained value.
     /// Behavior is undefined if the Result is Err.
-    func unwrap(self): T {
+    public func unwrap(self): T {
         return self.value
     }
 
     /// Returns the contained error.
     /// Behavior is undefined if the Result is Ok.
-    func unwrap_err(self): E {
+    public func unwrap_err(self): E {
         return self.error
     }
 
     /// Returns the contained value, or a default if Err.
-    func unwrap_or(self, default_val: T): T {
+    public func unwrap_or(self, default_val: T): T {
         if (self.is_ok) {
             return self.value
         }
@@ -78,22 +78,26 @@ public class Result<T, E> {
     }
 
     /// Maps the success value with a function.
-    func map<U>(self, mapper: func(T): U): Result<U, E> {
+    /// Note: method-level generic parameters are not yet supported in all backends.
+    /// This variant maps T -> T to keep Result usable across toolchains.
+    public func map(self, mapper: func(T): T): Result<T, E> {
         if (self.is_ok) {
-            return Result<U, E>::ok(mapper(self.value))
+            return Result<T, E>::ok(mapper(self.value))
         }
-        let res: Result<U, E>
+        let res: Result<T, E>
         res.error = self.error
         res.is_ok = false
         return res
     }
 
     /// Maps the error value with a function.
-    func map_err<F>(self, mapper: func(E): F): Result<T, F> {
+    /// Note: method-level generic parameters are not yet supported in all backends.
+    /// This variant maps E -> E to keep Result usable across toolchains.
+    public func map_err(self, mapper: func(E): E): Result<T, E> {
         if (!self.is_ok) {
-            return Result<T, F>::err(mapper(self.error))
+            return Result<T, E>::err(mapper(self.error))
         }
-        let res: Result<T, F>
+        let res: Result<T, E>
         res.value = self.value
         res.is_ok = true
         return res
@@ -102,18 +106,18 @@ public class Result<T, E> {
 
 /// Implement Tryable for Result - enables `try result_expr`
 impl<T, E> Tryable<T> for Result<T, E> {
-    func has_value(self): bool {
+    public func has_value(self): bool {
         return self.is_ok
     }
 
-    func try_unwrap(self): T {
+    public func try_unwrap(self): T {
         return self.value
     }
 }
 
 /// Implement Orable for Result - enables `result_expr or default`
 impl<T, E> Orable<T> for Result<T, E> {
-    func unwrap_or(self, default_val: T): T {
+    public func unwrap_or(self, default_val: T): T {
         if (self.is_ok) {
             return self.value
         }

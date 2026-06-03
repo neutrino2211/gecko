@@ -35,7 +35,7 @@ public class Option<T> {
     let has_value: bool
 
     /// Creates an Option containing a value.
-    func some(val: T): Option<T> {
+    public func some(val: T): Option<T> {
         let opt: Option<T>
         opt.value = val
         opt.has_value = true
@@ -43,30 +43,30 @@ public class Option<T> {
     }
 
     /// Creates an empty Option.
-    func none(): Option<T> {
+    public func none(): Option<T> {
         let opt: Option<T>
         opt.has_value = false
         return opt
     }
 
     /// Returns true if this Option contains a value.
-    func is_some(self): bool {
+    public func is_some(self): bool {
         return self.has_value
     }
 
     /// Returns true if this Option is empty.
-    func is_none(self): bool {
+    public func is_none(self): bool {
         return !self.has_value
     }
 
     /// Returns the contained value.
     /// Behavior is undefined if the Option is None.
-    func unwrap(self): T {
+    public func unwrap(self): T {
         return self.value
     }
 
     /// Returns the contained value, or a default if None.
-    func unwrap_or(self, default_val: T): T {
+    public func unwrap_or(self, default_val: T): T {
         if (self.has_value) {
             return self.value
         }
@@ -75,7 +75,7 @@ public class Option<T> {
 
     /// Returns the contained value, or computes it from a default.
     /// Note: In Gecko, this takes the computed default directly.
-    func get_or(self, default_val: T): T {
+    public func get_or(self, default_val: T): T {
         if (self.has_value) {
             return self.value
         }
@@ -85,18 +85,18 @@ public class Option<T> {
 
 /// Implement Tryable for Option - enables `try option_expr`
 impl<T> Tryable<T> for Option<T> {
-    func has_value(self): bool {
+    public func has_value(self): bool {
         return self.has_value
     }
 
-    func try_unwrap(self): T {
+    public func try_unwrap(self): T {
         return self.value
     }
 }
 
 /// Implement Orable for Option - enables `option_expr or default`
 impl<T> Orable<T> for Option<T> {
-    func unwrap_or(self, default_val: T): T {
+    public func unwrap_or(self, default_val: T): T {
         if (self.has_value) {
             return self.value
         }

@@ -1,0 +1,69 @@
+// spec: spec/types.md, spec/functions.md, spec/traits.md, spec/modules.md, spec/control-flow.md
+
+package main
+
+import std.option use { Option }
+import std.result use { Result }
+
+declare external type FILE
+declare external func fopen(path: string, mode: string): FILE*
+declare external func puts(s: string): int32
+
+class FileHandle {
+    let raw: FILE*
+}
+
+class FileError {
+    let code: int32
+}
+
+func open_option(path: string): Option<FileHandle> {
+    let fp: FILE* = fopen(path, "r")
+    if (@is_null(fp as void*)) {
+        return Option<FileHandle>::none()
+    }
+
+    let h: FileHandle
+    h.raw = fp
+    return Option<FileHandle>::some(h)
+}
+
+func read_with_option(path: string): Option<FileHandle> {
+    let h: FileHandle = try open_option(path)
+    return Option<FileHandle>::some(h)
+}
+
+func open_result(path: string): Result<FileHandle, FileError> {
+    let fp: FILE* = fopen(path, "r")
+    if (@is_null(fp as void*)) {
+        let e: FileError
+        e.code = 1
+        return Result<FileHandle, FileError>::err(e)
+    }
+
+    let h: FileHandle
+    h.raw = fp
+    return Result<FileHandle, FileError>::ok(h)
+}
+
+func read_with_result(path: string): Result<FileHandle, FileError> {
+    let h: FileHandle = try open_result(path)
+    return Result<FileHandle, FileError>::ok(h)
+}
+
+external func main(): int32 {
+    let missing = "__gecko_missing_file_for_try_test__"
+
+    let opt = read_with_option(missing)
+    if (opt.is_some()) {
+        return 1
+    }
+
+    let res = read_with_result(missing)
+    if (res.is_success()) {
+        return 2
+    }
+
+    puts("ok")
+    return 0
+}

@@ -1,8 +1,18 @@
 // GNote - A Gecko executable
 
+import utils.fs use { open_checked, File }
+import std.option use { Option }
+
 declare external func puts(s: string): int32
 
 external func main(): int32 {
+    let file: Option<File> = open_checked("no_exist", "r")
+    if file.is_some() {
+        puts("Opened file")
+    } else {
+        puts("Failed to open file")
+    }
+
     puts("Hello from GNote!")
     return 0
 }

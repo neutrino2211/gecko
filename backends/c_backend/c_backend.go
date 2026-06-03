@@ -1164,6 +1164,8 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 	// Track full return type for generic type support
 	if m.Type != nil {
 		MethodReturnTypes[scope.FullScopeName()+"#"+mangledName] = m.Type
+		// Alias for static method return-type lookup by source-level name (Type::method).
+		MethodReturnTypes[className+"#"+m.Name] = m.Type
 	}
 
 	// Initialize method scope info

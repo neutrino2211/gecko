@@ -605,6 +605,20 @@ func generateCCode(info *cbackend.CScopeInformation) string {
 	}
 	sb.WriteString("\n")
 
+	// Gecko runtime hooks used by lowered try diagnostics.
+	sb.WriteString("/* Gecko runtime hooks */\n")
+	sb.WriteString("typedef void (*__gecko_try_error_handler_t)(const char* file, int32_t line, int32_t column, const char* function_name, const char* expr);\n")
+	sb.WriteString("static __gecko_try_error_handler_t __gecko_try_error_handler = 0;\n")
+	sb.WriteString("void __gecko_set_try_error_handler(__gecko_try_error_handler_t handler) {\n")
+	sb.WriteString("    __gecko_try_error_handler = handler;\n")
+	sb.WriteString("}\n")
+	sb.WriteString("static void __gecko_try_fail(const char* file, int32_t line, int32_t column, const char* function_name, const char* expr) {\n")
+	sb.WriteString("    if (__gecko_try_error_handler) {\n")
+	sb.WriteString("        __gecko_try_error_handler(file, line, column, function_name, expr);\n")
+	sb.WriteString("    }\n")
+	sb.WriteString("    __builtin_trap();\n")
+	sb.WriteString("}\n\n")
+
 	// Write typedef declarations (external types)
 	if len(info.TypeDefs) > 0 {
 		sb.WriteString("/* External type declarations */\n")

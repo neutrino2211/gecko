@@ -17,6 +17,8 @@ import (
 var CurrentBackend interfaces.BackendInteface = nil
 var Methods map[string]*ast.Method
 
+const stdTryDiagnosticsInstallerMethod = "__gecko_install_try_error_handler"
+
 // Init initializes scope info for an AST
 func (info *CScopeInformation) InitForAst(a *ast.Ast) {
 	info.Init()
@@ -30,6 +32,44 @@ func loadPrimitives(a *ast.Ast) {
 			Scope: typeName,
 		}
 	}
+}
+
+func isStdErrorsSource(path string) bool {
+	if path == "" {
+		return false
+	}
+	normalized := filepath.ToSlash(path)
+	return normalized == "stdlib/errors.gecko" || strings.HasSuffix(normalized, "/stdlib/errors.gecko")
+}
+
+func findStdTryDiagnosticsInstaller(root *ast.Ast) string {
+	if root == nil {
+		return ""
+	}
+
+	visited := make(map[*ast.Ast]bool)
+	var walk func(scope *ast.Ast) string
+	walk = func(scope *ast.Ast) string {
+		if scope == nil || visited[scope] {
+			return ""
+		}
+		visited[scope] = true
+
+		if isStdErrorsSource(scope.GetSourceFile()) {
+			if m, ok := scope.Methods[stdTryDiagnosticsInstallerMethod]; ok {
+				return m.GetFullName()
+			}
+		}
+
+		for _, child := range scope.Children {
+			if installer := walk(child); installer != "" {
+				return installer
+			}
+		}
+		return ""
+	}
+
+	return walk(root)
 }
 
 // NewReturn generates a void return statement
@@ -1363,6 +1403,13 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 		CurrentTypeState = mthInfo.TypeState
 		impl.Backend.ProcessEntries(m.Value, &methodScope)
 		CurrentTypeState = prevTypeState
+
+		// If std.errors is imported, install its hidden try diagnostics hook at process startup.
+		if m.Visibility == "external" && m.Name == "main" {
+			if installer := findStdTryDiagnosticsInstaller(scope.GetRoot()); installer != "" {
+				mthInfo.Code = "    " + installer + "();\n" + mthInfo.Code
+			}
+		}
 
 		// Check if we need to add implicit void return
 		// Don't add return for @naked or @noreturn functions

@@ -496,7 +496,14 @@ func (impl *CBackendImplementation) GetTryOperatorCall(operandCode string, opera
 	// Decide failure behavior:
 	// - If enclosing function returns a compatible Tryable, propagate.
 	// - Otherwise, trap (panic ergonomics for non-Tryable returns).
-	failureAction := "__builtin_trap();"
+	sourceFile := pos.Filename
+	if sourceFile == "" && scope != nil {
+		sourceFile = scope.GetSourceFile()
+	}
+	fileLit := strconv.Quote(sourceFile)
+	exprLit := strconv.Quote(operandCode)
+	tryFailCall := "__gecko_try_fail(" + fileLit + ", " + strconv.Itoa(pos.Line) + ", " + strconv.Itoa(pos.Column) + ", __func__, " + exprLit + ");"
+	failureAction := tryFailCall
 	if returnTypeHasTryable {
 		// Exact same concrete type: propagate directly.
 		if returnTypeName == typeName {

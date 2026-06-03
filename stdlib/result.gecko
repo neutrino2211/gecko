@@ -3,6 +3,7 @@
 package result
 
 import std.core.traits use { Tryable, Orable }
+import std.errors
 
 /// Result<T, E> - Represents either a success (Ok) or failure (Err).
 ///

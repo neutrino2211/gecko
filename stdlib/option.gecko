@@ -3,6 +3,7 @@
 package option
 
 import std.core.traits use { Tryable, Orable }
+import std.errors
 
 /// Option<T> - Represents an optional value.
 ///

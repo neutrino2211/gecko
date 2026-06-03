@@ -45,6 +45,8 @@ func (impl *CBackendImplementation) IntrinsicToCString(i *tokens.Intrinsic, scop
 		return impl.intrinsicUnreachable(i, scope)
 	case "trap":
 		return impl.intrinsicTrap(i, scope)
+	case "set_try_error_handler":
+		return impl.intrinsicSetTryErrorHandler(i, scope)
 	// Builtin operators for primitive types
 	case "builtin_add":
 		return impl.intrinsicBuiltinOp(i, scope, "+")
@@ -214,6 +216,16 @@ func (impl *CBackendImplementation) intrinsicUnreachable(i *tokens.Intrinsic, sc
 // @trap() - trigger a trap/abort
 func (impl *CBackendImplementation) intrinsicTrap(i *tokens.Intrinsic, scope *ast.Ast) string {
 	return "__builtin_trap()"
+}
+
+// @set_try_error_handler(cb) - register callback invoked before try trap
+func (impl *CBackendImplementation) intrinsicSetTryErrorHandler(i *tokens.Intrinsic, scope *ast.Ast) string {
+	if len(i.Args) != 1 {
+		scope.ErrorScope.NewCompileTimeError("Intrinsic Error", "@set_try_error_handler requires exactly 1 argument (callback)", i.Pos)
+		return "0"
+	}
+	callback := impl.ExpressionToCString(i.Args[0], scope)
+	return fmt.Sprintf("__gecko_set_try_error_handler((__gecko_try_error_handler_t)(%s))", callback)
 }
 
 // @builtin_add, @builtin_sub, etc. - primitive binary operators

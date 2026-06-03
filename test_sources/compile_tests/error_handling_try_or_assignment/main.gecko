@@ -1,0 +1,39 @@
+// spec: spec/types.md, spec/functions.md, spec/traits.md, spec/modules.md, spec/control-flow.md
+
+package main
+
+import std.option use { Option }
+
+func read_value(ok: bool): Option<int32> {
+    if (ok) {
+        return Option<int32>::some(42)
+    }
+    return Option<int32>::none()
+}
+
+func assign_with_try(ok: bool): Option<int32> {
+    let value: int32 = 0
+    value = try read_value(ok)
+    return Option<int32>::some(value)
+}
+
+func assign_with_or(ok: bool): int32 {
+    let value: int32 = 0
+    let maybe: Option<int32> = read_value(ok)
+    value = maybe or 7
+    return value
+}
+
+external func main(): int32 {
+    let v1: Option<int32> = assign_with_try(true)
+    if (!v1.is_some()) {
+        return 1
+    }
+
+    let v2: int32 = assign_with_or(false)
+    if (v2 != 7) {
+        return 2
+    }
+
+    return 0
+}

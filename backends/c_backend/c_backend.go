@@ -677,6 +677,8 @@ func (impl *CBackendImplementation) GenerateMethodDef(scope *ast.Ast, m *tokens.
 // GenerateClassMethodDef generates a method for a generic class instantiation
 func (impl *CBackendImplementation) GenerateClassMethodDef(scope *ast.Ast, classToken *tokens.Class, m *tokens.Method, methodName string, className string, typeArgs []string) {
 	info := CGetScopeInformation(scope.GetRoot())
+	RegisterMethodSignature(methodName, m)
+	RegisterMethodSignature(className+"__"+m.Name, m)
 
 	// Set up monomorph context FIRST so type substitution works for return type and params
 	oldContext := CurrentMonomorphContext

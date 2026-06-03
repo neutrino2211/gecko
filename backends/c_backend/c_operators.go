@@ -7,6 +7,7 @@ import (
 
 	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/hooks"
 	"github.com/neutrino2211/gecko/tokens"
 )
 
@@ -81,6 +82,125 @@ func cloneTypeRefShallow(t *tokens.TypeRef) *tokens.TypeRef {
 		Pointer:  t.Pointer,
 		NonNull:  t.NonNull,
 	}
+}
+
+func cloneTypeRefForInference(t *tokens.TypeRef) *tokens.TypeRef {
+	if t == nil {
+		return nil
+	}
+	out := cloneTypeRefShallow(t)
+	if len(t.TypeArgs) > 0 {
+		out.TypeArgs = make([]*tokens.TypeRef, len(t.TypeArgs))
+		for i, arg := range t.TypeArgs {
+			out.TypeArgs[i] = cloneTypeRefForInference(arg)
+		}
+	}
+	return out
+}
+
+func typeArgsToTraitMangleParts(typeArgs []*tokens.TypeRef, scope *ast.Ast) []string {
+	if len(typeArgs) == 0 {
+		return nil
+	}
+
+	parts := make([]string, len(typeArgs))
+	for i, arg := range typeArgs {
+		if arg == nil {
+			continue
+		}
+		if cType, ok := GeckoToCType[arg.Type]; ok {
+			parts[i] = cType
+		} else {
+			parts[i] = TypeRefToCType(arg, scope)
+		}
+	}
+
+	return parts
+}
+
+func findTraitMethodReturnType(class *ast.Ast, traitName string, methodName string, operandType *tokens.TypeRef) *tokens.TypeRef {
+	if class == nil {
+		return nil
+	}
+
+	matchedTrait := ""
+	for candidate := range class.Traits {
+		if candidate == traitName {
+			matchedTrait = candidate
+			break
+		}
+	}
+	if matchedTrait == "" {
+		for candidate := range class.Traits {
+			if TraitMatchesOrExtends(candidate, traitName) {
+				matchedTrait = candidate
+				break
+			}
+		}
+	}
+	if matchedTrait == "" {
+		return nil
+	}
+
+	traitMethods := class.Traits[matchedTrait]
+	if traitMethods == nil {
+		return nil
+	}
+
+	expectedSuffix := "__" + methodName
+	for _, m := range *traitMethods {
+		if m == nil || len(m.Name) < len(expectedSuffix) || !strings.HasSuffix(m.Name, expectedSuffix) {
+			continue
+		}
+		if m.Type == "T" && len(operandType.TypeArgs) > 0 {
+			return cloneTypeRefForInference(operandType.TypeArgs[0])
+		}
+		return &tokens.TypeRef{Type: m.Type}
+	}
+
+	return nil
+}
+
+func (impl *CBackendImplementation) resolveHookValueType(operandType *tokens.TypeRef, scope *ast.Ast, hookType hooks.HookType, hookMethod string) *tokens.TypeRef {
+	if operandType == nil || operandType.Type == "" || hookMethod == "" {
+		return nil
+	}
+
+	hook := hooks.GetHookRegistry().GetHookFromAnyModule(hookType)
+	if hook == nil {
+		return nil
+	}
+
+	baseTypeName := operandType.Type
+	concreteTypeName := baseTypeName
+	if len(operandType.TypeArgs) > 0 {
+		concreteTypeName = mangleName(baseTypeName, typeArgsToTraitMangleParts(operandType.TypeArgs, scope))
+	}
+
+	traitName, found := impl.GetOperatorTraitName(concreteTypeName, hook.TraitName, scope)
+	if !found {
+		return nil
+	}
+
+	rootScope := scope.GetRoot()
+	classOpt := rootScope.ResolveClass(concreteTypeName)
+	if classOpt.IsNil() && baseTypeName != concreteTypeName {
+		classOpt = rootScope.ResolveClass(baseTypeName)
+	}
+	if classOpt.IsNil() {
+		return nil
+	}
+
+	if returnType := findTraitMethodReturnType(classOpt.Unwrap(), traitName, hookMethod, operandType); returnType != nil {
+		return returnType
+	}
+
+	// Generic fallback: many hook-based wrappers are Tryable<T>/Orable<T>.
+	if len(operandType.TypeArgs) > 0 {
+		return cloneTypeRefForInference(operandType.TypeArgs[0])
+	}
+
+	return nil
 }
 
 // refineTypeWithTypeState upgrades pointer nullability for a symbol if flow analysis
@@ -361,6 +481,20 @@ func (impl *CBackendImplementation) GetTypeOfFuncCall(f *tokens.FuncCall, scope 
 						}
 					}
 				}
+
+				// Final fallback: recover full return type from registered method signatures.
+				// This keeps generic args (e.g., Option<File>) for static calls in imported modules.
+				sigLookupKeys := []string{
+					class.GetFullName() + "__" + f.Function,
+					scope.GetRoot().GetFullName() + "__" + f.StaticType + "__" + f.Function,
+					f.StaticType + "__" + f.Function,
+				}
+				for _, key := range sigLookupKeys {
+					if sig, ok := MethodSignatures[key]; ok && sig != nil && sig.ReturnType != nil {
+						return sig.ReturnType
+					}
+				}
+
 				return &tokens.TypeRef{Type: method.Type}
 			}
 		}
@@ -458,12 +592,18 @@ func (impl *CBackendImplementation) GetTypeOfUnary(u *tokens.Unary, scope *ast.A
 		return u.Cast.Type
 	}
 
-	if u.Primary != nil {
-		return impl.GetTypeOfPrimary(u.Primary, scope)
+	if u.Unary != nil {
+		operandType := impl.GetTypeOfUnary(u.Unary, scope)
+		if u.Op == "try" {
+			if tryType := impl.resolveHookValueType(operandType, scope, hooks.HookTry, "try_unwrap"); tryType != nil {
+				return tryType
+			}
+		}
+		return operandType
 	}
 
-	if u.Unary != nil {
-		return impl.GetTypeOfUnary(u.Unary, scope)
+	if u.Primary != nil {
+		return impl.GetTypeOfPrimary(u.Primary, scope)
 	}
 
 	return nil
@@ -555,7 +695,32 @@ func (impl *CBackendImplementation) GetTypeOfExpression(e *tokens.Expression, sc
 	if e == nil {
 		return nil
 	}
-	return impl.GetTypeOfLogicalOr(e.GetLogicalOr(), scope)
+	return impl.GetTypeOfOrExpression(e.OrExpr, scope)
+}
+
+// GetTypeOfOrExpression gets the type of an `or` expression chain.
+func (impl *CBackendImplementation) GetTypeOfOrExpression(o *tokens.OrExpression, scope *ast.Ast) *tokens.TypeRef {
+	if o == nil {
+		return nil
+	}
+
+	leftType := impl.GetTypeOfLogicalOr(o.LogicalOr, scope)
+	if o.Or == nil {
+		return leftType
+	}
+
+	// `expr or fallback` resolves to the wrapped value type.
+	if valueType := impl.resolveHookValueType(leftType, scope, hooks.HookOr, "unwrap_or"); valueType != nil {
+		return valueType
+	}
+
+	// Fallback for non-hook paths (e.g., pointer/null idioms): use RHS type if known.
+	rightType := impl.GetTypeOfOrExpression(o.Or, scope)
+	if rightType != nil {
+		return rightType
+	}
+
+	return leftType
 }
 
 // HasOperatorTrait checks if a type has an operator trait implemented

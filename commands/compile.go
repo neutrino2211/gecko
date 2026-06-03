@@ -410,6 +410,40 @@ func runPkgConfigWithFlags(flags string, packages []string) ([]string, error) {
 	return strings.Fields(flagStr), nil
 }
 
+func runBuildScripts(projectCfg *config.ProjectConfig, scripts []string, stage string, output string) error {
+	if projectCfg == nil || len(scripts) == 0 {
+		return nil
+	}
+
+	for _, script := range scripts {
+		expandedScript := os.Expand(script, func(key string) string {
+			switch key {
+			case "OUTPUT":
+				return output
+			case "PROJECT_ROOT":
+				return projectCfg.ProjectRoot
+			case "PACKAGE_NAME":
+				return projectCfg.Package.Name
+			case "PACKAGE_VERSION":
+				return projectCfg.Package.Version
+			default:
+				return os.Getenv(key)
+			}
+		})
+
+		fmt.Printf("Running %s: %s\n", stage, expandedScript)
+		scriptCmd := exec.Command("sh", "-c", expandedScript)
+		scriptCmd.Dir = projectCfg.ProjectRoot
+		scriptCmd.Stdout = os.Stdout
+		scriptCmd.Stderr = os.Stderr
+		if err := scriptCmd.Run(); err != nil {
+			return fmt.Errorf("%s script failed: %w", stage, err)
+		}
+	}
+
+	return nil
+}
+
 // BuildCommand compiles gecko to an executable
 var BuildCommand = &cli.Command{
 	Name:        "build",
@@ -458,12 +492,6 @@ var BuildCommand = &cli.Command{
 			return nil
 		}
 
-		// Compile to C
-		cFile, err := compileToC(ctx, source, projectCfg)
-		if err != nil {
-			return err
-		}
-
 		// Determine output name
 		output := ctx.String("output")
 		if output == "" {
@@ -475,6 +503,18 @@ var BuildCommand = &cli.Command{
 				base := filepath.Base(source)
 				output = strings.TrimSuffix(base, filepath.Ext(base))
 			}
+		}
+
+		if projectCfg != nil && projectCfg.Build.Scripts != nil {
+			if err := runBuildScripts(projectCfg, projectCfg.Build.Scripts.PreBuild, "pre-build", output); err != nil {
+				return err
+			}
+		}
+
+		// Compile to C
+		cFile, err := compileToC(ctx, source, projectCfg)
+		if err != nil {
+			return err
 		}
 
 		targetKey := resolveTargetKey(ctx, projectCfg)
@@ -550,33 +590,9 @@ var BuildCommand = &cli.Command{
 			os.Remove(cFile)
 		}
 
-		// Run post-build scripts if defined
 		if projectCfg != nil && projectCfg.Build.Scripts != nil {
-			for _, script := range projectCfg.Build.Scripts.PostBuild {
-				// Expand variables in script
-				expandedScript := os.Expand(script, func(key string) string {
-					switch key {
-					case "OUTPUT":
-						return output
-					case "PROJECT_ROOT":
-						return projectCfg.ProjectRoot
-					case "PACKAGE_NAME":
-						return projectCfg.Package.Name
-					case "PACKAGE_VERSION":
-						return projectCfg.Package.Version
-					default:
-						return os.Getenv(key)
-					}
-				})
-
-				fmt.Printf("Running post-build: %s\n", expandedScript)
-				scriptCmd := exec.Command("sh", "-c", expandedScript)
-				scriptCmd.Dir = projectCfg.ProjectRoot
-				scriptCmd.Stdout = os.Stdout
-				scriptCmd.Stderr = os.Stderr
-				if err := scriptCmd.Run(); err != nil {
-					return fmt.Errorf("post-build script failed: %w", err)
-				}
+			if err := runBuildScripts(projectCfg, projectCfg.Build.Scripts.PostBuild, "post-build", output); err != nil {
+				return err
 			}
 		}
 

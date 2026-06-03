@@ -1,0 +1,8 @@
+// GNote - A Gecko executable
+
+declare external func puts(s: string): int32
+
+external func main(): int32 {
+    puts("Hello from GNote!")
+    return 0
+}

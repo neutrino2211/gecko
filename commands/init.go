@@ -103,7 +103,7 @@ func initProject(c *cli.Context) error {
 		fmt.Printf("  cd %s\n", projectName)
 	}
 	if projectType == "exe" {
-		fmt.Println("  gecko run --entry main")
+		fmt.Println("  gecko run src/main.gecko")
 	} else {
 		fmt.Println("  gecko build --entry lib")
 	}
@@ -146,7 +146,7 @@ func generateMainGecko(name string) string {
 
 declare external func puts(s: string): int32
 
-func main(): int32 {
+external func main(): int32 {
     puts("Hello from %s!")
     return 0
 }

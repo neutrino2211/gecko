@@ -3,6 +3,7 @@
 package box
 
 import std.core.traits use { Drop }
+import std.option use { Option }
 
 declare external func malloc(size: uint64): void*
 declare external func free(ptr: void*): void
@@ -52,6 +53,19 @@ public class Box<T> {
         let b: Box<T>
         b.ptr = raw_ptr
         return b
+    }
+
+    /// Creates a Box from a raw pointer with runtime validation.
+    ///
+    /// FFI-facing invariant checks:
+    /// - pointer must be non-null
+    func from_raw_checked(raw_ptr: uint64): Option<Box<T>> {
+        if (raw_ptr == 0) {
+            return Option<Box<T>>::none()
+        }
+        let b: Box<T>
+        b.ptr = raw_ptr
+        return Option<Box<T>>::some(b)
     }
 
     /// Returns true if this Box contains valid (non-null) memory.

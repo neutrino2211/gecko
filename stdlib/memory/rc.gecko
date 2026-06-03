@@ -3,6 +3,7 @@
 package rc
 
 import std.core.traits use { Drop, Clone }
+import std.option use { Option }
 
 declare external func malloc(size: uint64): void*
 declare external func free(ptr: void*): void
@@ -40,13 +41,10 @@ public class Rc<T> {
     /// Allocates memory for the value plus reference count metadata.
     /// The initial strong count is 1.
     func new(value: T): Rc<T> {
-        // Allocate RcInner
-        let inner_size: uint64 = @size_of<RcInner<T>>()
+        // Allocate: [strong:uint64][weak:uint64][value:T]
+        let inner_size: uint64 = 16 + @size_of<T>()
         let mem: void* = malloc(inner_size)
         let addr: uint64 = mem as uint64
-
-        // Initialize inner structure
-        let inner: RcInner<T>* = addr as RcInner<T>*
 
         // Set refcounts
         let strong_ptr: uint64* = addr as uint64*
@@ -62,6 +60,34 @@ public class Rc<T> {
         let r: Rc<T>
         r.ptr = addr
         return r
+    }
+
+    /// Rebuilds an Rc handle from an existing inner pointer after runtime validation.
+    ///
+    /// FFI-facing invariant checks:
+    /// - pointer must be non-null
+    /// - strong count must be > 0
+    /// - weak count must be >= strong count (current layout invariant)
+    func from_inner_checked(inner_ptr: uint64): Option<Rc<T>> {
+        if (inner_ptr == 0) {
+            return Option<Rc<T>>::none()
+        }
+
+        let strong_ptr: uint64* = inner_ptr as uint64*
+        let weak_ptr: uint64* = (inner_ptr + 8) as uint64*
+        let strong_count: uint64 = @deref(strong_ptr)
+        let weak_count: uint64 = @deref(weak_ptr)
+
+        if (strong_count == 0) {
+            return Option<Rc<T>>::none()
+        }
+        if (weak_count < strong_count) {
+            return Option<Rc<T>>::none()
+        }
+
+        let r: Rc<T>
+        r.ptr = inner_ptr
+        return Option<Rc<T>>::some(r)
     }
 
     /// Returns true if this Rc points to valid memory.

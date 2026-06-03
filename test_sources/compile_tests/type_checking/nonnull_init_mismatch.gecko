@@ -1,0 +1,17 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/control-flow.md, spec/pointers.md, spec/memory.md
+
+package type_check
+
+class Data {
+    let value: int
+}
+
+func main(): int {
+    let data: Data
+    data.value = 42
+
+    let maybe: Data* = 0 as Data*
+    let safe: Data*! = maybe
+
+    return safe.value
+}

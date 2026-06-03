@@ -3,6 +3,7 @@
 package vec
 
 import std.core.traits use { Drop, Clone, Index, IndexMut }
+import std.option use { Option }
 
 declare external func malloc(size: uint64): void*
 declare external func realloc(ptr: void*, size: uint64): void*
@@ -54,6 +55,42 @@ public class Vec<T> {
         v.len = 0
         v.cap = capacity
         return v
+    }
+
+    /// Returns true when raw Vec parts satisfy runtime invariants.
+    ///
+    /// FFI-facing invariant checks:
+    /// - len <= cap
+    /// - data must be non-null when cap > 0
+    func validate_raw_parts(data_ptr: uint64, length: uint64, capacity: uint64): bool {
+        if (length > capacity) {
+            return false
+        }
+
+        if (capacity > 0 && data_ptr == 0) {
+            return false
+        }
+        return true
+    }
+
+    /// Creates a Vec from raw parts with runtime checks.
+    ///
+    /// If validation fails, returns None.
+    func from_raw_checked(data_ptr: uint64, length: uint64, capacity: uint64): Option<Vec<T>> {
+        let v: Vec<T>
+        if (!Vec<T>::validate_raw_parts(data_ptr, length, capacity)) {
+            return Option<Vec<T>>::none()
+        }
+
+        v.data = data_ptr
+        v.len = length
+        v.cap = capacity
+        return Option<Vec<T>>::some(v)
+    }
+
+    /// Returns true if this Vec instance satisfies raw memory invariants.
+    func is_valid(self): bool {
+        return Vec<T>::validate_raw_parts(self.data, self.len, self.cap)
     }
 
     /// Returns true if the vector is empty.

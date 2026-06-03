@@ -56,7 +56,21 @@ func (ce *CompileTimeMessage) getText(level string) string {
 		columnNumber = ce.Pos.Column - 1
 	}
 
+	if ce.Scope == nil || ce.Scope.Source == nil {
+		return ce.Title + ": " + ce.Message
+	}
+
 	lines := strings.Split(*ce.Scope.Source, "\n")
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+
+	if lineNumber < 0 {
+		lineNumber = 0
+	}
+	if lineNumber >= len(lines) {
+		lineNumber = len(lines) - 1
+	}
 
 	if level == "error" {
 		underline = color.New(color.Underline, color.FgHiRed)
@@ -73,6 +87,12 @@ func (ce *CompileTimeMessage) getText(level string) string {
 	}
 
 	line := lines[lineNumber]
+	if columnNumber < 0 {
+		columnNumber = 0
+	}
+	if columnNumber > len(line) {
+		columnNumber = len(line)
+	}
 	offendingCode := line[columnNumber:]
 	unoffendingCode := line[:columnNumber]
 

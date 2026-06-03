@@ -330,15 +330,26 @@ func isNilExpressionFromUnary(u *tokens.Unary) bool {
 	if u.Op != "" {
 		return false
 	}
-	return isNilLiteral(u.Primary.Literal)
+	// Legacy nil/null literal.
+	if isNilLiteral(u.Primary.Literal) {
+		return true
+	}
+	// Typed null pointer literal: 0 as T*
+	if u.Cast != nil && u.Cast.Type != nil && u.Cast.Type.Pointer {
+		lit := u.Primary.Literal
+		if lit != nil && lit.Number == "0" {
+			return true
+		}
+	}
+	return false
 }
 
 func isNilLiteral(l *tokens.Literal) bool {
 	if l == nil {
 		return false
 	}
-	// nil is captured as a Symbol (PlainSymbol) with value "nil"
-	return l.Symbol == "nil" && l.SymbolModule == ""
+	// nil/null are captured as a Symbol (PlainSymbol).
+	return (l.Symbol == "nil" || l.Symbol == "null") && l.SymbolModule == ""
 }
 
 // extractSymbolFromEquality extracts symbol from right side of equality

@@ -21,6 +21,8 @@ type RefinedTypeInfo struct {
 	BaseType string
 	// IsNonNull indicates we've proven this variable is not null
 	IsNonNull bool
+	// IsMoved indicates ownership was moved out of this variable
+	IsMoved bool
 	// Predicates are active conditions proven about the variable (e.g., "self > 0")
 	Predicates []string
 	// NarrowedAt tracks source locations where narrowing occurred (as "file:line")
@@ -51,6 +53,27 @@ func (ts *TypeState) Fork(path int) *TypeState {
 func (ts *TypeState) SetNonNull(varName string) {
 	info := ts.getOrCreateLocal(varName)
 	info.IsNonNull = true
+}
+
+// SetMoved marks a variable as moved in the current state.
+func (ts *TypeState) SetMoved(varName string) {
+	info := ts.getOrCreateLocal(varName)
+	info.IsMoved = true
+}
+
+// ClearMoved marks a variable as reinitialized (owned) in the current state.
+func (ts *TypeState) ClearMoved(varName string) {
+	info := ts.getOrCreateLocal(varName)
+	info.IsMoved = false
+}
+
+// IsMoved returns whether a variable is currently considered moved.
+func (ts *TypeState) IsMoved(varName string) bool {
+	info := ts.Lookup(varName)
+	if info == nil {
+		return false
+	}
+	return info.IsMoved
 }
 
 // AddPredicate adds a predicate to a variable's refinement information.
@@ -93,6 +116,7 @@ func (ts *TypeState) Merge(other *TypeState) *TypeState {
 		mergedInfo := &RefinedTypeInfo{
 			BaseType:  info.BaseType,
 			IsNonNull: info.IsNonNull && otherInfo.IsNonNull,
+			IsMoved:   info.IsMoved || otherInfo.IsMoved,
 		}
 
 		// Only keep predicates present in both branches
@@ -124,6 +148,7 @@ func (ts *TypeState) getOrCreateLocal(varName string) *RefinedTypeInfo {
 		newInfo = &RefinedTypeInfo{
 			BaseType:   parentInfo.BaseType,
 			IsNonNull:  parentInfo.IsNonNull,
+			IsMoved:    parentInfo.IsMoved,
 			Predicates: append([]string{}, parentInfo.Predicates...),
 			NarrowedAt: append([]string{}, parentInfo.NarrowedAt...),
 		}

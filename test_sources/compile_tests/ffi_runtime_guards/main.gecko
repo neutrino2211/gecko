@@ -1,0 +1,57 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/control-flow.md, spec/memory.md, spec/stdlib.md
+
+package main
+
+import std.collections.vec use { Vec }
+import std.memory.box use { Box }
+import std.memory.rc use { Rc }
+import std.option use { Option }
+
+declare external func malloc(size: uint64): void*
+declare external func free(ptr: void*): void
+
+external func main(): int32 {
+    // Vec from raw parts checks
+    let bad_vec: Option<Vec<uint8>> = Vec<uint8>::from_raw_checked(0, 1, 1)
+    if (bad_vec.is_some()) {
+        return 1
+    }
+
+    let mem: void* = malloc(8)
+    let ok_vec: Option<Vec<uint8>> = Vec<uint8>::from_raw_checked(mem as uint64, 0, 8)
+    if (ok_vec.is_none()) {
+        return 2
+    }
+    free(mem)
+
+    // Box raw pointer checks
+    let bad_box: Option<Box<int32>> = Box<int32>::from_raw_checked(0)
+    if (bad_box.is_some()) {
+        return 3
+    }
+
+    let raw_mem: void* = malloc(@size_of<int32>())
+    let ok_box: Option<Box<int32>> = Box<int32>::from_raw_checked(raw_mem as uint64)
+    if (ok_box.is_none()) {
+        return 4
+    }
+    let b: Box<int32> = ok_box.unwrap()
+    b.drop()
+
+    // Rc inner pointer checks
+    let rc: Rc<int32> = Rc<int32>::new(42)
+    let ok_rc: Option<Rc<int32>> = Rc<int32>::from_inner_checked(rc.inner_ptr())
+    if (ok_rc.is_none()) {
+        return 5
+    }
+    let rc_copy: Rc<int32> = ok_rc.unwrap()
+    rc_copy.drop()
+
+    let bad_rc: Option<Rc<int32>> = Rc<int32>::from_inner_checked(0)
+    if (bad_rc.is_some()) {
+        return 6
+    }
+
+    rc.drop()
+    return 0
+}

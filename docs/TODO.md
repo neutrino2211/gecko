@@ -44,7 +44,7 @@ Ordered by priority. Check off items as completed.
 
 ## Notes
 
-- CLAUDE.md is the current source of truth for language features
+- AGENTS.md is the current source of truth for language features
 - Docs website uses Starlight (Astro) - files in `docs/src/content/docs/`
 - Stdlib docs are auto-generated via `gecko doc` command
 - Examples in `examples/` and `test_sources/compile_tests/` serve as reference

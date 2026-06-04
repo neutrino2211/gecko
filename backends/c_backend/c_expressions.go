@@ -133,7 +133,44 @@ func (impl *CBackendImplementation) OrExpressionToCString(o *tokens.OrExpression
 					} else {
 						fullMethodName = typeName + "__" + mangledTraitName + "__" + methodName
 					}
-					return fullMethodName + "(&(" + base + "), " + defaultValue + ")"
+
+					// Prefer lazy lowering when Try hook exists for this same type:
+					// evaluate RHS only if lhs has no value.
+					tryHook := hooks.GetHookRegistry().GetHookFromAnyModule(hooks.HookTry)
+					if tryHook != nil && len(tryHook.Methods) >= 2 {
+						tryTraitName, hasTry := impl.GetOperatorTraitName(typeName, tryHook.TraitName, scope)
+						if hasTry {
+							tryTraitName = concretizeGenericTraitName(tryTraitName, baseTypeName, typeArgStrs)
+							hasValueMethod := tryHook.Methods[0]
+							tryUnwrapMethod := tryHook.Methods[1]
+
+							var tryMethodPrefix string
+							if len(typeArgStrs) > 0 {
+								modulePrefix := getTypeOriginModule(typeName, scope)
+								if modulePrefix != "" {
+									modulePrefix += "__"
+								}
+								tryMethodPrefix = modulePrefix + typeName + "__" + tryTraitName + "__"
+							} else {
+								tryMethodPrefix = typeName + "__" + tryTraitName + "__"
+							}
+
+							hasValueCall := tryMethodPrefix + hasValueMethod
+							tryUnwrapCall := tryMethodPrefix + tryUnwrapMethod
+
+							orTempCounter++
+							tempVar := "__or_tmp_" + strconv.Itoa(orTempCounter)
+							return "({ __auto_type " + tempVar + " = " + base + "; (" +
+								hasValueCall + "(&" + tempVar + ") ? " +
+								tryUnwrapCall + "(&" + tempVar + ") : (" + defaultValue + ")); })"
+						}
+					}
+
+					// Fallback when only Or hook exists: still use a temp so lhs may be an rvalue.
+					orTempCounter++
+					tempVar := "__or_tmp_" + strconv.Itoa(orTempCounter)
+					// Note: this path keeps previous eager semantics for RHS evaluation.
+					return "({ __auto_type " + tempVar + " = " + base + "; " + fullMethodName + "(&" + tempVar + ", " + defaultValue + "); })"
 				}
 			}
 		}
@@ -347,6 +384,9 @@ func (impl *CBackendImplementation) UnaryToCString(u *tokens.Unary, scope *ast.A
 
 // tryTempCounter generates unique names for try temporaries
 var tryTempCounter int = 0
+
+// orTempCounter generates unique names for or-expression temporaries.
+var orTempCounter int = 0
 
 // getCurrentFuncReturnType walks up the scope hierarchy to find the current function's return type
 func getCurrentFuncReturnType(scope *ast.Ast) *tokens.TypeRef {

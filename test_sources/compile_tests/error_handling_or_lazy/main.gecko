@@ -1,0 +1,40 @@
+// spec: spec/types.md, spec/functions.md, spec/traits.md, spec/modules.md, spec/control-flow.md
+
+package main
+
+import std.option use { Option }
+
+let fallback_calls: int32 = 0
+
+func some_value(): Option<int32> {
+    return Option<int32>::some(42)
+}
+
+func no_value(): Option<int32> {
+    return Option<int32>::none()
+}
+
+func fallback_value(): int32 {
+    fallback_calls = fallback_calls + 1
+    return 7
+}
+
+external func main(): int32 {
+    let a: int32 = some_value() or fallback_value()
+    if (a != 42) {
+        return 1
+    }
+    if (fallback_calls != 0) {
+        return 2
+    }
+
+    let b: int32 = no_value() or fallback_value()
+    if (b != 7) {
+        return 3
+    }
+    if (fallback_calls != 1) {
+        return 4
+    }
+
+    return 0
+}

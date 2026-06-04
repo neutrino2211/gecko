@@ -24,6 +24,12 @@ func assign_with_or(ok: bool): int32 {
     return value
 }
 
+func assign_with_or_rvalue(ok: bool): int32 {
+    let value: int32 = 0
+    value = read_value(ok) or 9
+    return value
+}
+
 external func main(): int32 {
     let v1: Option<int32> = assign_with_try(true)
     if (!v1.is_some()) {
@@ -33,6 +39,11 @@ external func main(): int32 {
     let v2: int32 = assign_with_or(false)
     if (v2 != 7) {
         return 2
+    }
+
+    let v3: int32 = assign_with_or_rvalue(false)
+    if (v3 != 9) {
+        return 3
     }
 
     return 0

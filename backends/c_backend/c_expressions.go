@@ -1272,7 +1272,12 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 			args += ", "
 		}
 		if arg.Value != nil {
-			args += impl.ExpressionToCString(arg.Value, scope)
+			argExpr := impl.ExpressionToCString(arg.Value, scope)
+			if arg.Out {
+				args += "&" + argExpr
+			} else {
+				args += argExpr
+			}
 		}
 	}
 

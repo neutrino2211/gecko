@@ -1,13 +1,14 @@
 // GNote - A Gecko executable
 
 import utils.fs use { File }
+import utils.sqlite.native use { Sqlite }
 import std.option use { Option }
 
 declare external func puts(s: string): int32
 
-external func main(): Option<int32> {
-    let file: File = try File::open("no_exist", "r")
+external func main(): int32 {
+    let db: Sqlite = try Sqlite::open("db.sqlite")
 
     puts("Hello from GNote!")
-    return Option<int32>::some(0)
+    return 0
 }

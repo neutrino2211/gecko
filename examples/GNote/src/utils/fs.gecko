@@ -22,6 +22,13 @@ impl File {
         return Option<File>::some(f)
     }
 
+    public func create(path: string, mode: string): Option<File> {
+        let file: File = try File::open(path, "w")
+        file = try File::open(path, mode)
+
+        return Option<File>::some(file)
+    }
+
     public func is_open(self): bool {
         return !@is_null(self.internal_ptr as void*)
     }

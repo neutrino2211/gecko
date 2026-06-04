@@ -16,6 +16,8 @@ type MethodSignature struct {
 	Name       string
 	Parameters []*tokens.TypeRef
 	ParamNames []string
+	ParamOut   []bool
+	Variadic   bool
 	ReturnType *tokens.TypeRef
 	Throws     *tokens.TypeRef     // Error type that this function can throw
 	IsGeneric  bool                // True if this is a generic function with type parameters
@@ -44,15 +46,18 @@ func RegisterMethodSignature(fullName string, m *tokens.Method) {
 		Name:       m.Name,
 		Parameters: make([]*tokens.TypeRef, 0),
 		ParamNames: make([]string, 0),
+		ParamOut:   make([]bool, 0),
 		ReturnType: m.Type,
 		Throws:     m.Throws,
 		IsGeneric:  len(m.TypeParams) > 0,
 		TypeParams: m.TypeParams,
+		Variadic:   m.Variardic,
 	}
 
 	for _, arg := range m.Arguments {
 		sig.Parameters = append(sig.Parameters, arg.Type)
 		sig.ParamNames = append(sig.ParamNames, arg.Name)
+		sig.ParamOut = append(sig.ParamOut, arg.Out)
 	}
 
 	MethodSignatures[fullName] = sig
@@ -493,13 +498,11 @@ func (impl *CBackendImplementation) CheckThrowsHandled(f *tokens.FuncCall, sig *
 	)
 }
 
-// CheckFunctionCallTypes checks if function call arguments match parameter types
-func (impl *CBackendImplementation) CheckFunctionCallTypes(f *tokens.FuncCall, scope *ast.Ast) {
-	if f == nil || scope.ErrorScope == nil {
-		return
+func resolveFunctionCallSignature(f *tokens.FuncCall, scope *ast.Ast) (*MethodSignature, bool) {
+	if f == nil || scope == nil {
+		return nil, false
 	}
 
-	// Determine the function name to look up
 	var funcKey string
 	var sig *MethodSignature
 	var ok bool
@@ -509,12 +512,11 @@ func (impl *CBackendImplementation) CheckFunctionCallTypes(f *tokens.FuncCall, s
 		funcKey = scope.GetRoot().GetFullName() + "__" + f.StaticType + "__" + f.Function
 		sig, ok = MethodSignatures[funcKey]
 	} else if f.Module != "" {
-		// Module.function() call
+		// module.function() call
 		funcKey = f.Module + "__" + f.Function
 		sig, ok = MethodSignatures[funcKey]
 	} else {
 		// Regular function call - try multiple lookup strategies
-		// 1. Try resolving through scope hierarchy
 		methodOpt := scope.ResolveMethod(f.Function)
 		if !methodOpt.IsNil() {
 			method := methodOpt.Unwrap()
@@ -522,18 +524,16 @@ func (impl *CBackendImplementation) CheckFunctionCallTypes(f *tokens.FuncCall, s
 			sig, ok = MethodSignatures[funcKey]
 		}
 
-		// 2. Try root scope prefix
 		if !ok {
 			funcKey = scope.GetRoot().GetFullName() + "__" + f.Function
 			sig, ok = MethodSignatures[funcKey]
 		}
 
-		// 3. Try just the function name (for external functions)
+		// External methods are registered by short name.
 		if !ok {
 			sig, ok = MethodSignatures[f.Function]
 		}
 
-		// 4. Try parent scope prefix (for functions in same file)
 		if !ok {
 			parent := scope
 			for parent != nil {
@@ -547,6 +547,16 @@ func (impl *CBackendImplementation) CheckFunctionCallTypes(f *tokens.FuncCall, s
 		}
 	}
 
+	return sig, ok
+}
+
+// CheckFunctionCallTypes checks if function call arguments match parameter types
+func (impl *CBackendImplementation) CheckFunctionCallTypes(f *tokens.FuncCall, scope *ast.Ast) {
+	if f == nil || scope.ErrorScope == nil {
+		return
+	}
+
+	sig, ok := resolveFunctionCallSignature(f, scope)
 	if !ok {
 		return // Can't check - method signature not found
 	}
@@ -580,19 +590,34 @@ func (impl *CBackendImplementation) CheckFunctionCallTypes(f *tokens.FuncCall, s
 	}
 
 	// Check argument count
-	if len(f.Arguments) != len(sig.Parameters) {
+	if !sig.Variadic {
+		if len(f.Arguments) != len(sig.Parameters) {
+			scope.ErrorScope.NewCompileTimeError(
+				"Argument Count Mismatch",
+				fmt.Sprintf("Function '%s' expects %d arguments, got %d",
+					f.Function, len(sig.Parameters), len(f.Arguments)),
+				f.Pos,
+			)
+			return
+		}
+	} else if len(f.Arguments) < len(sig.Parameters) {
 		scope.ErrorScope.NewCompileTimeError(
 			"Argument Count Mismatch",
-			fmt.Sprintf("Function '%s' expects %d arguments, got %d",
+			fmt.Sprintf("Variadic function '%s' expects at least %d arguments, got %d",
 				f.Function, len(sig.Parameters), len(f.Arguments)),
 			f.Pos,
 		)
 		return
 	}
 
+	seenOutTargets := make(map[string]bool)
+
 	// Check each argument type
 	for i, arg := range f.Arguments {
 		if i >= len(sig.Parameters) {
+			if sig.Variadic {
+				continue
+			}
 			break
 		}
 
@@ -604,6 +629,75 @@ func (impl *CBackendImplementation) CheckFunctionCallTypes(f *tokens.FuncCall, s
 		// Apply type substitution for generic functions
 		if len(typeSubst) > 0 {
 			expectedType = substituteTypeRef(expectedType, typeSubst)
+		}
+
+		expectedOut := false
+		if i < len(sig.ParamOut) {
+			expectedOut = sig.ParamOut[i]
+		}
+
+		if expectedOut != arg.Out {
+			paramName := ""
+			if i < len(sig.ParamNames) {
+				paramName = sig.ParamNames[i]
+			}
+			if expectedOut {
+				scope.ErrorScope.NewCompileTimeError(
+					"Out Argument Required",
+					fmt.Sprintf("Argument %s for function '%s' must be passed with 'out'", paramName, f.Function),
+					f.Pos,
+				)
+			} else {
+				scope.ErrorScope.NewCompileTimeError(
+					"Unexpected Out Argument",
+					fmt.Sprintf("Argument %s for function '%s' is not an out parameter", paramName, f.Function),
+					f.Pos,
+				)
+			}
+			continue
+		}
+
+		if arg.Out {
+			targetName := extractSymbolFromExpression(arg.Value)
+			if targetName == "" {
+				scope.ErrorScope.NewCompileTimeError(
+					"Invalid Out Argument",
+					"Out arguments must be plain assignable variables (for example: out db)",
+					f.Pos,
+				)
+				continue
+			}
+
+			targetOpt := scope.ResolveSymbolAsVariable(targetName)
+			if targetOpt.IsNil() {
+				scope.ErrorScope.NewCompileTimeError(
+					"Invalid Out Argument",
+					fmt.Sprintf("Out target '%s' could not be resolved as a variable", targetName),
+					f.Pos,
+				)
+				continue
+			}
+
+			targetVar := targetOpt.Unwrap()
+			if targetVar.IsConst {
+				scope.ErrorScope.NewCompileTimeError(
+					"Invalid Out Argument",
+					fmt.Sprintf("Out target '%s' is const and cannot be written by callee", targetName),
+					f.Pos,
+				)
+				continue
+			}
+
+			fullTarget := targetVar.GetFullName()
+			if seenOutTargets[fullTarget] {
+				scope.ErrorScope.NewCompileTimeError(
+					"Out Argument Aliasing",
+					fmt.Sprintf("Out target '%s' is used more than once in the same call", targetName),
+					f.Pos,
+				)
+				continue
+			}
+			seenOutTargets[fullTarget] = true
 		}
 
 		actualType := impl.GetTypeOfExpression(arg.Value, scope)

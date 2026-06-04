@@ -6,9 +6,9 @@ version = "0.1.0"
 backend = "c"
 
 [build.native]
-headers = ["sqlite3.h", "webview/api.h"]
+headers = ["webview/api.h"]
 include_dirs = ["vendor/sqlite", "vendor/webview/core/include"]
-objects = [".gecko_build/vendor/sqlite3.o", ".gecko_build/vendor/webview.o"]
+objects = [".gecko_build/vendor/sqlite3.o", ".gecko_build/vendor/sqlite_bridge.o", ".gecko_build/vendor/webview.o"]
 ldflags = ["-framework", "WebKit", "-framework", "Cocoa", "-lc++", "-ldl"]
 
 [build.entries]

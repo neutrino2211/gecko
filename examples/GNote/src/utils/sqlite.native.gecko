@@ -1,0 +1,393 @@
+package sqlite
+
+import std.option use { Option }
+
+// Opaque SQLite C types.
+declare external type sqlite3
+declare external type sqlite3_stmt
+declare external type sqlite3_value
+declare external type sqlite3_context
+
+// Core result codes.
+public const SQLITE_OK: int32 = 0
+public const SQLITE_ERROR: int32 = 1
+public const SQLITE_INTERNAL: int32 = 2
+public const SQLITE_PERM: int32 = 3
+public const SQLITE_ABORT: int32 = 4
+public const SQLITE_BUSY: int32 = 5
+public const SQLITE_LOCKED: int32 = 6
+public const SQLITE_NOMEM: int32 = 7
+public const SQLITE_READONLY: int32 = 8
+public const SQLITE_INTERRUPT: int32 = 9
+public const SQLITE_IOERR: int32 = 10
+public const SQLITE_CORRUPT: int32 = 11
+public const SQLITE_NOTFOUND: int32 = 12
+public const SQLITE_FULL: int32 = 13
+public const SQLITE_CANTOPEN: int32 = 14
+public const SQLITE_PROTOCOL: int32 = 15
+public const SQLITE_EMPTY: int32 = 16
+public const SQLITE_SCHEMA: int32 = 17
+public const SQLITE_TOOBIG: int32 = 18
+public const SQLITE_CONSTRAINT: int32 = 19
+public const SQLITE_MISMATCH: int32 = 20
+public const SQLITE_MISUSE: int32 = 21
+public const SQLITE_NOLFS: int32 = 22
+public const SQLITE_AUTH: int32 = 23
+public const SQLITE_FORMAT: int32 = 24
+public const SQLITE_RANGE: int32 = 25
+public const SQLITE_NOTADB: int32 = 26
+public const SQLITE_NOTICE: int32 = 27
+public const SQLITE_WARNING: int32 = 28
+public const SQLITE_ROW: int32 = 100
+public const SQLITE_DONE: int32 = 101
+
+// SQLite type codes (sqlite3_column_type / sqlite3_value_type).
+public const SQLITE_INTEGER: int32 = 1
+public const SQLITE_FLOAT: int32 = 2
+public const SQLITE_TEXT: int32 = 3
+public const SQLITE_BLOB: int32 = 4
+public const SQLITE_NULL: int32 = 5
+
+// sqlite3_open_v2 flags.
+public const SQLITE_OPEN_READONLY: int32 = 0x00000001
+public const SQLITE_OPEN_READWRITE: int32 = 0x00000002
+public const SQLITE_OPEN_CREATE: int32 = 0x00000004
+public const SQLITE_OPEN_URI: int32 = 0x00000040
+public const SQLITE_OPEN_MEMORY: int32 = 0x00000080
+public const SQLITE_OPEN_NOMUTEX: int32 = 0x00008000
+public const SQLITE_OPEN_FULLMUTEX: int32 = 0x00010000
+public const SQLITE_OPEN_SHAREDCACHE: int32 = 0x00020000
+public const SQLITE_OPEN_PRIVATECACHE: int32 = 0x00040000
+
+// sqlite3_prepare_v3 flags.
+public const SQLITE_PREPARE_PERSISTENT: uint32 = 0x01
+public const SQLITE_PREPARE_NORMALIZE: uint32 = 0x02
+public const SQLITE_PREPARE_NO_VTAB: uint32 = 0x04
+public const SQLITE_PREPARE_DONT_LOG: uint32 = 0x10
+
+// Text encodings for sqlite3_bind_text64.
+public const SQLITE_UTF8: uint8 = 1
+public const SQLITE_UTF16LE: uint8 = 2
+public const SQLITE_UTF16BE: uint8 = 3
+public const SQLITE_UTF16: uint8 = 4
+public const SQLITE_ANY: uint8 = 5
+public const SQLITE_UTF16_ALIGNED: uint8 = 8
+
+// Destructor sentinel values for bind APIs that take `dtor: void*`.
+// Use as casts: `SQLITE_STATIC_DTOR as void*`, `SQLITE_TRANSIENT_DTOR as void*`.
+public const SQLITE_STATIC_DTOR: int64 = 0
+public const SQLITE_TRANSIENT_DTOR: int64 = -1
+
+// Connection and diagnostics.
+declare external func sqlite3_open(filename: string, ppDb: out sqlite3*): int32
+declare external func sqlite3_open16(filename: void*, ppDb: out sqlite3*): int32
+declare external func sqlite3_open_v2(filename: string, ppDb: out sqlite3*, flags: int32, zVfs: string): int32
+declare external func sqlite3_close(db: sqlite3*): int32
+declare external func sqlite3_close_v2(db: sqlite3*): int32
+declare external func sqlite3_errcode(db: sqlite3*): int32
+declare external func sqlite3_extended_errcode(db: sqlite3*): int32
+declare external func sqlite3_errmsg(db: sqlite3*): string
+declare external func sqlite3_errstr(code: int32): string
+declare external func sqlite3_extended_result_codes(db: sqlite3*, onoff: int32): int32
+
+// Utility and metadata.
+declare external func sqlite3_free(ptr: void*): void
+declare external func sqlite3_libversion(): string
+declare external func sqlite3_libversion_number(): int32
+declare external func sqlite3_sourceid(): string
+
+// Exec API.
+declare external func sqlite3_exec(
+    db: sqlite3*,
+    sql: string,
+    callback: void*,
+    arg: void*,
+    errmsg: out string
+): int32
+
+// Statement preparation.
+declare external func sqlite3_prepare(
+    db: sqlite3*,
+    zSql: string,
+    nByte: int32,
+    ppStmt: out sqlite3_stmt*,
+    pzTail: out string
+): int32
+
+declare external func sqlite3_prepare_v2(
+    db: sqlite3*,
+    zSql: string,
+    nByte: int32,
+    ppStmt: out sqlite3_stmt*,
+    pzTail: out string
+): int32
+
+declare external func sqlite3_prepare_v3(
+    db: sqlite3*,
+    zSql: string,
+    nByte: int32,
+    prepFlags: uint32,
+    ppStmt: out sqlite3_stmt*,
+    pzTail: out string
+): int32
+
+declare external func sqlite3_prepare16(
+    db: sqlite3*,
+    zSql: void*,
+    nByte: int32,
+    ppStmt: out sqlite3_stmt*,
+    pzTail: out void*
+): int32
+
+declare external func sqlite3_prepare16_v2(
+    db: sqlite3*,
+    zSql: void*,
+    nByte: int32,
+    ppStmt: out sqlite3_stmt*,
+    pzTail: out void*
+): int32
+
+declare external func sqlite3_prepare16_v3(
+    db: sqlite3*,
+    zSql: void*,
+    nByte: int32,
+    prepFlags: uint32,
+    ppStmt: out sqlite3_stmt*,
+    pzTail: out void*
+): int32
+
+// Statement lifecycle.
+declare external func sqlite3_step(stmt: sqlite3_stmt*): int32
+declare external func sqlite3_reset(stmt: sqlite3_stmt*): int32
+declare external func sqlite3_clear_bindings(stmt: sqlite3_stmt*): int32
+declare external func sqlite3_finalize(stmt: sqlite3_stmt*): int32
+
+// Binding helpers.
+declare external func sqlite3_bind_blob(
+    stmt: sqlite3_stmt*,
+    index: int32,
+    data: void*,
+    n: int32,
+    dtor: void*
+): int32
+
+declare external func sqlite3_bind_blob64(
+    stmt: sqlite3_stmt*,
+    index: int32,
+    data: void*,
+    n: uint64,
+    dtor: void*
+): int32
+
+// Gecko bridge for sqlite3_bind_double using IEEE-754 bit pattern.
+declare external func gecko_sqlite3_bind_double_bits(stmt: sqlite3_stmt*, index: int32, value_bits: uint64): int32
+declare external func sqlite3_bind_int(stmt: sqlite3_stmt*, index: int32, value: int32): int32
+declare external func sqlite3_bind_int64(stmt: sqlite3_stmt*, index: int32, value: int64): int32
+declare external func sqlite3_bind_null(stmt: sqlite3_stmt*, index: int32): int32
+
+declare external func sqlite3_bind_text(
+    stmt: sqlite3_stmt*,
+    index: int32,
+    text: string,
+    n: int32,
+    dtor: void*
+): int32
+
+declare external func sqlite3_bind_text16(
+    stmt: sqlite3_stmt*,
+    index: int32,
+    text: void*,
+    n: int32,
+    dtor: void*
+): int32
+
+declare external func sqlite3_bind_text64(
+    stmt: sqlite3_stmt*,
+    index: int32,
+    text: string,
+    n: uint64,
+    dtor: void*,
+    encoding: uint8
+): int32
+
+declare external func sqlite3_bind_value(stmt: sqlite3_stmt*, index: int32, value: sqlite3_value*): int32
+
+declare external func sqlite3_bind_pointer(
+    stmt: sqlite3_stmt*,
+    index: int32,
+    ptr: void*,
+    type_name: string,
+    dtor: void*
+): int32
+
+declare external func sqlite3_bind_zeroblob(stmt: sqlite3_stmt*, index: int32, n: int32): int32
+declare external func sqlite3_bind_zeroblob64(stmt: sqlite3_stmt*, index: int32, n: uint64): int32
+declare external func sqlite3_bind_parameter_count(stmt: sqlite3_stmt*): int32
+declare external func sqlite3_bind_parameter_index(stmt: sqlite3_stmt*, zName: string): int32
+declare external func sqlite3_bind_parameter_name(stmt: sqlite3_stmt*, index: int32): string
+
+// Column access.
+declare external func sqlite3_column_count(stmt: sqlite3_stmt*): int32
+declare external func sqlite3_data_count(stmt: sqlite3_stmt*): int32
+declare external func sqlite3_column_name(stmt: sqlite3_stmt*, iCol: int32): string
+declare external func sqlite3_column_decltype(stmt: sqlite3_stmt*, iCol: int32): string
+declare external func sqlite3_column_type(stmt: sqlite3_stmt*, iCol: int32): int32
+declare external func sqlite3_column_bytes(stmt: sqlite3_stmt*, iCol: int32): int32
+declare external func sqlite3_column_text(stmt: sqlite3_stmt*, iCol: int32): uint8*
+declare external func sqlite3_column_blob(stmt: sqlite3_stmt*, iCol: int32): void*
+// Gecko bridge for sqlite3_column_double as IEEE-754 bit pattern.
+declare external func gecko_sqlite3_column_double_bits(stmt: sqlite3_stmt*, iCol: int32): uint64
+declare external func sqlite3_column_int(stmt: sqlite3_stmt*, iCol: int32): int32
+declare external func sqlite3_column_int64(stmt: sqlite3_stmt*, iCol: int32): int64
+declare external func sqlite3_column_value(stmt: sqlite3_stmt*, iCol: int32): sqlite3_value*
+
+// Change counters and rowid helpers.
+declare external func sqlite3_changes(db: sqlite3*): int32
+declare external func sqlite3_total_changes(db: sqlite3*): int32
+declare external func sqlite3_last_insert_rowid(db: sqlite3*): int64
+declare external func sqlite3_interrupt(db: sqlite3*): void
+declare external func sqlite3_busy_timeout(db: sqlite3*, ms: int32): int32
+
+public class Sqlite {
+    private let handle: sqlite3*
+}
+
+public class SqliteStmt {
+    private let handle: sqlite3_stmt*
+}
+
+impl Sqlite {
+    public func open(path: string): Option<Sqlite> {
+        let db: sqlite3* = 0 as sqlite3*
+        let rc: int32 = sqlite3_open(path, out db)
+        if (rc != SQLITE_OK || @is_null(db as void*)) {
+            return Option<Sqlite>::none()
+        }
+
+        let conn: Sqlite
+        conn.handle = db
+        return Option<Sqlite>::some(conn)
+    }
+
+    public func open_with_flags(path: string, flags: int32): Option<Sqlite> {
+        let db: sqlite3* = 0 as sqlite3*
+        let rc: int32 = sqlite3_open_v2(path, out db, flags, 0 as string)
+        if (rc != SQLITE_OK || @is_null(db as void*)) {
+            return Option<Sqlite>::none()
+        }
+
+        let conn: Sqlite
+        conn.handle = db
+        return Option<Sqlite>::some(conn)
+    }
+
+    public func is_open(self): bool {
+        return !@is_null(self.handle as void*)
+    }
+
+    public func close(self): int32 {
+        if (@is_null(self.handle as void*)) {
+            return SQLITE_OK
+        }
+
+        let rc: int32 = sqlite3_close(self.handle)
+        if (rc == SQLITE_OK) {
+            self.handle = 0 as sqlite3*
+        }
+        return rc
+    }
+
+    public func errcode(self): int32 {
+        if (@is_null(self.handle as void*)) {
+            return SQLITE_MISUSE
+        }
+        return sqlite3_errcode(self.handle)
+    }
+
+    public func errmsg(self): string {
+        if (@is_null(self.handle as void*)) {
+            return sqlite3_errstr(SQLITE_MISUSE)
+        }
+        return sqlite3_errmsg(self.handle)
+    }
+
+    public func prepare(self, sql: string): Option<SqliteStmt> {
+        if (@is_null(self.handle as void*)) {
+            return Option<SqliteStmt>::none()
+        }
+
+        let stmt_ptr: sqlite3_stmt* = 0 as sqlite3_stmt*
+        let tail: string = 0 as string
+        let rc: int32 = sqlite3_prepare_v2(self.handle, sql, -1, out stmt_ptr, out tail)
+        if (rc != SQLITE_OK || @is_null(stmt_ptr as void*)) {
+            return Option<SqliteStmt>::none()
+        }
+
+        let stmt: SqliteStmt
+        stmt.handle = stmt_ptr
+        return Option<SqliteStmt>::some(stmt)
+    }
+
+    public func raw(self): sqlite3* {
+        return self.handle
+    }
+}
+
+impl SqliteStmt {
+    public func is_valid(self): bool {
+        return !@is_null(self.handle as void*)
+    }
+
+    public func finalize(self): int32 {
+        if (@is_null(self.handle as void*)) {
+            return SQLITE_OK
+        }
+
+        let rc: int32 = sqlite3_finalize(self.handle)
+        if (rc == SQLITE_OK) {
+            self.handle = 0 as sqlite3_stmt*
+        }
+        return rc
+    }
+
+    public func step(self): int32 {
+        if (@is_null(self.handle as void*)) {
+            return SQLITE_MISUSE
+        }
+        return sqlite3_step(self.handle)
+    }
+
+    public func reset(self): int32 {
+        if (@is_null(self.handle as void*)) {
+            return SQLITE_MISUSE
+        }
+        return sqlite3_reset(self.handle)
+    }
+
+    public func clear_bindings(self): int32 {
+        if (@is_null(self.handle as void*)) {
+            return SQLITE_MISUSE
+        }
+        return sqlite3_clear_bindings(self.handle)
+    }
+
+    public func bind_int(self, index: int32, value: int32): int32 {
+        return sqlite3_bind_int(self.handle, index, value)
+    }
+
+    public func bind_int64(self, index: int32, value: int64): int32 {
+        return sqlite3_bind_int64(self.handle, index, value)
+    }
+
+    public func bind_null(self, index: int32): int32 {
+        return sqlite3_bind_null(self.handle, index)
+    }
+
+    public func bind_text(self, index: int32, value: string): int32 {
+        return sqlite3_bind_text(self.handle, index, value, -1, SQLITE_TRANSIENT_DTOR as void*)
+    }
+
+    public func raw(self): sqlite3_stmt* {
+        return self.handle
+    }
+}

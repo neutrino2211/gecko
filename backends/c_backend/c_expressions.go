@@ -802,6 +802,7 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 	var isPointer bool
 	var isModule bool     // Track if base is a module, not a variable
 	var moduleName string // The module name for module.constant/function patterns
+	var baseVarFullName string
 
 	// Check if the base symbol is a module or enum (not a variable)
 	if l.Symbol != "" && l.SymbolModule == "" {
@@ -902,6 +903,7 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 				variable := varOpt.Unwrap()
 				reportUseAfterMoveIfNeeded(scope, variable.GetFullName(), symbolName, l.Pos)
 				fullName := variable.GetFullName()
+				baseVarFullName = fullName
 				// First check if the variable itself is a pointer (like self in trait methods)
 				isPointer = variable.IsPointer
 				if info, ok := (*CProgramValues)[fullName]; ok {
@@ -919,10 +921,16 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 
 	for _, chain := range l.Chain {
 		if chain.IsMethodCall() {
+			dropHook := hooks.GetHookRegistry().GetHookFromAnyModule(hooks.HookDrop)
+			isDropCall := dropHook != nil && len(dropHook.Methods) > 0 && chain.Name == dropHook.Methods[0]
+
 			// Method call - check for builtin trait methods first
 			if currentType != nil {
 				if code, ok := impl.TryBuiltinMethod(result, currentType, chain.Name, chain.GetArgs(), scope); ok {
 					result = code
+					if isDropCall && baseVarFullName != "" && CurrentTypeState != nil {
+						CurrentTypeState.SetMoved(baseVarFullName)
+					}
 					// After a method call, we don't know the return type without more analysis
 					currentType = nil
 					isPointer = false
@@ -966,6 +974,9 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 					} else {
 						result = resolution.MethodName + "(" + selfArg + ")"
 					}
+					if isDropCall && baseVarFullName != "" && CurrentTypeState != nil {
+						CurrentTypeState.SetMoved(baseVarFullName)
+					}
 					currentType = nil
 					isPointer = false
 					goto nextChain
@@ -977,6 +988,9 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 				result = chain.Name + "(" + result + ", " + args + ")"
 			} else {
 				result = chain.Name + "(" + result + ")"
+			}
+			if isDropCall && baseVarFullName != "" && CurrentTypeState != nil {
+				CurrentTypeState.SetMoved(baseVarFullName)
 			}
 			currentType = nil
 			isPointer = false

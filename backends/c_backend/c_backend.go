@@ -72,6 +72,63 @@ func findStdTryDiagnosticsInstaller(root *ast.Ast) string {
 	return walk(root)
 }
 
+func isIdentifierChar(ch byte) bool {
+	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_'
+}
+
+func expressionContainsIdentifier(exprCode string, identifier string) bool {
+	if exprCode == "" || identifier == "" {
+		return false
+	}
+
+	searchStart := 0
+	for {
+		idx := strings.Index(exprCode[searchStart:], identifier)
+		if idx < 0 {
+			return false
+		}
+		idx += searchStart
+
+		leftOK := idx == 0 || !isIdentifierChar(exprCode[idx-1])
+		rightIndex := idx + len(identifier)
+		rightOK := rightIndex >= len(exprCode) || !isIdentifierChar(exprCode[rightIndex])
+		if leftOK && rightOK {
+			return true
+		}
+		searchStart = idx + len(identifier)
+		if searchStart >= len(exprCode) {
+			return false
+		}
+	}
+}
+
+func scopeFindMethodBySuffix(scope *ast.Ast, suffix string) (string, bool) {
+	if scope == nil || suffix == "" {
+		return "", false
+	}
+	visited := make(map[*ast.Ast]bool)
+	queue := []*ast.Ast{scope}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		if current == nil || visited[current] {
+			continue
+		}
+		visited[current] = true
+		for existing := range current.Methods {
+			if strings.HasSuffix(existing, suffix) {
+				return existing, true
+			}
+		}
+		for _, child := range current.Children {
+			if child != nil && !visited[child] {
+				queue = append(queue, child)
+			}
+		}
+	}
+	return "", false
+}
+
 // NewReturn generates a void return statement
 func (impl *CBackendImplementation) NewReturn(scope *ast.Ast) {
 	info := CGetScopeInformation(scope)
@@ -93,11 +150,24 @@ func (impl *CBackendImplementation) NewReturnLiteral(scope *ast.Ast, literal *to
 	droppables := impl.getDroppableVariables(scope)
 	if len(droppables) > 0 {
 		// Save return value to temp, drop variables, then return
-		returnType := impl.inferExpressionType(literal, scope)
+		returnType := ""
+		if declaredReturn := getCurrentFuncReturnType(scope); declaredReturn != nil {
+			returnType = TypeRefToCType(declaredReturn, scope)
+		}
+		if returnType == "" {
+			returnType = impl.inferExpressionType(literal, scope)
+		}
 		if returnType != "" && returnType != "void" {
 			tempVar := "__drop_ret_val"
 			info.Code += fmt.Sprintf("    %s %s = %s;\n", returnType, tempVar, val)
-			impl.generateDropCalls(scope, info)
+			for i := len(droppables) - 1; i >= 0; i-- {
+				d := droppables[i]
+				// Returning ownership of a local should not drop the moved value.
+				if expressionContainsIdentifier(val, d.Name) {
+					continue
+				}
+				info.Code += fmt.Sprintf("    %s(&%s);\n", d.DropMethod, d.Name)
+			}
 			info.Code += fmt.Sprintf("    return %s;\n", tempVar)
 			return
 		}
@@ -144,6 +214,9 @@ func (impl *CBackendImplementation) getDroppableVariables(scope *ast.Ast) []stru
 
 		// Get the variable's type
 		fullName := variable.GetFullName()
+		if CurrentTypeState != nil && CurrentTypeState.IsMoved(fullName) {
+			continue
+		}
 		valueInfo, ok := (*CProgramValues)[fullName]
 		if !ok || valueInfo.GeckoType == nil {
 			continue
@@ -174,13 +247,29 @@ func (impl *CBackendImplementation) getDroppableVariables(scope *ast.Ast) []stru
 			}
 		}
 		if dropTraitName != "" {
+			concreteTypeName := TypeRefToCType(valueInfo.GeckoType, scope)
+			if concreteTypeName == "" {
+				concreteTypeName = typeName
+			}
+			rootScope := scope.GetRoot()
+			traitSuffix := "__" + concreteTypeName + "__" + dropTraitName + "__" + dropMethodName
+			directSuffix := "__" + concreteTypeName + "__" + dropMethodName
+			mangledMethod, found := scopeFindMethodBySuffix(rootScope, traitSuffix)
+			if !found {
+				mangledMethod, found = scopeFindMethodBySuffix(rootScope, directSuffix)
+			}
+			if !found {
+				// If no concrete drop symbol was emitted, skip auto-drop for this value.
+				continue
+			}
+
 			droppables = append(droppables, struct {
 				Name       string
 				DropMethod string
 				ClassName  string
 			}{
 				Name:       varName,
-				DropMethod: typeName + "__" + dropTraitName + "__" + dropMethodName,
+				DropMethod: mangledMethod,
 				ClassName:  typeName,
 			})
 		}
@@ -1713,14 +1802,14 @@ func (impl *CBackendImplementation) NewLocalVariable(scope *ast.Ast, f *tokens.F
 			val := impl.ExpressionToCString(f.Value, scope)
 			varDecl = fmt.Sprintf("    %s %s[%s] = %s;\n", baseType, varName, f.Type.Size.Size, val)
 		} else {
-			varDecl = fmt.Sprintf("    %s %s[%s];\n", baseType, varName, f.Type.Size.Size)
+			varDecl = fmt.Sprintf("    %s %s[%s] = {0};\n", baseType, varName, f.Type.Size.Size)
 		}
 	} else {
 		if f.Value != nil {
 			val := impl.ExpressionToCString(f.Value, scope)
 			varDecl = fmt.Sprintf("    %s %s = %s;\n", typeDecl, varName, val)
 		} else {
-			varDecl = fmt.Sprintf("    %s %s;\n", typeDecl, varName)
+			varDecl = fmt.Sprintf("    %s %s = {0};\n", typeDecl, varName)
 		}
 	}
 

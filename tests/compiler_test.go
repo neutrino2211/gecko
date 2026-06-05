@@ -91,6 +91,7 @@ var compileTests = []compileTest{
 
 	// Hooks
 	{"hooks_drop", "test_sources/compile_tests/hooks/drop_hook.gecko", 42, false},
+	{"hooks_drop_return_field", "test_sources/compile_tests/hooks/drop_hook_return_field.gecko", 43, false},
 	{"hooks_operator_add", "test_sources/compile_tests/hooks/operator_add.gecko", 42, false},
 	{"hooks_operators_arithmetic", "test_sources/compile_tests/hooks/operators_arithmetic.gecko", 44, false},
 	{"hooks_operators_comparison", "test_sources/compile_tests/hooks/operators_comparison.gecko", 63, false},

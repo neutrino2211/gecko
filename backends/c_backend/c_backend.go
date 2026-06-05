@@ -72,38 +72,8 @@ func findStdTryDiagnosticsInstaller(root *ast.Ast) string {
 	return walk(root)
 }
 
-func isIdentifierChar(ch byte) bool {
-	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_'
-}
-
-func expressionContainsIdentifier(exprCode string, identifier string) bool {
-	if exprCode == "" || identifier == "" {
-		return false
-	}
-
-	searchStart := 0
-	for {
-		idx := strings.Index(exprCode[searchStart:], identifier)
-		if idx < 0 {
-			return false
-		}
-		idx += searchStart
-
-		leftOK := idx == 0 || !isIdentifierChar(exprCode[idx-1])
-		rightIndex := idx + len(identifier)
-		rightOK := rightIndex >= len(exprCode) || !isIdentifierChar(exprCode[rightIndex])
-		if leftOK && rightOK {
-			return true
-		}
-		searchStart = idx + len(identifier)
-		if searchStart >= len(exprCode) {
-			return false
-		}
-	}
-}
-
-func scopeFindMethodBySuffix(scope *ast.Ast, suffix string) (string, bool) {
-	if scope == nil || suffix == "" {
+func scopeFindMethodByNameOrQualifiedSuffix(scope *ast.Ast, target string) (string, bool) {
+	if scope == nil || target == "" {
 		return "", false
 	}
 	visited := make(map[*ast.Ast]bool)
@@ -116,7 +86,7 @@ func scopeFindMethodBySuffix(scope *ast.Ast, suffix string) (string, bool) {
 		}
 		visited[current] = true
 		for existing := range current.Methods {
-			if strings.HasSuffix(existing, suffix) {
+			if existing == target || strings.HasSuffix(existing, "__"+target) {
 				return existing, true
 			}
 		}
@@ -145,6 +115,7 @@ func (impl *CBackendImplementation) NewReturnLiteral(scope *ast.Ast, literal *to
 	impl.CheckReturnType(literal, scope)
 
 	val := impl.ExpressionToCString(literal, scope)
+	impl.ApplyMoveFromExpression(literal, scope)
 
 	// Check if we have droppable variables
 	droppables := impl.getDroppableVariables(scope)
@@ -162,10 +133,6 @@ func (impl *CBackendImplementation) NewReturnLiteral(scope *ast.Ast, literal *to
 			info.Code += fmt.Sprintf("    %s %s = %s;\n", returnType, tempVar, val)
 			for i := len(droppables) - 1; i >= 0; i-- {
 				d := droppables[i]
-				// Returning ownership of a local should not drop the moved value.
-				if expressionContainsIdentifier(val, d.Name) {
-					continue
-				}
 				info.Code += fmt.Sprintf("    %s(&%s);\n", d.DropMethod, d.Name)
 			}
 			info.Code += fmt.Sprintf("    return %s;\n", tempVar)
@@ -252,11 +219,11 @@ func (impl *CBackendImplementation) getDroppableVariables(scope *ast.Ast) []stru
 				concreteTypeName = typeName
 			}
 			rootScope := scope.GetRoot()
-			traitSuffix := "__" + concreteTypeName + "__" + dropTraitName + "__" + dropMethodName
-			directSuffix := "__" + concreteTypeName + "__" + dropMethodName
-			mangledMethod, found := scopeFindMethodBySuffix(rootScope, traitSuffix)
+			traitName := concreteTypeName + "__" + dropTraitName + "__" + dropMethodName
+			directName := concreteTypeName + "__" + dropMethodName
+			mangledMethod, found := scopeFindMethodByNameOrQualifiedSuffix(rootScope, traitName)
 			if !found {
-				mangledMethod, found = scopeFindMethodBySuffix(rootScope, directSuffix)
+				mangledMethod, found = scopeFindMethodByNameOrQualifiedSuffix(rootScope, directName)
 			}
 			if !found {
 				// If no concrete drop symbol was emitted, skip auto-drop for this value.

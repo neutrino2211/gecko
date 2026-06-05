@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -552,28 +553,52 @@ func Compile(file string, config *config.CompileCfg) string {
 		os.Exit(0)
 	}
 
-	// Warn about experimental LLVM backend
-	if backend == "llvm" {
-		println(color.YellowString("Warning: LLVM backend is experimental and incomplete."))
-		println(color.YellowString("  Missing features: generics, type inference, break/continue, intrinsics,"))
-		println(color.YellowString("  drop traits, operator traits, type checking, narrowing, builtin traits."))
-		println(color.YellowString("  For production use, prefer the C backend (--backend c)."))
-		println()
-	}
-
 	// Validate that the file only uses features supported by the backend
 	compilationBackend.Init()
 	usedFeatures := backends.DetectFeatures(sourceFile)
 	featureSet := compilationBackend.Features()
+	unsupportedSet := make(map[backends.Feature]struct{})
 
 	for _, feature := range usedFeatures {
 		if !featureSet.SupportsString(string(feature)) {
-			compileErrorScope.NewCompileTimeError(
-				"Unsupported Feature",
-				"Feature '"+string(feature)+"' is not supported by the '"+backend+"' backend",
-				lexer.Position{Line: 1, Column: 1},
-			)
+			unsupportedSet[feature] = struct{}{}
 		}
+	}
+
+	unsupportedFeatures := make([]backends.Feature, 0, len(unsupportedSet))
+	for feature := range unsupportedSet {
+		unsupportedFeatures = append(unsupportedFeatures, feature)
+	}
+	sort.Slice(unsupportedFeatures, func(i, j int) bool {
+		return unsupportedFeatures[i] < unsupportedFeatures[j]
+	})
+
+	// Warn about experimental LLVM backend with feature-set-derived unsupported usage.
+	if backend == "llvm" {
+		println(color.YellowString("Warning: LLVM backend is experimental and incomplete."))
+		if len(unsupportedFeatures) > 0 {
+			featureNames := make([]string, 0, len(unsupportedFeatures))
+			for _, feature := range unsupportedFeatures {
+				featureNames = append(featureNames, string(feature))
+			}
+			println(color.YellowString("  Unsupported in this file: " + strings.Join(featureNames, ", ") + "."))
+		} else {
+			println(color.YellowString("  No unsupported features were detected in this file by feature gating."))
+		}
+		println(color.YellowString("  For production use, prefer the C backend (--backend c)."))
+		println()
+	}
+
+	for _, feature := range unsupportedFeatures {
+		msg := "Feature '" + string(feature) + "' is not supported by the '" + backend + "' backend"
+		if backend == "llvm" {
+			msg += " (prefer '--backend c' for this file)"
+		}
+		compileErrorScope.NewCompileTimeError(
+			"Unsupported Feature",
+			msg,
+			lexer.Position{Line: 1, Column: 1},
+		)
 	}
 
 	// Validate import compatibility

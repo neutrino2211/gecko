@@ -322,7 +322,11 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 				intType = types.I64 // default to i64
 			}
 			if iType, ok := intType.(*types.IntType); ok {
-				base = constant.NewInt(iType, conv)
+				if iType.BitSize == 1 && conv != 0 && conv != 1 {
+					base = constant.NewInt(types.I64, conv)
+				} else {
+					base = constant.NewInt(iType, conv)
+				}
 			} else {
 				base = constant.NewInt(types.I64, conv)
 			}
@@ -341,7 +345,7 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 			def := info.ProgramContext.Module.NewGlobalDef(".str."+p.GetID(), str)
 			def.Linkage = enum.LinkagePrivate
 
-			if expressionType.Const {
+			if expressionType != nil && expressionType.Const {
 				def.UnnamedAddr = enum.UnnamedAddrUnnamedAddr
 				def.Immutable = true
 			}
@@ -481,7 +485,10 @@ func (impl *LLVMBackendImplementation) StructLiteralToLLIRValue(l *tokens.Litera
 		fieldPtr := info.LocalContext.MainBlock.NewGetElementPtr(structType, structPtr, zero, fieldIdxConst)
 
 		// Store the value
-		info.LocalContext.MainBlock.NewStore(fieldValue, fieldPtr)
+		store := impl.NewVolatileStore(info.LocalContext.MainBlock, fieldValue, fieldPtr, false)
+		if store == nil {
+			scope.ErrorScope.NewCompileTimeError("Type Error", "Unable to assign field '"+kv.Key+"' in struct literal due to incompatible type", kv.Pos)
+		}
 	}
 
 	// Return the pointer to the struct (not the loaded value)

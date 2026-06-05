@@ -1,0 +1,52 @@
+// spec: spec/types.md, spec/functions.md, spec/traits.md, spec/modules.md, spec/control-flow.md
+
+package main
+
+@try_hook(.has_value, .try_unwrap)
+trait Tryable<T> {
+    func has_value(self): bool
+    func try_unwrap(self): T
+}
+
+class Option<T> {
+    let value: T
+    let has_value: bool
+
+    func some(val: T): Option<T> {
+        let opt: Option<T>
+        opt.value = val
+        opt.has_value = true
+        return opt
+    }
+
+    func none(): Option<T> {
+        let opt: Option<T>
+        opt.has_value = false
+        return opt
+    }
+}
+
+impl<T> Tryable<T> for Option<T> {
+    func has_value(self): bool {
+        return self.has_value
+    }
+
+    func try_unwrap(self): T {
+        return self.value
+    }
+}
+
+class File {
+    func open(path: string, mode: string): Option<int32> {
+        return Option<int32>::none()
+    }
+}
+
+func read_file(): int32 {
+    let fd: int32 = try File::open("no_exist", "r")
+    return fd
+}
+
+external func main(): int32 {
+    return 0
+}

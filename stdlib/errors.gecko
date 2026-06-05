@@ -7,7 +7,7 @@ declare external variardic func dprintf(fd: int32, format: string): int32
 // Signature expected by @set_try_error_handler:
 // func(file: string, line: int32, column: int32, function_name: string, expr: string): void
 func __gecko_default_try_error_handler(file: string, line: int32, column: int32, function_name: string, expr: string): void {
-    dprintf(2, "Gecko try panic at %s:%d:%d in %s\n  expression: %s\n", file, line, column, function_name, expr)
+    dprintf(2, "Gecko try panic\n  location: %s:%d:%d\n  function: %s\n  expression: %s\n  hint: handle the failure with 'or', or return a compatible Option/Result.\n", file, line, column, function_name, expr)
 }
 
 // Hidden stdlib hook invoked automatically by the compiler when std.errors is imported.

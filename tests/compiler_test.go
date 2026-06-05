@@ -223,6 +223,48 @@ func TestCompileOnly(t *testing.T) {
 	}
 }
 
+func TestTryDiagnosticsUsesGeckoExpression(t *testing.T) {
+	geckoPath := buildGecko(t)
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	projectRoot := filepath.Dir(wd)
+	if filepath.Base(wd) != "tests" {
+		projectRoot = wd
+	}
+
+	sourcePath := filepath.Join(projectRoot, "test_sources/compile_tests/error_handling_try_diagnostics/main.gecko")
+	cmd := exec.Command(geckoPath, "compile", "--backend", "c", "--ir-only", "--print-ir", sourcePath)
+	cmd.Dir = projectRoot
+	cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Compilation failed unexpectedly: %v\n%s", err, output)
+	}
+
+	outputStr := string(output)
+	tryFailLine := ""
+	for _, line := range strings.Split(outputStr, "\n") {
+		if strings.Contains(line, "__gecko_try_fail(") && strings.Contains(line, "__func__") {
+			tryFailLine = line
+			break
+		}
+	}
+	if tryFailLine == "" {
+		t.Fatalf("Expected lowered __gecko_try_fail call in output:\n%s", outputStr)
+	}
+
+	if !strings.Contains(tryFailLine, `File::open(\"no_exist\", \"r\")`) {
+		t.Fatalf("Expected try diagnostics expression to use Gecko syntax, got:\n%s", tryFailLine)
+	}
+	if strings.Contains(tryFailLine, `File__open(\"no_exist\", \"r\")`) {
+		t.Fatalf("Expected try diagnostics expression to avoid C mangled syntax, got:\n%s", tryFailLine)
+	}
+}
+
 func buildGecko(t *testing.T) string {
 	t.Helper()
 

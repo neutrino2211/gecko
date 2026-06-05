@@ -3,192 +3,308 @@
 package tests
 
 import (
+	"flag"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/neutrino2211/gecko/compiler"
+	"github.com/neutrino2211/gecko/config"
+	"github.com/urfave/cli/v2"
 )
 
-func TestModuleResolutionOrder(t *testing.T) {
-	// Create a temporary directory structure for testing
-	tmpDir, err := os.MkdirTemp("", "gecko_module_test")
+func writeFile(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("failed to create parent dir for %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write %s: %v", path, err)
+	}
+}
+
+func newTestCLIContext(t *testing.T) *cli.Context {
+	t.Helper()
+
+	app := cli.NewApp()
+	fs := flag.NewFlagSet("module-resolution-test", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.String("backend", "c", "")
+	fs.String("target-arch", runtime.GOARCH, "")
+	fs.String("target-platform", runtime.GOOS, "")
+	fs.String("target-vendor", "", "")
+	if err := fs.Parse([]string{}); err != nil {
+		t.Fatalf("failed to build cli context: %v", err)
+	}
+
+	return cli.NewContext(app, fs, nil)
+}
+
+func compileAndCollectErrors(t *testing.T, sourcePath string, projectCfg *config.ProjectConfig) []compiler.DiagnosticMessage {
+	t.Helper()
+
+	compiler.Compile(sourcePath, &config.CompileCfg{
+		Arch:      runtime.GOARCH,
+		Platform:  runtime.GOOS,
+		Vendor:    "",
+		TargetKey: "",
+		CFlags:    []string{},
+		CLFlags:   []string{},
+		CObjects:  []string{},
+		CheckOnly: true,
+		Ctx:       newTestCLIContext(t),
+		Project:   projectCfg,
+	})
+
+	return compiler.GetAllErrors()
+}
+
+func formatCompileErrors(errs []compiler.DiagnosticMessage) string {
+	if len(errs) == 0 {
+		return ""
+	}
+
+	lines := make([]string, 0, len(errs))
+	for _, err := range errs {
+		lines = append(lines, fmt.Sprintf("%s (%d:%d)", err.Message, err.Line, err.Column))
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func TestModuleResolutionPrefersImporterDirectory(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "gecko_module_resolution_relative")
 	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
+		t.Fatalf("failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
-
-	// Create directory structure:
-	// tmpDir/
-	//   project/
-	//     main.gecko
-	//     local.gecko         <- relative import
-	//     vendor/
-	//       vendored.gecko    <- vendor import
-	//   stdlib/
-	//     collections/
-	//       vec.gecko         <- stdlib import
 
 	projectDir := filepath.Join(tmpDir, "project")
-	vendorDir := filepath.Join(projectDir, "vendor")
-	stdlibDir := filepath.Join(tmpDir, "stdlib")
-	collectionsDir := filepath.Join(stdlibDir, "collections")
+	writeFile(t, filepath.Join(projectDir, "gecko.toml"), `
+[package]
+name = "resolver-test"
+version = "0.1.0"
 
-	dirs := []string{projectDir, vendorDir, stdlibDir, collectionsDir}
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			t.Fatalf("Failed to create dir %s: %v", dir, err)
-		}
-	}
+[build.entries]
+main = "src/main.gecko"
+`)
 
-	// Create test files
-	files := map[string]string{
-		filepath.Join(projectDir, "local.gecko"): `package local
-public func get_local(): int32 {
-    return 1
-}`,
-		filepath.Join(vendorDir, "vendored.gecko"): `package vendored
-public func get_vendored(): int32 {
-    return 2
-}`,
-		filepath.Join(collectionsDir, "vec.gecko"): `package vec
-public class Vec<T> {
-    let len: int32
-}`,
-	}
-
-	for path, content := range files {
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			t.Fatalf("Failed to write file %s: %v", path, err)
-		}
-	}
-
-	// Test cases for different import types
-	tests := []struct {
-		name           string
-		mainContent    string
-		geckoHome      string
-		shouldResolve  []string
-	}{
-		{
-			name: "relative_import",
-			mainContent: `package main
-import local
-
-func main(): int32 {
-    return 0
-}`,
-			geckoHome:     tmpDir,
-			shouldResolve: []string{"local"},
-		},
-		{
-			name: "vendor_import",
-			mainContent: `package main
-import vendored
-
-func main(): int32 {
-    return 0
-}`,
-			geckoHome:     tmpDir,
-			shouldResolve: []string{"vendored"},
-		},
-		{
-			name: "stdlib_import",
-			mainContent: `package main
-import std.collections.vec
-
-func main(): int32 {
-    return 0
-}`,
-			geckoHome:     tmpDir,
-			shouldResolve: []string{"std.collections.vec"},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Write the main file
-			mainPath := filepath.Join(projectDir, "main.gecko")
-			if err := os.WriteFile(mainPath, []byte(tc.mainContent), 0644); err != nil {
-				t.Fatalf("Failed to write main.gecko: %v", err)
-			}
-
-			// Set GECKO_HOME for stdlib resolution
-			oldHome := os.Getenv("GECKO_HOME")
-			os.Setenv("GECKO_HOME", tc.geckoHome)
-			defer os.Setenv("GECKO_HOME", oldHome)
-
-			// The actual resolution is tested through compile - we just verify
-			// the file structure is correct for the compiler to find
-			for _, expected := range tc.shouldResolve {
-				t.Logf("Module %s should be resolvable", expected)
-			}
-		})
-	}
+	// Import target beside importer (preferred over project-root fallback).
+	writeFile(t, filepath.Join(projectDir, "src", "local.gecko"), `package local
+public class SrcLocalType {
+    let value: int32
 }
+`)
 
-func TestGetGeckoHome(t *testing.T) {
-	tests := []struct {
-		name        string
-		envValue    string
-		expectEnv   bool
-	}{
-		{
-			name:      "env_var_set",
-			envValue:  "/custom/gecko/path",
-			expectEnv: true,
-		},
-		{
-			name:      "env_var_empty",
-			envValue:  "",
-			expectEnv: false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			oldHome := os.Getenv("GECKO_HOME")
-			defer os.Setenv("GECKO_HOME", oldHome)
-
-			os.Setenv("GECKO_HOME", tc.envValue)
-
-			// We can't directly test getGeckoHome() since it's not exported,
-			// but we can verify the env var is read correctly
-			if tc.expectEnv {
-				if os.Getenv("GECKO_HOME") != tc.envValue {
-					t.Errorf("Expected GECKO_HOME=%s, got %s", tc.envValue, os.Getenv("GECKO_HOME"))
-				}
-			}
-		})
-	}
+	// Same module name at project root; picking this should fail this test.
+	writeFile(t, filepath.Join(projectDir, "local.gecko"), `package local
+public class RootLocalType {
+    let value: int32
 }
+`)
 
-func TestStdlibImportStripsPrefix(t *testing.T) {
-	// Create a temp stdlib with the correct structure
-	tmpDir, err := os.MkdirTemp("", "gecko_stdlib_test")
+	mainPath := filepath.Join(projectDir, "src", "main.gecko")
+	writeFile(t, mainPath, `package main
+import local use { SrcLocalType }
+
+external func main(): int32 {
+    let v: SrcLocalType = SrcLocalType { value: 7 }
+    return v.value
+}
+`)
+
+	projectCfg, err := config.LoadProjectConfig(projectDir)
 	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
+		t.Fatalf("failed to load project config: %v", err)
+	}
+
+	compiler.ResetCompilationState()
+	errs := compileAndCollectErrors(t, mainPath, projectCfg)
+	if len(errs) > 0 {
+		t.Fatalf("expected compile success with importer-relative resolution, got errors:\n%s", formatCompileErrors(errs))
+	}
+}
+
+func TestModuleResolutionFallsBackToVendor(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "gecko_module_resolution_vendor")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Create stdlib/option.gecko (not stdlib/std/option.gecko)
-	stdlibDir := filepath.Join(tmpDir, "stdlib")
-	if err := os.MkdirAll(stdlibDir, 0755); err != nil {
-		t.Fatalf("Failed to create stdlib dir: %v", err)
-	}
+	projectDir := filepath.Join(tmpDir, "project")
+	writeFile(t, filepath.Join(projectDir, "gecko.toml"), `
+[package]
+name = "resolver-test"
+version = "0.1.0"
 
-	optionContent := `package option
-public class Option<T> {
-    let has_value: bool
-    let value: T
+[build.entries]
+main = "main.gecko"
+`)
+
+	writeFile(t, filepath.Join(projectDir, "vendor", "vendored.gecko"), `package vendored
+public class VendoredType {
+    let value: int32
 }
-`
-	if err := os.WriteFile(filepath.Join(stdlibDir, "option.gecko"), []byte(optionContent), 0644); err != nil {
-		t.Fatalf("Failed to write option.gecko: %v", err)
+`)
+
+	mainPath := filepath.Join(projectDir, "main.gecko")
+	writeFile(t, mainPath, `package main
+import vendored use { VendoredType }
+
+external func main(): int32 {
+    let v: VendoredType = VendoredType { value: 9 }
+    return v.value
+}
+`)
+
+	projectCfg, err := config.LoadProjectConfig(projectDir)
+	if err != nil {
+		t.Fatalf("failed to load project config: %v", err)
 	}
 
-	// The import `std.option` should look for `$GECKO_HOME/stdlib/option.gecko`
-	// (stripping the `std` prefix), not `$GECKO_HOME/stdlib/std/option.gecko`
-	expectedPath := filepath.Join(stdlibDir, "option.gecko")
-	if _, err := os.Stat(expectedPath); err != nil {
-		t.Errorf("Expected stdlib file at %s", expectedPath)
+	compiler.ResetCompilationState()
+	errs := compileAndCollectErrors(t, mainPath, projectCfg)
+	if len(errs) > 0 {
+		t.Fatalf("expected vendor fallback to resolve import, got errors:\n%s", formatCompileErrors(errs))
+	}
+}
+
+func TestStdlibImportStripsPrefixDuringResolution(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "gecko_module_resolution_std")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	geckoHome := filepath.Join(tmpDir, "gecko_home")
+	projectDir := filepath.Join(tmpDir, "project")
+
+	writeFile(t, filepath.Join(geckoHome, "stdlib", "option.gecko"), `package option
+public class Option {
+    let has_value: bool
+}
+`)
+
+	mainPath := filepath.Join(projectDir, "main.gecko")
+	writeFile(t, mainPath, `package main
+import std.option use { Option }
+
+external func main(): int32 {
+    let opt: Option = Option { has_value: true }
+    if (opt.has_value) {
+        return 1
+    }
+    return 0
+}
+`)
+
+	oldHome := os.Getenv("GECKO_HOME")
+	if err := os.Setenv("GECKO_HOME", geckoHome); err != nil {
+		t.Fatalf("failed to set GECKO_HOME: %v", err)
+	}
+	defer os.Setenv("GECKO_HOME", oldHome)
+
+	compiler.ResetCompilationState()
+	errs := compileAndCollectErrors(t, mainPath, nil)
+	if len(errs) > 0 {
+		t.Fatalf("expected std.option to resolve to $GECKO_HOME/stdlib/option.gecko, got errors:\n%s", formatCompileErrors(errs))
+	}
+}
+
+func TestDirectoryImportResolvesQualifiedTypeForDottedImportPath(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "gecko_module_resolution_dotted_dir")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	projectDir := filepath.Join(tmpDir, "project")
+	writeFile(t, filepath.Join(projectDir, "mylib", "shapes", "circle.gecko"), `package shapes
+public class Circle {
+    let radius: int32
+}
+
+impl Circle {
+    public func new(radius: int32): Circle {
+        return Circle { radius: radius }
+    }
+
+    public func area(self): int32 {
+        return self.radius * self.radius
+    }
+}
+`)
+
+	mainPath := filepath.Join(projectDir, "main.gecko")
+	writeFile(t, mainPath, `package main
+import mylib.shapes
+
+external func main(): int32 {
+    let c: shapes.Circle = shapes.Circle::new(4)
+    return c.area()
+}
+`)
+
+	compiler.ResetCompilationState()
+	errs := compileAndCollectErrors(t, mainPath, nil)
+	if len(errs) > 0 {
+		t.Fatalf("expected dotted directory import to resolve qualified type, got errors:\n%s", formatCompileErrors(errs))
+	}
+}
+
+func TestSequentialCompilesDoNotLeakImportCacheAcrossFiles(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "gecko_module_resolution_cache")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	projectA := filepath.Join(tmpDir, "project_a")
+	projectB := filepath.Join(tmpDir, "project_b")
+
+	mainA := filepath.Join(projectA, "main.gecko")
+	writeFile(t, filepath.Join(projectA, "shared.gecko"), `package shared
+public class AOnly {
+    let value: int32
+}
+`)
+	writeFile(t, mainA, `package main
+import shared use { AOnly }
+
+external func main(): int32 {
+    let v: AOnly = AOnly { value: 1 }
+    return v.value
+}
+`)
+
+	mainB := filepath.Join(projectB, "main.gecko")
+	writeFile(t, filepath.Join(projectB, "shared.gecko"), `package shared
+public class BOnly {
+    let value: int32
+}
+`)
+	writeFile(t, mainB, `package main
+import shared use { BOnly }
+
+external func main(): int32 {
+    let v: BOnly = BOnly { value: 2 }
+    return v.value
+}
+`)
+
+	compiler.ResetCompilationState()
+	errsA := compileAndCollectErrors(t, mainA, nil)
+	if len(errsA) > 0 {
+		t.Fatalf("first compile unexpectedly failed:\n%s", formatCompileErrors(errsA))
+	}
+
+	errsB := compileAndCollectErrors(t, mainB, nil)
+	if len(errsB) > 0 {
+		t.Fatalf("second compile unexpectedly failed (possible cross-file import cache leak):\n%s", formatCompileErrors(errsB))
 	}
 }

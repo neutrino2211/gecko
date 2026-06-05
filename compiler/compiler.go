@@ -73,7 +73,65 @@ func streamCommand(cmd *exec.Cmd) error {
 	return cmd.Wait()
 }
 
-var parsedFiles = make(map[string]*tokens.File)
+type compileState struct {
+	importCache map[string]*tokens.File
+	fileCache   map[string]*tokens.File
+}
+
+func newCompileState() *compileState {
+	return &compileState{
+		importCache: make(map[string]*tokens.File),
+		fileCache:   make(map[string]*tokens.File),
+	}
+}
+
+func normalizePath(path string) string {
+	if absPath, err := filepath.Abs(path); err == nil {
+		return filepath.Clean(absPath)
+	}
+	return filepath.Clean(path)
+}
+
+func importCacheKey(importerDir, importPath string) string {
+	return normalizePath(importerDir) + "|" + importPath
+}
+
+func splitImportPath(importPath string) []string {
+	if importPath == "" {
+		return nil
+	}
+	parts := strings.Split(importPath, ".")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func moduleNameFromImportPath(importPath string) string {
+	parts := splitImportPath(importPath)
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
+func appendImportIfMissing(sourceFile *tokens.File, imported *tokens.File) {
+	if sourceFile == nil || imported == nil {
+		return
+	}
+
+	importedPath := normalizePath(imported.Path)
+	for _, existing := range sourceFile.Imports {
+		if normalizePath(existing.Path) == importedPath {
+			return
+		}
+	}
+	sourceFile.Imports = append(sourceFile.Imports, imported)
+}
 
 // getGeckoHome returns the path to the Gecko home directory (parent of stdlib).
 // Resolution order: $GECKO_HOME env var -> system paths -> current directory
@@ -127,6 +185,66 @@ type ModuleLocation struct {
 	FilePath    string // Path to the .gecko file (empty if directory)
 	DirPath     string // Path to directory (empty if file)
 	IsDirectory bool   // True if this is a directory import
+}
+
+func resolveProjectPaths(baseDir string, cfg *config.CompileCfg) (string, string) {
+	if cfg != nil && cfg.Project != nil {
+		return cfg.Project.ProjectRoot, cfg.Project.GetDepsDir()
+	}
+
+	if projectCfg, err := config.LoadProjectConfig(baseDir); err == nil && projectCfg != nil {
+		return projectCfg.ProjectRoot, projectCfg.GetDepsDir()
+	}
+
+	projectRoot := baseDir
+	if cfg != nil && cfg.Ctx != nil {
+		if args := cfg.Ctx.Args(); args.Len() > 0 {
+			if mainFile := args.First(); mainFile != "" {
+				projectRoot = filepath.Dir(mainFile)
+			}
+		}
+	}
+
+	return projectRoot, filepath.Join(projectRoot, ".gecko", "deps")
+}
+
+func resolveImportLocation(baseDir string, pathComponents []string, cfg *config.CompileCfg) ModuleLocation {
+	if len(pathComponents) == 0 {
+		return ModuleLocation{}
+	}
+
+	geckoHome := getGeckoHome()
+	projectRoot, depsPath := resolveProjectPaths(baseDir, cfg)
+	vendorPath := filepath.Join(projectRoot, "vendor")
+
+	relativePath := filepath.Join(pathComponents...)
+
+	var searchPaths []string
+	if pathComponents[0] == "std" {
+		relativePath = filepath.Join(pathComponents[1:]...)
+		searchPaths = []string{
+			filepath.Join(geckoHome, "std"),
+			filepath.Join(geckoHome, "stdlib"),
+		}
+	} else {
+		searchPaths = []string{
+			baseDir,
+			projectRoot,
+			depsPath,
+			vendorPath,
+		}
+	}
+
+	return findModulePath(relativePath, searchPaths)
+}
+
+// ResolveImportLocation resolves a dot-notation import path using compiler resolution rules.
+func ResolveImportLocation(importerFilePath string, importPath string, cfg *config.CompileCfg) ModuleLocation {
+	baseDir := filepath.Dir(importerFilePath)
+	if baseDir == "" {
+		baseDir = "."
+	}
+	return resolveImportLocation(baseDir, splitImportPath(importPath), cfg)
 }
 
 // findModulePath searches for a module in the given search paths.
@@ -203,6 +321,10 @@ func findTypeInDirectory(dirPath string, typeName string, cfg *config.CompileCfg
 // ResolveTypeFromDirectoryImports searches directory imports for a type.
 // This is called when a type cannot be found in the current scope.
 func ResolveTypeFromDirectoryImports(sourceFile *tokens.File, typeName string) (*tokens.File, bool) {
+	return resolveTypeFromDirectoryImports(sourceFile, typeName, newCompileState())
+}
+
+func resolveTypeFromDirectoryImports(sourceFile *tokens.File, typeName string, state *compileState) (*tokens.File, bool) {
 	for _, dirImport := range sourceFile.DirectoryImports {
 		// If use objects specified, only allow those types
 		if len(dirImport.UseObjects) > 0 {
@@ -220,12 +342,11 @@ func ResolveTypeFromDirectoryImports(sourceFile *tokens.File, typeName string) (
 
 		// Search the directory for the type
 		if file, ok := findTypeInDirectory(dirImport.DirPath, typeName, sourceFile.Config); ok {
-			// Cache the parsed file
-			fullPath := dirImport.Path + "." + file.Name
-			if _, exists := parsedFiles[fullPath]; !exists {
-				parsedFiles[fullPath] = file
-				sourceFile.Imports = append(sourceFile.Imports, file)
+			if state != nil {
+				cacheKey := "dir-type|" + dirImport.Path + "|" + typeName
+				state.importCache[cacheKey] = file
 			}
+			appendImportIfMissing(sourceFile, file)
 			return file, true
 		}
 	}
@@ -235,10 +356,14 @@ func ResolveTypeFromDirectoryImports(sourceFile *tokens.File, typeName string) (
 // ResolveModuleTypeFromDirectoryImports searches a specific module (directory import) for a type.
 // This is called for module-qualified types like shapes.Circle.
 func ResolveModuleTypeFromDirectoryImports(sourceFile *tokens.File, moduleName string, typeName string) (*tokens.File, bool) {
+	return resolveModuleTypeFromDirectoryImports(sourceFile, moduleName, typeName, newCompileState())
+}
+
+func resolveModuleTypeFromDirectoryImports(sourceFile *tokens.File, moduleName string, typeName string, state *compileState) (*tokens.File, bool) {
 	for _, dirImport := range sourceFile.DirectoryImports {
 		// Check if this directory import matches the module name
 		// The module name is the last part of the import path (e.g., "shapes" from "import shapes")
-		importModuleName := filepath.Base(dirImport.Path)
+		importModuleName := moduleNameFromImportPath(dirImport.Path)
 		if importModuleName != moduleName {
 			continue
 		}
@@ -259,12 +384,11 @@ func ResolveModuleTypeFromDirectoryImports(sourceFile *tokens.File, moduleName s
 
 		// Search the directory for the type
 		if file, ok := findTypeInDirectory(dirImport.DirPath, typeName, sourceFile.Config); ok {
-			// Cache the parsed file
-			fullPath := dirImport.Path + "." + file.Name
-			if _, exists := parsedFiles[fullPath]; !exists {
-				parsedFiles[fullPath] = file
-				sourceFile.Imports = append(sourceFile.Imports, file)
+			if state != nil {
+				cacheKey := "dir-module-type|" + dirImport.Path + "|" + typeName
+				state.importCache[cacheKey] = file
 			}
+			appendImportIfMissing(sourceFile, file)
 			return file, true
 		}
 	}
@@ -313,6 +437,10 @@ func findMethodInDirectory(dirPath string, methodName string, cfg *config.Compil
 // ResolveMethodFromDirectoryImports searches directory imports for a method.
 // This is called when a method cannot be found in the current scope.
 func ResolveMethodFromDirectoryImports(sourceFile *tokens.File, methodName string) (*tokens.File, bool) {
+	return resolveMethodFromDirectoryImports(sourceFile, methodName, newCompileState())
+}
+
+func resolveMethodFromDirectoryImports(sourceFile *tokens.File, methodName string, state *compileState) (*tokens.File, bool) {
 	for _, dirImport := range sourceFile.DirectoryImports {
 		// If use objects specified, only allow those methods
 		if len(dirImport.UseObjects) > 0 {
@@ -330,12 +458,11 @@ func ResolveMethodFromDirectoryImports(sourceFile *tokens.File, methodName strin
 
 		// Search the directory for the method
 		if file, ok := findMethodInDirectory(dirImport.DirPath, methodName, sourceFile.Config); ok {
-			// Cache the parsed file
-			fullPath := dirImport.Path + "." + file.Name
-			if _, exists := parsedFiles[fullPath]; !exists {
-				parsedFiles[fullPath] = file
-				sourceFile.Imports = append(sourceFile.Imports, file)
+			if state != nil {
+				cacheKey := "dir-method|" + dirImport.Path + "|" + methodName
+				state.importCache[cacheKey] = file
 			}
+			appendImportIfMissing(sourceFile, file)
 			return file, true
 		}
 	}
@@ -343,39 +470,8 @@ func ResolveMethodFromDirectoryImports(sourceFile *tokens.File, methodName strin
 }
 
 // resolveImports finds and parses imported modules
-// Resolution order: 1) Relative to source file, 2) Stdlib ($GECKO_HOME/stdlib), 3) Vendor (./vendor)
-func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.CompileCfg, importErrorScope *errors.ErrorScope) {
-	geckoHome := getGeckoHome()
-
-	// Determine stdlib path - prefer "std" over legacy "stdlib"
-	stdPath := filepath.Join(geckoHome, "std")
-	if _, err := os.Stat(stdPath); os.IsNotExist(err) {
-		stdPath = filepath.Join(geckoHome, "stdlib")
-	}
-
-	// Get project root and deps path from project config or fallback to baseDir
-	var projectRoot string
-	var depsPath string
-
-	if cfg != nil && cfg.Project != nil {
-		projectRoot = cfg.Project.ProjectRoot
-		depsPath = cfg.Project.GetDepsDir()
-	} else {
-		// Fallback: try to determine from CLI args
-		projectRoot = baseDir
-		if cfg != nil && cfg.Ctx != nil {
-			if args := cfg.Ctx.Args(); args.Len() > 0 {
-				if mainFile := args.First(); mainFile != "" {
-					projectRoot = filepath.Dir(mainFile)
-				}
-			}
-		}
-		depsPath = filepath.Join(projectRoot, ".gecko", "deps")
-	}
-
-	// Legacy vendor path for backwards compatibility
-	vendorPath := filepath.Join(projectRoot, "vendor")
-
+// Resolution order: relative to importer, project root, deps, vendor, and stdlib for `std.*`.
+func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.CompileCfg, importErrorScope *errors.ErrorScope, state *compileState) {
 	for _, entry := range sourceFile.Entries {
 		if entry.Import == nil {
 			continue
@@ -383,40 +479,15 @@ func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.Compile
 
 		moduleName := entry.Import.ModuleName()
 		fullPath := entry.Import.Package()
+		cacheKey := importCacheKey(baseDir, fullPath)
 
-		// Skip if already parsed
-		if _, ok := parsedFiles[fullPath]; ok {
-			sourceFile.Imports = append(sourceFile.Imports, parsedFiles[fullPath])
+		// Skip if already resolved for this importer+path.
+		if importedFile, ok := state.importCache[cacheKey]; ok {
+			appendImportIfMissing(sourceFile, importedFile)
 			continue
 		}
 
-		// Convert dot notation to file path: std.collections.vec -> std/collections/vec
-		pathComponents := entry.Import.Path
-		relativePath := filepath.Join(pathComponents...)
-
-		// For stdlib imports (starting with "std"), skip relative search
-		// and go directly to stdlib path
-		var searchPaths []string
-		if len(pathComponents) > 0 && pathComponents[0] == "std" {
-			// Strip "std" prefix for stdlib lookup
-			stdRelativePath := filepath.Join(pathComponents[1:]...)
-			// Search both std/ and stdlib/ directories
-			searchPaths = []string{
-				filepath.Join(geckoHome, "std"),    // $GECKO_HOME/std/
-				filepath.Join(geckoHome, "stdlib"), // $GECKO_HOME/stdlib/
-			}
-			relativePath = stdRelativePath
-		} else {
-			// Non-std imports: relative -> project root -> deps -> vendor
-			searchPaths = []string{
-				baseDir,     // Relative to current file
-				projectRoot, // Project root (gecko.toml location)
-				depsPath,    // .gecko/deps/
-				vendorPath,  // Legacy vendor/ path
-			}
-		}
-
-		location := findModulePath(relativePath, searchPaths)
+		location := resolveImportLocation(baseDir, entry.Import.Path, cfg)
 
 		// Handle directory imports (lazy resolution)
 		if location.IsDirectory {
@@ -440,43 +511,51 @@ func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.Compile
 			continue // Module not found, will be handled as error later
 		}
 
-		// Parse the module
-		moduleContents, err := os.ReadFile(location.FilePath)
-		if err != nil {
-			if importErrorScope != nil {
-				importErrorScope.NewCompileTimeError(
-					"Import Read Error",
-					"Unable to read module '"+fullPath+"': "+err.Error(),
-					entry.Import.Pos,
-				)
+		normalizedFilePath := normalizePath(location.FilePath)
+		moduleFile, ok := state.fileCache[normalizedFilePath]
+		if !ok {
+			moduleContents, err := os.ReadFile(location.FilePath)
+			if err != nil {
+				if importErrorScope != nil {
+					importErrorScope.NewCompileTimeError(
+						"Import Read Error",
+						"Unable to read module '"+fullPath+"': "+err.Error(),
+						entry.Import.Pos,
+					)
+				}
+				continue
 			}
-			continue
+
+			parsedModule, parseErr := parser.Parser.ParseString(location.FilePath, string(moduleContents))
+			if parseErr != nil {
+				if importErrorScope != nil {
+					importErrorScope.NewCompileTimeError(
+						"Import Parse Error",
+						"Unable to parse module '"+fullPath+"': "+parseErr.Error(),
+						entry.Import.Pos,
+					)
+				}
+				continue
+			}
+
+			parsedModule.Content = string(moduleContents)
+			parsedModule.Path = location.FilePath
+			parsedModule.Config = cfg
+
+			moduleFile = parsedModule
+			state.fileCache[normalizedFilePath] = moduleFile
 		}
 
-		moduleFile, parseErr := parser.Parser.ParseString(location.FilePath, string(moduleContents))
-		if parseErr != nil {
-			if importErrorScope != nil {
-				importErrorScope.NewCompileTimeError(
-					"Import Parse Error",
-					"Unable to parse module '"+fullPath+"': "+parseErr.Error(),
-					entry.Import.Pos,
-				)
-			}
-			continue
-		}
-
-		moduleFile.Content = string(moduleContents)
-		moduleFile.Path = location.FilePath
 		moduleFile.Name = moduleName
 		moduleFile.Config = cfg
 
-		parsedFiles[fullPath] = moduleFile
-		sourceFile.Imports = append(sourceFile.Imports, moduleFile)
+		state.importCache[cacheKey] = moduleFile
+		appendImportIfMissing(sourceFile, moduleFile)
 
 		// Recursively resolve imports in the module
 		moduleDir := filepath.Dir(location.FilePath)
 		moduleImportScope := errors.NewErrorScope("import", moduleFile.Path, moduleFile.Content)
-		resolveImports(moduleFile, moduleDir, cfg, moduleImportScope)
+		resolveImports(moduleFile, moduleDir, cfg, moduleImportScope, state)
 	}
 }
 
@@ -491,12 +570,14 @@ func Compile(file string, config *config.CompileCfg) string {
 	sourceFile.Path = file
 	sourceFile.Config = config
 
+	state := newCompileState()
+
 	// Resolve imports
 	baseDir := filepath.Dir(file)
 	if baseDir == "" {
 		baseDir = "."
 	}
-	resolveImports(sourceFile, baseDir, config, compileErrorScope)
+	resolveImports(sourceFile, baseDir, config, compileErrorScope, state)
 
 	ts := strconv.Itoa(int(time.Now().UnixNano()))
 
@@ -625,17 +706,17 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	// Create lazy type resolver for directory imports
 	lazyResolver := func(typeName string) (*tokens.File, bool) {
-		return ResolveTypeFromDirectoryImports(sourceFile, typeName)
+		return resolveTypeFromDirectoryImports(sourceFile, typeName, state)
 	}
 
 	// Create lazy method resolver for directory imports
 	lazyMethodResolver := func(methodName string) (*tokens.File, bool) {
-		return ResolveMethodFromDirectoryImports(sourceFile, methodName)
+		return resolveMethodFromDirectoryImports(sourceFile, methodName, state)
 	}
 
 	// Create lazy module type resolver for qualified types (e.g., shapes.Circle)
 	lazyModuleTypeResolver := func(moduleName string, typeName string) (*tokens.File, bool) {
-		return ResolveModuleTypeFromDirectoryImports(sourceFile, moduleName, typeName)
+		return resolveModuleTypeFromDirectoryImports(sourceFile, moduleName, typeName, state)
 	}
 
 	// Initialize type registry for suggestions
@@ -710,7 +791,6 @@ func ResetErrorScopes() {
 // Useful for long-lived processes (e.g. LSP) between checks.
 func ResetCompilationState() {
 	errors.ResetScopes()
-	parsedFiles = make(map[string]*tokens.File)
 	ResetTypeRegistry()
 	cbackend.ResetState()
 	llvmbackend.ResetState()

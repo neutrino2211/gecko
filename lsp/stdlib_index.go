@@ -163,31 +163,40 @@ func isPublicVisibility(vis string) bool {
 
 // getStdlibPath returns the path to the stdlib directory
 func getStdlibPath() string {
+	findStdPath := func(base string) string {
+		candidates := []string{
+			filepath.Join(base, "std"),
+			filepath.Join(base, "stdlib"),
+		}
+		for _, candidate := range candidates {
+			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+				return candidate
+			}
+		}
+		return ""
+	}
+
 	// Check GECKO_HOME environment variable
 	if geckoHome := os.Getenv("GECKO_HOME"); geckoHome != "" {
-		stdlibPath := filepath.Join(geckoHome, "stdlib")
-		if info, err := os.Stat(stdlibPath); err == nil && info.IsDir() {
+		if stdlibPath := findStdPath(geckoHome); stdlibPath != "" {
 			return stdlibPath
 		}
 	}
 
 	// Check relative to executable
 	if execPath, err := os.Executable(); err == nil {
-		stdlibPath := filepath.Join(filepath.Dir(execPath), "stdlib")
-		if info, err := os.Stat(stdlibPath); err == nil && info.IsDir() {
+		if stdlibPath := findStdPath(filepath.Dir(execPath)); stdlibPath != "" {
 			return stdlibPath
 		}
 	}
 
 	// Check current working directory (for development)
 	if cwd, err := os.Getwd(); err == nil {
-		stdlibPath := filepath.Join(cwd, "stdlib")
-		if info, err := os.Stat(stdlibPath); err == nil && info.IsDir() {
+		if stdlibPath := findStdPath(cwd); stdlibPath != "" {
 			return stdlibPath
 		}
 		// Also check parent directory
-		stdlibPath = filepath.Join(filepath.Dir(cwd), "stdlib")
-		if info, err := os.Stat(stdlibPath); err == nil && info.IsDir() {
+		if stdlibPath := findStdPath(filepath.Dir(cwd)); stdlibPath != "" {
 			return stdlibPath
 		}
 	}

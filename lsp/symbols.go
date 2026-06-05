@@ -5,10 +5,10 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/neutrino2211/gecko/analysis"
+	"github.com/neutrino2211/gecko/compiler"
 	"github.com/neutrino2211/gecko/parser"
 	"github.com/neutrino2211/gecko/tokens"
 	"go.lsp.dev/protocol"
@@ -1567,16 +1567,21 @@ func formatImplMethodSignature(f *tokens.ImplementationField) string {
 
 // resolveModuleFile resolves a module name to its file path
 func resolveModuleFile(filePath, moduleName string) string {
-	baseDir := filepath.Dir(filePath)
-	candidates := []string{
-		filepath.Join(baseDir, moduleName+".gecko"),
-		filepath.Join(baseDir, moduleName, "mod.gecko"),
+	importPath := moduleName
+	if sourceContents, err := os.ReadFile(filePath); err == nil {
+		if sourceFile, parseErr := parser.Parser.ParseString(filePath, string(sourceContents)); parseErr == nil {
+			for _, entry := range sourceFile.Entries {
+				if entry.Import != nil && entry.Import.ModuleName() == moduleName {
+					importPath = entry.Import.Package()
+					break
+				}
+			}
+		}
 	}
 
-	for _, candidate := range candidates {
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
+	location := compiler.ResolveImportLocation(filePath, importPath, nil)
+	if location.FilePath != "" {
+		return location.FilePath
 	}
 	return ""
 }

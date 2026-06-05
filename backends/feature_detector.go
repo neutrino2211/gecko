@@ -56,6 +56,7 @@ func (d *featureDetector) analyzeEntry(entry *tokens.Entry) {
 	}
 	if entry.Break != nil || entry.Continue != nil {
 		d.mark(FeatureControlFlow)
+		d.mark(FeatureLoopControl)
 	}
 
 	// Functions
@@ -180,6 +181,9 @@ func (d *featureDetector) analyzeClass(class *tokens.Class) {
 }
 
 func (d *featureDetector) analyzeField(field *tokens.Field) {
+	if field.Type == nil && field.Value != nil {
+		d.mark(FeatureTypeInfer)
+	}
 	if field.Type != nil {
 		d.analyzeTypeRef(field.Type)
 	}
@@ -417,6 +421,8 @@ func (d *featureDetector) analyzeIntrinsic(intr *tokens.Intrinsic) {
 	if intr == nil {
 		return
 	}
+
+	d.mark(FeatureIntrinsics)
 
 	switch intr.Name {
 	case "deref":

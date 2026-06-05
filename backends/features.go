@@ -10,6 +10,7 @@ const (
 	FeatureFunctions   Feature = "functions"
 	FeaturePrimitives  Feature = "primitives"   // int, bool, uint8, etc.
 	FeatureControlFlow Feature = "control_flow" // if, else, while, for
+	FeatureLoopControl Feature = "loop_control" // break, continue
 	FeatureBasicOps    Feature = "basic_ops"    // arithmetic, comparison, logical
 	FeatureVariables   Feature = "variables"    // let, const
 
@@ -30,6 +31,7 @@ const (
 	// Low-level features - direct memory access
 	FeaturePointers   Feature = "pointers"    // pointer types, &, *
 	FeatureDeref      Feature = "deref"       // @deref intrinsic
+	FeatureIntrinsics Feature = "intrinsics"  // @size_of, @align_of, etc.
 	FeatureExternDecl Feature = "extern_decl" // declare external
 	FeatureCasts      Feature = "casts"       // as keyword
 	FeatureVolatile   Feature = "volatile"    // volatile pointers
@@ -141,6 +143,7 @@ func CoreFeatures() []Feature {
 		FeatureFunctions,
 		FeaturePrimitives,
 		FeatureControlFlow,
+		FeatureLoopControl,
 		FeatureBasicOps,
 		FeatureVariables,
 	}
@@ -173,6 +176,7 @@ func LowLevelFeatures() []Feature {
 	return []Feature{
 		FeaturePointers,
 		FeatureDeref,
+		FeatureIntrinsics,
 		FeatureExternDecl,
 		FeatureCasts,
 		FeatureVolatile,
@@ -262,6 +266,10 @@ func NewLLVMFeatureSet() *FeatureSet {
 		FeatureSection,
 		FeaturePacked,
 		FeatureInlineAsm,
+	)
+	fs.Disable(
+		FeatureLoopControl,
+		FeatureIntrinsics,
 	)
 	fs.SetToolchain(ToolchainNative, "c", "asm") // LLVM can link with C and ASM
 	return fs

@@ -275,6 +275,60 @@ trait Add {
 	}
 }
 
+func TestOutParamParsing(t *testing.T) {
+	code := `package main
+declare external type sqlite3
+declare external func sqlite3_open(path: string, db: out sqlite3*): int32
+
+func main(): int32 {
+    let db: sqlite3* = 0 as sqlite3*
+    sqlite3_open("db.sqlite", out db)
+    return 0
+}`
+
+	file, err := parser.Parser.ParseString("out_params.gecko", code)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	if len(file.Entries) < 2 {
+		t.Fatalf("Expected at least 2 entries, got %d", len(file.Entries))
+	}
+
+	decl := file.Entries[1].Declaration
+	if decl == nil || decl.Method == nil {
+		t.Fatal("Expected external method declaration as second entry")
+	}
+
+	m := decl.Method
+	if len(m.Arguments) != 2 {
+		t.Fatalf("Expected 2 declaration arguments, got %d", len(m.Arguments))
+	}
+	if m.Arguments[1].Name != "db" {
+		t.Fatalf("Expected out parameter name 'db', got %q", m.Arguments[1].Name)
+	}
+	if !m.Arguments[1].Out {
+		t.Fatal("Expected second declaration parameter to be marked as out")
+	}
+
+	mainFn := file.Entries[len(file.Entries)-1].Method
+	if mainFn == nil || len(mainFn.Value) < 2 {
+		t.Fatal("Expected function body with function call entry")
+	}
+
+	call := mainFn.Value[1].FuncCall
+	if call == nil {
+		t.Fatal("Expected second statement to be a function call")
+	}
+
+	if len(call.Arguments) != 2 {
+		t.Fatalf("Expected 2 call arguments, got %d", len(call.Arguments))
+	}
+	if !call.Arguments[1].Out {
+		t.Fatal("Expected second call argument to be marked as out")
+	}
+}
+
 func TestTraitInheritanceParsing(t *testing.T) {
 	code := `package main
 trait Parent {

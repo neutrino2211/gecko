@@ -4,6 +4,7 @@ set -eu
 PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
 BUILD_DIR="$PROJECT_ROOT/.gecko_build/vendor"
 SQLITE_DIR="$PROJECT_ROOT/vendor/sqlite"
+SQLITE_BRIDGE_C="$PROJECT_ROOT/scripts/sqlite_bridge.c"
 WEBVIEW_DIR="$PROJECT_ROOT/vendor/webview"
 
 mkdir -p "$BUILD_DIR"
@@ -39,6 +40,7 @@ if [ ! -f "$SQLITE_DIR/sqlite3.c" ] || [ ! -f "$SQLITE_DIR/sqlite3.h" ]; then
 fi
 
 "${CC:-cc}" -O2 -fPIC -I"$SQLITE_DIR" -c "$SQLITE_DIR/sqlite3.c" -o "$BUILD_DIR/sqlite3.o"
+"${CC:-cc}" -O2 -fPIC -I"$SQLITE_DIR" -c "$SQLITE_BRIDGE_C" -o "$BUILD_DIR/sqlite_bridge.o"
 
 "${CXX:-c++}" -O2 -fPIC -std=c++11 -DWEBVIEW_STATIC \
     -I"$WEBVIEW_DIR/core/include" \

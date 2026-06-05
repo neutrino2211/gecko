@@ -1,0 +1,21 @@
+// spec: spec/c-interop.md, spec/types.md, spec/functions.md
+
+package main
+
+declare external type sqlite3
+
+declare external func sqlite3_open(filename: string, db: out sqlite3*): int32
+declare external func sqlite3_close(db: sqlite3*): int32
+
+func main(): int32 {
+    let db: sqlite3* = 0 as sqlite3*
+    let rc: int32 = sqlite3_open(":memory:", out db)
+    if (rc != 0) {
+        return rc
+    }
+
+    if (!@is_null(db as void*)) {
+        sqlite3_close(db)
+    }
+    return 0
+}

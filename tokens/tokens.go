@@ -507,13 +507,15 @@ type Value struct {
 	baseToken
 	Variadic bool        `parser:"[ @'...' ]"`
 	Name     string      `parser:"@Ident"`
-	Type     *TypeRef    `parser:"[ ':' @@ ]"`
+	Out      bool        `parser:"[ ':' [ @'out' ]"`
+	Type     *TypeRef    `parser:"@@ ]"`
 	Default  *Expression `parser:"[ '=' @@ ]"`
 }
 
 type Argument struct {
 	baseToken
 	Name    string      `parser:"[ @Ident ':' ]"`
+	Out     bool        `parser:"[ @'out' ]"`
 	Value   *Expression `parser:"( @@"`
 	SubCall *FuncCall   `parser:"| @@)"`
 }

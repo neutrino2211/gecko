@@ -193,6 +193,14 @@ func (impls *LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncC
 	for _, a := range f.Arguments {
 		tr := &tokens.TypeRef{}
 
+		if a.Out {
+			scope.ErrorScope.NewCompileTimeError(
+				"Unsupported Out Argument",
+				"'out' call arguments are currently supported only in the C backend",
+				f.Pos,
+			)
+		}
+
 		args = append(args, impls.ExpressionToLLIRValue(a.Value, scope, tr))
 	}
 
@@ -234,6 +242,18 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 
 	info := LLVMGetScopeInformation(scope)
 
+	if m.Visibility != "external" {
+		for _, a := range m.Arguments {
+			if a.Out {
+				scope.ErrorScope.NewCompileTimeError(
+					"Unsupported Out Parameter",
+					"out parameters are only allowed on declared external functions in LLVM (represented as pointer types); they are unsupported for non-external functions and call-site out arguments",
+					m.Pos,
+				)
+			}
+		}
+	}
+
 	fnParams := make([]*ir.Param, 0)
 
 	for _, a := range m.Arguments {
@@ -242,6 +262,9 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 			a.Type.Check(scope)
 		}
 		ty := impl.TypeRefGetLLIRType(a.Type, scope)
+		if m.Visibility == "external" && a.Out {
+			ty = types.NewPointer(ty)
+		}
 
 		fnParams = append(fnParams, ir.NewParam(a.Name, ty))
 	}
@@ -311,7 +334,7 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 	for _, v := range m.Arguments {
 		repr.Println(v.Type, v.Name)
 		mVariable := ast.Variable{
-			IsPointer:  v.Type.Pointer,
+			IsPointer:  v.Type.Pointer || (m.Visibility == "external" && v.Out),
 			IsConst:    v.Type.Const,
 			IsVolatile: v.Type.Volatile,
 			IsExternal: false,

@@ -285,7 +285,21 @@ func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens
 			arg.Type.Check(scope)
 		}
 		paramType := TypeRefToCType(arg.Type, scope)
-		params = append(params, paramType+" "+arg.Name)
+		if arg.Out {
+			if arg.Type != nil && arg.Type.FuncType != nil {
+				scope.ErrorScope.NewCompileTimeError(
+					"Unsupported Out Parameter",
+					fmt.Sprintf("external out parameter '%s' cannot be a function type yet", arg.Name),
+					m.Pos,
+				)
+			}
+			paramType += "*"
+		}
+		if IsFuncPointerType(paramType) && !arg.Out {
+			params = append(params, FormatFuncPointerDecl(paramType, arg.Name))
+		} else {
+			params = append(params, paramType+" "+arg.Name)
+		}
 	}
 
 	paramStr := strings.Join(params, ", ")
@@ -321,13 +335,15 @@ func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens
 	for _, arg := range m.Arguments {
 		astMth.Arguments = append(astMth.Arguments, ast.Variable{
 			Name:      arg.Name,
-			IsPointer: arg.Type != nil && arg.Type.Pointer,
+			IsPointer: (arg.Type != nil && arg.Type.Pointer) || arg.Out,
 			Parent:    nil,
 		})
 	}
 
 	scope.Methods[m.Name] = astMth
 	Methods[scope.FullScopeName()+"#"+m.Name] = astMth
+	RegisterMethodSignature(m.Name, m)
+	RegisterMethodSignature(scope.GetFullName()+"__"+m.Name, m)
 
 	// Track full return type for generic type support
 	if m.Type != nil {
@@ -336,6 +352,25 @@ func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens
 		MethodReturnTypes[funcAlias] = m.Type
 		MethodReturnTypes[scope.FullScopeName()+"#"+funcAlias] = m.Type
 	}
+}
+
+func reportOutParamsOnlyForExternal(scope *ast.Ast, m *tokens.Method) bool {
+	if m == nil || scope == nil || m.Visibility == "external" {
+		return false
+	}
+
+	hasError := false
+	for _, arg := range m.Arguments {
+		if arg.Out {
+			hasError = true
+			scope.ErrorScope.NewCompileTimeError(
+				"Unsupported Out Parameter",
+				fmt.Sprintf("parameter '%s' uses 'out', but out parameters are currently supported only for 'declare external func'", arg.Name),
+				m.Pos,
+			)
+		}
+	}
+	return hasError
 }
 
 // NewClass handles class definitions
@@ -569,6 +604,10 @@ func extractValueDependencyType(cType string) string {
 
 // GenerateMethodDef generates a monomorphized method with type substitution
 func (impl *CBackendImplementation) GenerateMethodDef(scope *ast.Ast, m *tokens.Method, name string, typeArgs []string) {
+	if reportOutParamsOnlyForExternal(scope, m) {
+		return
+	}
+
 	info := CGetScopeInformation(scope)
 
 	// Set up monomorph context early so type parameters in argument types are resolved
@@ -676,6 +715,10 @@ func (impl *CBackendImplementation) GenerateMethodDef(scope *ast.Ast, m *tokens.
 
 // GenerateClassMethodDef generates a method for a generic class instantiation
 func (impl *CBackendImplementation) GenerateClassMethodDef(scope *ast.Ast, classToken *tokens.Class, m *tokens.Method, methodName string, className string, typeArgs []string) {
+	if reportOutParamsOnlyForExternal(scope, m) {
+		return
+	}
+
 	info := CGetScopeInformation(scope.GetRoot())
 	RegisterMethodSignature(methodName, m)
 	RegisterMethodSignature(className+"__"+m.Name, m)
@@ -1261,6 +1304,10 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 
 // NewMethod generates a C function
 func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
+	if reportOutParamsOnlyForExternal(scope, m) {
+		return
+	}
+
 	// Register method signature for type checking (with both full and short names)
 	fullName := scope.GetFullName() + "__" + m.Name
 	RegisterMethodSignature(fullName, m)

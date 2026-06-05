@@ -190,6 +190,7 @@ var compileOnlyTests = []compileOnlyTest{
 	{"globals_simple", "test_sources/compile_tests/globals/simple_globals.gecko"},
 	{"imports", "test_sources/compile_tests/imports/main.gecko"},
 	{"loops_break_continue", "test_sources/compile_tests/loops/break_continue.gecko"},
+	{"out_params", "test_sources/compile_tests/out_params/main.gecko"},
 	{"strings_args", "test_sources/compile_tests/strings/args.gecko"},
 	{"strings_greeting", "test_sources/compile_tests/strings/greeting.gecko"},
 	{"volatile_pointer", "test_sources/compile_tests/volatile/volatile_pointer.gecko"},
@@ -405,6 +406,12 @@ func TestTypeCheckingErrors(t *testing.T) {
 			file:          "test_sources/compile_tests/type_checking/const_reassign.gecko",
 			expectedError: "Constant Reassignment",
 			expectedMsg:   "Cannot reassign constant 'x'",
+		},
+		{
+			name:          "out_argument_missing_keyword",
+			file:          "test_sources/compile_tests/type_checking/out_missing.gecko",
+			expectedError: "Out Argument Required",
+			expectedMsg:   "must be passed with 'out'",
 		},
 		{
 			name:          "nonnull_init_mismatch",

@@ -1,7 +1,7 @@
 // GNote - A Gecko executable
 
 import utils.fs use { File }
-import utils.sqlite.native use { Sqlite }
+import utils.sqlite_native use { Sqlite }
 
 declare external func puts(s: string): int32
 

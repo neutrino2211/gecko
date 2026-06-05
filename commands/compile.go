@@ -358,8 +358,8 @@ func compileToC(ctx *cli.Context, source string, projectCfg *config.ProjectConfi
 		}
 	}
 
-	// Create a modified context with ir-only set
-	compiler.Compile(source, &config.CompileCfg{
+	// Compile to C/IR first. Empty result means compilation failed.
+	compiled := compiler.Compile(source, &config.CompileCfg{
 		Arch:      ctx.String("target-arch"),
 		Platform:  ctx.String("target-platform"),
 		Vendor:    ctx.String("target-vendor"),
@@ -370,11 +370,17 @@ func compileToC(ctx *cli.Context, source string, projectCfg *config.ProjectConfi
 		Ctx:       ctx,
 		Project:   projectCfg,
 	})
+	if compiled == "" {
+		return "", fmt.Errorf("compilation failed for %s", source)
+	}
 
 	// The generated C file location follows project artifact layout when available.
 	cFile := source + ".c"
 	if projectCfg != nil {
 		cFile = projectCfg.GetArtifactPath(source, ".c")
+	}
+	if _, err := os.Stat(cFile); err != nil {
+		return "", fmt.Errorf("generated C file not found: %s", cFile)
 	}
 
 	return cFile, nil

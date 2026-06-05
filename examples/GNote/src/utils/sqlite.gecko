@@ -2,4 +2,4 @@ package sqlite
 
 // This module is intentionally kept minimal.
 // Native SQLite declarations and wrappers live in:
-//   src/utils/sqlite.native.gecko
+//   src/utils/sqlite_native.gecko

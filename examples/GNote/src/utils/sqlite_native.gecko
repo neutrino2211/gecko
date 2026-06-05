@@ -1,6 +1,9 @@
 package sqlite
 
 import std.option use { Option }
+import std.core.traits use { Drop }
+
+declare external variardic func printf(format: string)
 
 // Opaque SQLite C types.
 declare external type sqlite3
@@ -250,6 +253,7 @@ declare external func sqlite3_busy_timeout(db: sqlite3*, ms: int32): int32
 
 public class Sqlite {
     private let handle: sqlite3*
+    private let version: uint
 }
 
 public class SqliteStmt {
@@ -266,6 +270,7 @@ impl Sqlite {
 
         let conn: Sqlite
         conn.handle = db
+        conn.version = 1
         return Option<Sqlite>::some(conn)
     }
 
@@ -278,6 +283,7 @@ impl Sqlite {
 
         let conn: Sqlite
         conn.handle = db
+        conn.version = 2
         return Option<Sqlite>::some(conn)
     }
 
@@ -330,6 +336,13 @@ impl Sqlite {
 
     public func raw(self): sqlite3* {
         return self.handle
+    }
+}
+
+impl Drop for Sqlite {
+    func drop(self: Sqlite) {
+        self.close()
+        printf("Dropped!\n")
     }
 }
 

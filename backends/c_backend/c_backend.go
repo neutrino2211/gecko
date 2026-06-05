@@ -122,6 +122,11 @@ func (impl *CBackendImplementation) getDroppableVariables(scope *ast.Ast) []stru
 	modulePath := scope.GetRoot().Scope
 	dropHook := hooks.GetHookRegistry().GetHook(modulePath, hooks.HookDrop)
 	if dropHook == nil {
+		// Drop is often defined in imported stdlib modules (e.g. std.traits).
+		// Fall back to any registered module when local lookup misses.
+		dropHook = hooks.GetHookRegistry().GetHookFromAnyModule(hooks.HookDrop)
+	}
+	if dropHook == nil {
 		return droppables
 	}
 
@@ -160,16 +165,22 @@ func (impl *CBackendImplementation) getDroppableVariables(scope *ast.Ast) []stru
 		}
 		class := classOpt.Unwrap()
 
-		// Check if the class has the Drop trait implemented
-		if _, hasDrop := class.Traits[dropHook.TraitName]; hasDrop {
-			mangledMethod := typeName + "__" + dropHook.TraitName + "__" + dropMethodName
+		// Check if the class has the Drop trait implemented (including qualified trait keys).
+		dropTraitName := ""
+		for candidate := range class.Traits {
+			if TraitMatchesOrExtends(candidate, dropHook.TraitName) {
+				dropTraitName = candidate
+				break
+			}
+		}
+		if dropTraitName != "" {
 			droppables = append(droppables, struct {
 				Name       string
 				DropMethod string
 				ClassName  string
 			}{
 				Name:       varName,
-				DropMethod: mangledMethod,
+				DropMethod: typeName + "__" + dropTraitName + "__" + dropMethodName,
 				ClassName:  typeName,
 			})
 		}

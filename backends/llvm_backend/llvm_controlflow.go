@@ -406,7 +406,10 @@ func (impl *LLVMBackendImplementation) NewAssignment(scope *ast.Ast, assignment 
 
 		// Use volatile store if the variable is volatile (for MMIO)
 		isVolatile := varInfo.IsVolatile || (varInfo.GeckoType != nil && varInfo.GeckoType.IsVolatile())
-		impl.NewVolatileStore(info.LocalContext.MainBlock, newValue, elemPtr, isVolatile)
+		store := impl.NewVolatileStore(info.LocalContext.MainBlock, newValue, elemPtr, isVolatile)
+		if store == nil {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "indexed assignment has incompatible value type", assignment.Pos)
+		}
 		return
 	}
 

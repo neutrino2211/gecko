@@ -47,6 +47,10 @@ func (impl *LLVMBackendImplementation) LLVMGetAstMethod(scope *ast.Ast, m *token
 }
 
 func (impl *LLVMBackendImplementation) TypeRefGetLLIRType(t *tokens.TypeRef, scope *ast.Ast) types.Type {
+	if t == nil {
+		return nil
+	}
+
 	var baseType types.Type
 
 	// Handle dynamic array types (unsized arrays as pointers)
@@ -434,6 +438,19 @@ func (impl *LLVMBackendImplementation) NewVolatileLoad(block *ir.Block, elemType
 // NewVolatileStore creates a store instruction with the volatile flag set if isVolatile is true.
 // This is used for memory-mapped I/O where writes must not be optimized away.
 func (impl *LLVMBackendImplementation) NewVolatileStore(block *ir.Block, src value.Value, dst value.Value, isVolatile bool) *ir.InstStore {
+	if block == nil || src == nil || dst == nil {
+		return nil
+	}
+
+	dstPtrType, isPointer := dst.Type().(*types.PointerType)
+	if !isPointer || dstPtrType.ElemType == nil || src.Type() == nil {
+		return nil
+	}
+
+	if !types.Equal(src.Type(), dstPtrType.ElemType) {
+		return nil
+	}
+
 	store := block.NewStore(src, dst)
 	if isVolatile {
 		store.Volatile = true

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/alecthomas/repr"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
@@ -40,13 +41,30 @@ func (info *LLVMScopeInformation) Init(a *ast.Ast) {
 func (impl *LLVMBackendImplementation) NewReturn(scope *ast.Ast) {
 	info := LLVMGetScopeInformation(scope)
 
+	if info.LocalContext == nil || info.LocalContext.MainBlock == nil {
+		scope.ErrorScope.NewCompileTimeError("Return Error", "return statement must be inside a function body", lexer.Position{})
+		return
+	}
+
 	info.LocalContext.MainBlock.NewRet(nil)
 }
 
 func (impl *LLVMBackendImplementation) NewReturnLiteral(scope *ast.Ast, literal *tokens.Expression) {
 	info := LLVMGetScopeInformation(scope)
+	if literal == nil {
+		scope.ErrorScope.NewCompileTimeError("Return Error", "return statement is missing an expression", lexer.Position{})
+		return
+	}
+	if info.LocalContext == nil || info.LocalContext.MainBlock == nil {
+		scope.ErrorScope.NewCompileTimeError("Return Error", "return statement must be inside a function body", literal.Pos)
+		return
+	}
 
 	val := impl.ExpressionToLLIRValue(literal, scope, &tokens.TypeRef{})
+	if val == nil {
+		scope.ErrorScope.NewCompileTimeError("Return Error", "unable to evaluate return expression", literal.Pos)
+		return
+	}
 
 	info.LocalContext.MainBlock.NewRet(val)
 }
@@ -173,16 +191,27 @@ func (impls *LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncC
 	}
 
 	mthUnwrapped := mth.Unwrap()
+	callerInfo := LLVMGetScopeInformation(scope)
+	if callerInfo.LocalContext == nil || callerInfo.LocalContext.MainBlock == nil {
+		scope.ErrorScope.NewCompileTimeError("Call Error", "function call must be inside a function body", f.Pos)
+		return
+	}
 
-	var info *LLVMScopeInformation = nil
 	var fn *ir.Func
 
 	if mthUnwrapped.Scope != nil {
-		info = LLVMGetScopeInformation(mthUnwrapped.Scope)
-		fn = info.LocalContext.Func
-	} else {
-		info = LLVMGetScopeInformation(scope)
-		fn = ir.NewFunc(f.Function, impls.TypeRefGetLLIRType(&tokens.TypeRef{Type: mthUnwrapped.Type}, scope))
+		calleeInfo := LLVMGetScopeInformation(mthUnwrapped.Scope)
+		if calleeInfo.LocalContext != nil && calleeInfo.LocalContext.Func != nil {
+			fn = calleeInfo.LocalContext.Func
+		}
+	}
+
+	if fn == nil {
+		retType := impls.TypeRefGetLLIRType(&tokens.TypeRef{Type: mthUnwrapped.Type}, scope)
+		if retType == nil {
+			retType = VoidType.Type
+		}
+		fn = ir.NewFunc(f.Function, retType)
 		fn.Linkage = enum.LinkageExternal
 	}
 
@@ -196,15 +225,22 @@ func (impls *LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncC
 		if a.Out {
 			scope.ErrorScope.NewCompileTimeError(
 				"Unsupported Out Argument",
-				"'out' call arguments are currently supported only in the C backend",
+				"out arguments are not supported at LLVM call sites; out parameters are only allowed on declared external functions where they are represented as pointers",
 				f.Pos,
 			)
+			return
 		}
 
-		args = append(args, impls.ExpressionToLLIRValue(a.Value, scope, tr))
+		argValue := impls.ExpressionToLLIRValue(a.Value, scope, tr)
+		if argValue == nil {
+			scope.ErrorScope.NewCompileTimeError("Call Error", "unable to evaluate function call argument", f.Pos)
+			return
+		}
+
+		args = append(args, argValue)
 	}
 
-	call := info.LocalContext.MainBlock.NewCall(fn, args...)
+	call := callerInfo.LocalContext.MainBlock.NewCall(fn, args...)
 
 	FuncCalls[scope.FullScopeName()+"#"+f.Function] = call
 }
@@ -498,6 +534,11 @@ func (impl *LLVMBackendImplementation) NewLocalVariable(scope *ast.Ast, f *token
 		varType = types.NewArray(size, elemType)
 	}
 
+	if varType == nil {
+		scope.ErrorScope.NewCompileTimeError("Type Error", "unable to resolve local variable type '"+f.Type.ToCString(scope)+"' for LLVM backend", f.Pos)
+		return
+	}
+
 	var val value.Value
 	if f.Value != nil {
 		val = impl.ExpressionToLLIRValue(f.Value, scope, f.Type)
@@ -525,7 +566,11 @@ func (impl *LLVMBackendImplementation) NewLocalVariable(scope *ast.Ast, f *token
 				// Only store for non-array types when the value is not a pointer to a global
 				// This is a simplified check - proper handling would need to load from globals first
 				if _, isGlobal := val.(*ir.Global); !isGlobal {
-					impl.NewVolatileStore(info.LocalContext.MainBlock, val, allocaInst, f.Type.Volatile)
+					store := impl.NewVolatileStore(info.LocalContext.MainBlock, val, allocaInst, f.Type.Volatile)
+					if store == nil {
+						scope.ErrorScope.NewCompileTimeError("Type Error", "cannot initialize local variable '"+f.Name+"' because initializer type is incompatible", f.Pos)
+						return
+					}
 				}
 			}
 			storedValue = allocaInst
@@ -668,6 +713,9 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRConstant(p *tokens.Primary, 
 		}
 
 		if iType, ok := intType.(*types.IntType); ok {
+			if iType.BitSize == 1 && intVal != 0 && intVal != 1 {
+				return constant.NewInt(types.I64, intVal)
+			}
 			return constant.NewInt(iType, intVal)
 		}
 

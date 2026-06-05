@@ -356,7 +356,18 @@ func (impl *CBackendImplementation) UnaryToCString(u *tokens.Unary, scope *ast.A
 			if traitCall, ok := impl.GetTryOperatorCall(innerCode, innerType, scope, u.Pos); ok {
 				base = traitCall
 			} else {
-				// Fallback: just return the inner expression (for types without @try_hook)
+				operandType := "<unknown>"
+				if innerType != nil && innerType.Type != "" {
+					operandType = innerType.Type
+				}
+				if scope != nil && scope.ErrorScope != nil {
+					scope.ErrorScope.NewCompileTimeError(
+						"Try Expression Error",
+						"'try' requires a Tryable operand with resolvable @try_hook methods; got '"+operandType+"'",
+						u.Pos,
+					)
+				}
+				// Keep expression emission stable after reporting the compile-time error.
 				base = innerCode
 			}
 		} else if traitCall, ok := impl.GetUnaryOperatorTraitMethodCall(innerCode, innerType, u.Op, scope); ok {

@@ -1,0 +1,14 @@
+// spec: spec/types.md, spec/functions.md, spec/traits.md, spec/modules.md, spec/control-flow.md
+
+package main
+
+import provider use { load_value }
+
+func read_from_import(): int32 {
+    let value: int32 = try load_value()
+    return value
+}
+
+external func main(): int32 {
+    return read_from_import()
+}

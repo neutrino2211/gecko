@@ -1,0 +1,9 @@
+// spec: spec/types.md, spec/functions.md, spec/traits.md, spec/modules.md
+
+package provider
+
+import std.option use { Option }
+
+func load_value(): Option<int32> {
+    return Option<int32>::some(42)
+}

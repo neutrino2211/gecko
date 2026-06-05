@@ -744,28 +744,75 @@ func (impl *CBackendImplementation) HasOperatorTrait(typeName string, traitName 
 	return false
 }
 
-// GetOperatorTraitName returns the full mangled trait name for an operator if the type implements it
-func (impl *CBackendImplementation) GetOperatorTraitName(typeName string, traitName string, scope *ast.Ast) (string, bool) {
-	rootScope := scope.GetRoot()
-	classOpt := rootScope.ResolveClass(typeName)
+func resolveClassFromImportClosure(typeName string, scope *ast.Ast) (*ast.Ast, bool) {
+	if scope == nil {
+		return nil, false
+	}
 
-	// If not found and the type name looks like a monomorphized generic (contains "__"),
-	// try looking up the base generic class instead
-	if classOpt.IsNil() {
-		if idx := strings.Index(typeName, "__"); idx > 0 {
-			baseTypeName := typeName[:idx]
-			classOpt = rootScope.ResolveClass(baseTypeName)
+	rootScope := scope.GetRoot()
+	visited := make(map[*ast.Ast]bool)
+	queue := []*ast.Ast{rootScope}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		if current == nil || visited[current] {
+			continue
+		}
+		visited[current] = true
+
+		if classDef, ok := current.Classes[typeName]; ok && classDef != nil {
+			if classDef.CheckVisibility(scope, typeName) == "" {
+				return classDef, true
+			}
+		}
+
+		for _, child := range current.Children {
+			if child != nil && !visited[child] {
+				queue = append(queue, child)
+			}
 		}
 	}
 
-	if classOpt.IsNil() {
+	return nil, false
+}
+
+func resolveClassForOperatorTrait(typeName string, scope *ast.Ast) (*ast.Ast, bool) {
+	if scope == nil {
+		return nil, false
+	}
+
+	classOpt := scope.ResolveClass(typeName)
+	if !classOpt.IsNil() {
+		classDef := classOpt.Unwrap()
+		if classDef.CheckVisibility(scope, typeName) == "" {
+			return classDef, true
+		}
+	}
+
+	return resolveClassFromImportClosure(typeName, scope)
+}
+
+// GetOperatorTraitName returns the full mangled trait name for an operator if the type implements it
+func (impl *CBackendImplementation) GetOperatorTraitName(typeName string, traitName string, scope *ast.Ast) (string, bool) {
+	classDef, found := resolveClassForOperatorTrait(typeName, scope)
+
+	// If not found and the type name looks like a monomorphized generic (contains "__"),
+	// try looking up the base generic class instead
+	if !found {
+		if idx := strings.Index(typeName, "__"); idx > 0 {
+			baseTypeName := typeName[:idx]
+			classDef, found = resolveClassForOperatorTrait(baseTypeName, scope)
+		}
+	}
+
+	if !found || classDef == nil {
 		return "", false
 	}
 
-	class := classOpt.Unwrap()
-
 	// Check if the class has this trait implemented
-	for tName := range class.Traits {
+	for tName := range classDef.Traits {
 		if TraitMatchesOrExtends(tName, traitName) {
 			return tName, true
 		}

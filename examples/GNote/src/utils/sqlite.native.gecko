@@ -372,18 +372,30 @@ impl SqliteStmt {
     }
 
     public func bind_int(self, index: int32, value: int32): int32 {
+        if (@is_null(self.handle as void*)) {
+            return SQLITE_MISUSE
+        }
         return sqlite3_bind_int(self.handle, index, value)
     }
 
     public func bind_int64(self, index: int32, value: int64): int32 {
+        if (@is_null(self.handle as void*)) {
+            return SQLITE_MISUSE
+        }
         return sqlite3_bind_int64(self.handle, index, value)
     }
 
     public func bind_null(self, index: int32): int32 {
+        if (@is_null(self.handle as void*)) {
+            return SQLITE_MISUSE
+        }
         return sqlite3_bind_null(self.handle, index)
     }
 
     public func bind_text(self, index: int32, value: string): int32 {
+        if (@is_null(self.handle as void*)) {
+            return SQLITE_MISUSE
+        }
         return sqlite3_bind_text(self.handle, index, value, -1, SQLITE_TRANSIENT_DTOR as void*)
     }
 

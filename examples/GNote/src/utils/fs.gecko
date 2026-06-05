@@ -23,8 +23,7 @@ impl File {
     }
 
     public func create(path: string, mode: string): Option<File> {
-        let file: File = try File::open(path, "w")
-        file = try File::open(path, mode)
+        let file: File = try File::open(path, mode)
 
         return Option<File>::some(file)
     }

@@ -247,7 +247,7 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 			if a.Out {
 				scope.ErrorScope.NewCompileTimeError(
 					"Unsupported Out Parameter",
-					"out parameters are currently supported only for 'declare external func' in the C backend",
+					"out parameters are only allowed on declared external functions in LLVM (represented as pointer types); they are unsupported for non-external functions and call-site out arguments",
 					m.Pos,
 				)
 			}

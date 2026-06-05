@@ -2,7 +2,6 @@
 
 import utils.fs use { File }
 import utils.sqlite.native use { Sqlite }
-import std.option use { Option }
 
 declare external func puts(s: string): int32
 

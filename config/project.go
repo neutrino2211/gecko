@@ -33,6 +33,7 @@ type PackageConfig struct {
 // BuildConfig holds build settings
 type BuildConfig struct {
 	Backend       string                   `toml:"backend"`
+	Treeshake     *bool                    `toml:"treeshake"` // Optional; default-enabled when unset
 	DefaultTarget string                   `toml:"default_target"`
 	Entries       map[string]string        `toml:"entries"`
 	Profiles      map[string]*BuildProfile `toml:"profiles"`

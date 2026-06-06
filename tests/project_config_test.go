@@ -1,6 +1,8 @@
 package tests
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -99,5 +101,36 @@ func TestProjectConfigPreservesPairedLinkerFlags(t *testing.T) {
 	want := []string{"-framework", "WebKit", "-framework", "Cocoa"}
 	if !reflect.DeepEqual(ldflags, want) {
 		t.Fatalf("expected linker flags %v, got %v", want, ldflags)
+	}
+}
+
+func TestProjectConfigParsesTreeshake(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "gecko.toml")
+	content := `
+[package]
+name = "treeshake-config"
+version = "0.1.0"
+
+[build]
+backend = "c"
+treeshake = false
+
+[build.entries]
+main = "src/main.gecko"
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write gecko.toml: %v", err)
+	}
+
+	cfg, err := config.LoadProjectConfigFromFile(configPath)
+	if err != nil {
+		t.Fatalf("LoadProjectConfigFromFile failed: %v", err)
+	}
+	if cfg.Build.Treeshake == nil {
+		t.Fatalf("expected build.treeshake to be parsed")
+	}
+	if *cfg.Build.Treeshake {
+		t.Fatalf("expected build.treeshake=false, got true")
 	}
 }

@@ -3,6 +3,7 @@
 package cbackend
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/alecthomas/participle/v2/lexer"
@@ -36,11 +37,20 @@ type CScopeInformation struct {
 	Includes              []string            // C header includes from cimport
 	CImportLibraries      []string            // Libraries from cimport for pkg-config
 	CImportObjects        []string            // Objects from cimport for linker input
+	ExternalRootSymbols   []string            // User-declared external Gecko function definitions
 	CurrentFunc           string
 	CurrentFuncReturnType *tokens.TypeRef   // Return type of current function for validation
 	LocalVars             map[string]string // variable name -> C type
 	ChildContexts         map[string]*CScopeInformation
 	TypeState             *ast.TypeState // Flow-sensitive type state for this scope
+}
+
+// TreeshakeDynamicCallWarning tracks dynamic-call patterns that require treeshake fallback.
+type TreeshakeDynamicCallWarning struct {
+	File   string
+	Line   int
+	Column int
+	Reason string
 }
 
 // CValueInformation holds type info for a value
@@ -86,6 +96,14 @@ var LastCImportLibraries []string
 
 // LastCImportObjects holds object files from the most recent compilation.
 var LastCImportObjects []string
+
+// LastTreeshakeAutoDisabled reports whether treeshake was auto-disabled in the most recent compile.
+var LastTreeshakeAutoDisabled bool
+
+// LastTreeshakeDisableWarnings are warnings emitted when treeshake was auto-disabled.
+var LastTreeshakeDisableWarnings []TreeshakeDynamicCallWarning
+
+var currentTreeshakeDynamicCallWarnings []TreeshakeDynamicCallWarning
 
 // CProgramValues holds all value info
 var CProgramValues = &CValuesMap{}
@@ -133,9 +151,43 @@ func (info *CScopeInformation) Init() {
 	info.Includes = make([]string, 0)
 	info.CImportLibraries = make([]string, 0)
 	info.CImportObjects = make([]string, 0)
+	info.ExternalRootSymbols = make([]string, 0)
 	info.LocalVars = make(map[string]string)
 	info.ChildContexts = make(map[string]*CScopeInformation)
 	info.TypeState = ast.NewTypeState()
+}
+
+// ResetTreeshakeAnalysis clears per-compilation treeshake analysis state.
+func ResetTreeshakeAnalysis() {
+	LastTreeshakeAutoDisabled = false
+	LastTreeshakeDisableWarnings = nil
+	currentTreeshakeDynamicCallWarnings = nil
+}
+
+// RecordTreeshakeDynamicCall records a dynamic-call pattern that is unsafe for v1 static reachability.
+func RecordTreeshakeDynamicCall(pos lexer.Position, reason string) {
+	warn := TreeshakeDynamicCallWarning{
+		File:   pos.Filename,
+		Line:   pos.Line,
+		Column: pos.Column,
+		Reason: reason,
+	}
+
+	key := fmt.Sprintf("%s:%d:%d:%s", warn.File, warn.Line, warn.Column, warn.Reason)
+	for _, existing := range currentTreeshakeDynamicCallWarnings {
+		existingKey := fmt.Sprintf("%s:%d:%d:%s", existing.File, existing.Line, existing.Column, existing.Reason)
+		if existingKey == key {
+			return
+		}
+	}
+	currentTreeshakeDynamicCallWarnings = append(currentTreeshakeDynamicCallWarnings, warn)
+}
+
+// GetTreeshakeDynamicCallWarnings returns a copy of detected dynamic-call warnings.
+func GetTreeshakeDynamicCallWarnings() []TreeshakeDynamicCallWarning {
+	out := make([]TreeshakeDynamicCallWarning, len(currentTreeshakeDynamicCallWarnings))
+	copy(out, currentTreeshakeDynamicCallWarnings)
+	return out
 }
 
 // TypeRefToCType converts a gecko TypeRef to a C type string

@@ -3,6 +3,7 @@
 package backends
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -165,6 +166,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 
 	file.Init(errors.NewErrorScope(c.SourceFile.Name, c.SourceFile.Path, c.SourceFile.Content))
 	file.Config = c.SourceFile.Config
+	cbackend.ResetTreeshakeAnalysis()
 
 	// Set up type suggestion provider for helpful error messages
 	if c.SuggestionProvider != nil {
@@ -425,7 +427,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 
 	// Collect all import info in dependency order (importScopes is already ordered correctly)
 	// Then prepend the combined import info to main's info
-	var allImportTypeDefs, allImportTypes, allImportDecls, allImportGlobals, allImportFuncs, allImportIncludes, allImportObjects []string
+	var allImportTypeDefs, allImportTypes, allImportDecls, allImportGlobals, allImportFuncs, allImportIncludes, allImportObjects, allImportExternalRoots []string
 	var allImportStructDefs []*cbackend.StructDefinition
 	var allCImportLibraries []string
 
@@ -440,6 +442,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 		allImportIncludes = append(allImportIncludes, importInfo.Includes...)
 		allCImportLibraries = append(allCImportLibraries, importInfo.CImportLibraries...)
 		allImportObjects = append(allImportObjects, importInfo.CImportObjects...)
+		allImportExternalRoots = append(allImportExternalRoots, importInfo.ExternalRootSymbols...)
 	}
 
 	// Prepend combined import info so imports come before main
@@ -452,6 +455,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	info.Includes = append(allImportIncludes, info.Includes...)
 	info.CImportLibraries = append(allCImportLibraries, info.CImportLibraries...)
 	info.CImportObjects = append(allImportObjects, info.CImportObjects...)
+	info.ExternalRootSymbols = append(allImportExternalRoots, info.ExternalRootSymbols...)
 
 	// Append project-level native headers from gecko.toml.
 	if file.Config != nil && file.Config.Project != nil {
@@ -462,6 +466,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	info.Includes = dedupeStrings(info.Includes)
 	info.CImportLibraries = dedupeStrings(info.CImportLibraries)
 	info.CImportObjects = dedupeStrings(info.CImportObjects)
+	info.ExternalRootSymbols = dedupeStrings(info.ExternalRootSymbols)
 
 	// Check for circular value dependencies (infinite size cycles)
 	cycles := cbackend.DetectCircularValueDependencies(info.StructDefs)
@@ -490,8 +495,29 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	cbackend.LastCImportLibraries = info.CImportLibraries
 	cbackend.LastCImportObjects = info.CImportObjects
 
+	// Treeshake safety gate: disable for this invocation when dynamic calls
+	// make static reachability unsafe in v1.
+	if file.Config != nil && file.Config.Treeshake {
+		warnings := cbackend.GetTreeshakeDynamicCallWarnings()
+		if len(warnings) > 0 {
+			file.Config.Treeshake = false
+			cbackend.LastTreeshakeAutoDisabled = true
+			cbackend.LastTreeshakeDisableWarnings = warnings
+
+			fmt.Fprintln(os.Stderr, "warning: treeshake disabled for this build due to dynamic-call patterns:")
+			for _, w := range warnings {
+				location := fmt.Sprintf("%s:%d:%d", w.File, w.Line, w.Column)
+				if strings.TrimSpace(w.File) == "" {
+					location = fmt.Sprintf("<unknown>:%d:%d", w.Line, w.Column)
+				}
+				fmt.Fprintf(os.Stderr, "  %s: %s\n", location, w.Reason)
+			}
+		}
+	}
+
 	// Generate C code
-	cCode := generateCCode(info)
+	treeshakeEnabled := file.Config != nil && file.Config.Treeshake
+	cCode := generateCCode(info, treeshakeEnabled)
 
 	if c.Ctx.Bool("print-ir") {
 		println(c.File + "\n" + strings.Repeat("_", len(c.File)) + "\n\n" + cCode)
@@ -541,6 +567,9 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 
 	// Compile with gcc
 	gccArgs := []string{"-c"}
+	if file.Config != nil && file.Config.Treeshake {
+		gccArgs = append(gccArgs, "-ffunction-sections", "-fdata-sections")
+	}
 
 	// Only add freestanding flags if no project config or explicit target
 	if file.Config.Project == nil || (file.Config.Vendor != "" || file.Config.Arch != "") {
@@ -592,8 +621,8 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	return cmd
 }
 
-// generateCCode creates the final C source code from scope information
-func generateCCode(info *cbackend.CScopeInformation) string {
+// generateCCode creates the final C source code from scope information.
+func generateCCode(info *cbackend.CScopeInformation, treeshakeEnabled bool) string {
 	var sb strings.Builder
 
 	// Header comment
@@ -678,6 +707,16 @@ func generateCCode(info *cbackend.CScopeInformation) string {
 			sb.WriteString(fn)
 			sb.WriteString("\n")
 		}
+	}
+
+	// Keep Gecko `external func` definitions alive under section GC.
+	if treeshakeEnabled && len(info.ExternalRootSymbols) > 0 {
+		sb.WriteString("/* Treeshake roots for Gecko external functions */\n")
+		sb.WriteString("static void (* const __gecko_external_roots[])(void) __attribute__((used)) = {\n")
+		for _, symbol := range info.ExternalRootSymbols {
+			sb.WriteString("    (void (*)(void))" + symbol + ",\n")
+		}
+		sb.WriteString("};\n\n")
 	}
 
 	return sb.String()

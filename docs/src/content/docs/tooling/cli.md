@@ -89,6 +89,8 @@ gecko compile --entry <name>
 | `--target-vendor` | Target vendor | - |
 | `--print-ir` | Print generated IR | false |
 | `--ir-only` | Only generate IR (no object file) | false |
+| `--treeshake` | Explicitly enable treeshake | false |
+| `--no-treeshake` | Disable treeshake | false |
 | `--llc-args` | Arguments for llc (LLVM backend) | - |
 | `--log-level` | Logging: silent, error, warn, info, debug, trace | `silent` |
 | `--cflags` | Additional C compiler flags (repeatable) | - |
@@ -136,6 +138,8 @@ gecko build --entry <name>
 | `--release` | Build with optimizations (`-O2`) | false |
 | `--static` | Link statically (standalone binary) | false |
 | `--keep-c` | Keep generated C file | false |
+| `--treeshake` | Explicitly enable treeshake | false |
+| `--no-treeshake` | Disable treeshake | false |
 | All `compile` flags | Inherited from compile | - |
 
 ### Examples
@@ -169,6 +173,8 @@ gecko run <source.gecko> [-- args...]
 ```
 
 Arguments after `--` are passed to the compiled program.
+
+`run` also supports common compile/build flags such as `--backend`, `--cflags`, `--ldflags`, `--pkg-config`, `--treeshake`, and `--no-treeshake`.
 
 ### Examples
 

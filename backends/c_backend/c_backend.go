@@ -1563,6 +1563,11 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 		// Full function definition
 		funcDef := funcDecl + " {\n" + mthInfo.Code + "}\n"
 		parentInfo.Functions = append(parentInfo.Functions, funcDef)
+
+		// Treeshake roots: keep user-declared external Gecko function definitions.
+		if m.Visibility == "external" {
+			parentInfo.ExternalRootSymbols = append(parentInfo.ExternalRootSymbols, funcName)
+		}
 	} else {
 		// Declaration only (for forward declarations)
 		parentInfo.Declarations = append(parentInfo.Declarations, funcDecl+";")

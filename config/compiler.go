@@ -9,6 +9,7 @@ type CompileCfg struct {
 	Platform  string
 	Vendor    string
 	TargetKey string
+	Treeshake bool
 	CFlags    []string
 	CLFlags   []string
 	CObjects  []string

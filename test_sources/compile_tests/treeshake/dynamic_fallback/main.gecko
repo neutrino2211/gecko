@@ -1,0 +1,17 @@
+package dynamicfallback
+
+func dyn_add(a: int, b: int): int {
+    return a + b
+}
+
+func dyn_apply<T>(f: func(T, T): T, x: T, y: T): T {
+    return f(x, y)
+}
+
+func dyn_unreachable(): int {
+    return 99
+}
+
+external func main(): int32 {
+    return dyn_apply<int>(dyn_add, 20, 22) as int32
+}

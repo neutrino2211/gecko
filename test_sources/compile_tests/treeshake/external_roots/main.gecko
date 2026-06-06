@@ -1,0 +1,11 @@
+external func api_used(): int32 {
+    return 12
+}
+
+external func api_unused(): int32 {
+    return 30
+}
+
+external func main(): int32 {
+    return api_used()
+}

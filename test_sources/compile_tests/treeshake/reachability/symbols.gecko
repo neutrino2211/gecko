@@ -1,0 +1,7 @@
+public func ts_live(): int32 {
+    return 7
+}
+
+public func ts_dead(): int32 {
+    return 9
+}

@@ -19,6 +19,7 @@ func ResetState() {
 	MethodReturnTypes = make(map[string]*tokens.TypeRef)
 	LastCImportLibraries = nil
 	LastCImportObjects = nil
+	ResetTreeshakeAnalysis()
 
 	CurrentBackend = nil
 	Methods = make(map[string]*ast.Method)

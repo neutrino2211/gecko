@@ -16,6 +16,7 @@ version = "0.1.0"
 
 [build]
 backend = "c"
+treeshake = true
 
 [build.entries]
 main = "src/main.gecko"
@@ -41,8 +42,38 @@ Configure build settings:
 ```toml
 [build]
 backend = "c"                           # "c" or "llvm"
+treeshake = true                        # Optional; defaults to true when omitted
 default_target = "x86_64-apple-darwin"  # Default target triple
 ```
+
+### Treeshake (C Backend v1)
+
+Treeshake v1 is a link-time dead-section optimization for the C backend. It targets final binary size (not generated `.c` size).
+
+```toml
+[build]
+treeshake = true   # optional; defaults to true when unset
+```
+
+CLI overrides:
+
+```bash
+gecko build --no-treeshake src/main.gecko
+gecko build --treeshake src/main.gecko
+```
+
+Precedence:
+
+1. `--treeshake` (highest, wins even if `--no-treeshake` is also provided)
+2. `--no-treeshake`
+3. `build.treeshake` in `gecko.toml`
+4. default `true`
+
+Notes:
+
+- v1 applies only to the C backend.
+- Gecko `external func` definitions are retained as treeshake roots.
+- If dynamic function-pointer calls are detected, treeshake is auto-disabled for that build with a warning that includes file/line/column context.
 
 ### Entry Points
 

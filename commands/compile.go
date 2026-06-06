@@ -105,6 +105,50 @@ func resolveTargetKey(ctx *cli.Context, projectCfg *config.ProjectConfig) string
 	return ""
 }
 
+func resolveTreeshakeEnabled(ctx *cli.Context, projectCfg *config.ProjectConfig) bool {
+	// Explicit enable wins over all other sources, including explicit disable.
+	if ctx.Bool("treeshake") {
+		return true
+	}
+	if ctx.Bool("no-treeshake") {
+		return false
+	}
+	if projectCfg != nil && projectCfg.Build.Treeshake != nil {
+		return *projectCfg.Build.Treeshake
+	}
+	// v1 default: enabled.
+	return true
+}
+
+func addTreeshakeCompileFlags(flags []string, enabled bool) []string {
+	if !enabled {
+		return flags
+	}
+	return append(flags, "-ffunction-sections", "-fdata-sections")
+}
+
+func treeshakeLinkerFlagsForPlatform(platform string, enabled bool) []string {
+	if !enabled {
+		return nil
+	}
+	switch platform {
+	case "darwin":
+		return []string{"-Wl,-dead_strip"}
+	case "linux":
+		return []string{"-Wl,--gc-sections"}
+	default:
+		return nil
+	}
+}
+
+func effectiveTargetPlatform(ctx *cli.Context) string {
+	platform := strings.TrimSpace(ctx.String("target-platform"))
+	if platform == "" {
+		return runtime.GOOS
+	}
+	return platform
+}
+
 func dedupeStrings(values []string) []string {
 	out := make([]string, 0, len(values))
 	seen := make(map[string]bool, len(values))
@@ -209,11 +253,13 @@ var CompileCommand = &cli.Command{
 		}
 
 		for _, pos := range sources {
+			treeshakeEnabled := resolveTreeshakeEnabled(ctx, projectCfg)
 			outFile := compiler.Compile(pos, &config.CompileCfg{
 				Arch:      ctx.String("target-arch"),
 				Platform:  ctx.String("target-platform"),
 				Vendor:    ctx.String("target-vendor"),
 				TargetKey: targetKey,
+				Treeshake: treeshakeEnabled,
 				CFlags:    []string{},
 				CLFlags:   []string{},
 				CObjects:  []string{},
@@ -282,6 +328,16 @@ var CompileCommand = &cli.Command{
 			Value: false,
 			Usage: "Only compile to IR",
 		},
+		&cli.BoolFlag{
+			Name:  "treeshake",
+			Value: false,
+			Usage: "Enable treeshake (default behavior when not overridden)",
+		},
+		&cli.BoolFlag{
+			Name:  "no-treeshake",
+			Value: false,
+			Usage: "Disable treeshake",
+		},
 		&cli.StringSliceFlag{
 			Name:  "llc-args",
 			Value: &cli.StringSlice{},
@@ -341,11 +397,22 @@ var commonFlags = []cli.Flag{
 		Name:  "pkg-config",
 		Usage: "pkg-config packages to include (can be specified multiple times)",
 	},
+	&cli.BoolFlag{
+		Name:  "treeshake",
+		Value: false,
+		Usage: "Enable treeshake (default behavior when not overridden)",
+	},
+	&cli.BoolFlag{
+		Name:  "no-treeshake",
+		Value: false,
+		Usage: "Disable treeshake",
+	},
 }
 
-// compileToC compiles a gecko file to C and returns the C file path
-func compileToC(ctx *cli.Context, source string, projectCfg *config.ProjectConfig) (string, error) {
+// compileToC compiles a gecko file to C and returns the C file path plus effective treeshake mode.
+func compileToC(ctx *cli.Context, source string, projectCfg *config.ProjectConfig) (string, bool, error) {
 	targetKey := resolveTargetKey(ctx, projectCfg)
+	treeshakeEnabled := resolveTreeshakeEnabled(ctx, projectCfg)
 
 	// Collect CFlags from CLI
 	cflags := ctx.StringSlice("cflags")
@@ -359,19 +426,25 @@ func compileToC(ctx *cli.Context, source string, projectCfg *config.ProjectConfi
 	}
 
 	// Compile to C/IR first. Empty result means compilation failed.
-	compiled := compiler.Compile(source, &config.CompileCfg{
+	compileCfg := &config.CompileCfg{
 		Arch:      ctx.String("target-arch"),
 		Platform:  ctx.String("target-platform"),
 		Vendor:    ctx.String("target-vendor"),
 		TargetKey: targetKey,
+		Treeshake: treeshakeEnabled,
 		CFlags:    cflags,
 		CLFlags:   ctx.StringSlice("ldflags"),
 		CObjects:  []string{},
 		Ctx:       ctx,
 		Project:   projectCfg,
-	})
+	}
+	compiled := compiler.Compile(source, compileCfg)
 	if compiled == "" {
-		return "", fmt.Errorf("compilation failed for %s", source)
+		return "", treeshakeEnabled, fmt.Errorf("compilation failed for %s", source)
+	}
+
+	if cbackend.LastTreeshakeAutoDisabled {
+		treeshakeEnabled = false
 	}
 
 	// The generated C file location follows project artifact layout when available.
@@ -380,10 +453,10 @@ func compileToC(ctx *cli.Context, source string, projectCfg *config.ProjectConfi
 		cFile = projectCfg.GetArtifactPath(source, ".c")
 	}
 	if _, err := os.Stat(cFile); err != nil {
-		return "", fmt.Errorf("generated C file not found: %s", cFile)
+		return "", treeshakeEnabled, fmt.Errorf("generated C file not found: %s", cFile)
 	}
 
-	return cFile, nil
+	return cFile, treeshakeEnabled, nil
 }
 
 // runPkgConfig executes pkg-config and returns the flags
@@ -518,7 +591,7 @@ var BuildCommand = &cli.Command{
 		}
 
 		// Compile to C
-		cFile, err := compileToC(ctx, source, projectCfg)
+		cFile, treeshakeEnabled, err := compileToC(ctx, source, projectCfg)
 		if err != nil {
 			return err
 		}
@@ -554,6 +627,7 @@ var BuildCommand = &cli.Command{
 			}
 		}
 		cflags = append(cflags, collectCImportPkgCFlags()...)
+		cflags = addTreeshakeCompileFlags(cflags, treeshakeEnabled)
 		gccArgs = append(gccArgs, cflags...)
 
 		// Add linker flags from CLI + project + cimport pkg-config libraries.
@@ -573,6 +647,7 @@ var BuildCommand = &cli.Command{
 			}
 		}
 		ldflags = append(ldflags, collectCImportPkgLibFlags(isStatic)...)
+		ldflags = append(ldflags, treeshakeLinkerFlagsForPlatform(effectiveTargetPlatform(ctx), treeshakeEnabled)...)
 
 		// Compile C source and link additional object inputs.
 		gccArgs = append(gccArgs, "-o", output, cFile)
@@ -661,7 +736,7 @@ var RunCommand = &cli.Command{
 		projectCfg, _ := config.LoadProjectConfig(wd)
 
 		// Compile to C
-		cFile, err := compileToC(ctx, source, projectCfg)
+		cFile, treeshakeEnabled, err := compileToC(ctx, source, projectCfg)
 		if err != nil {
 			return err
 		}
@@ -690,6 +765,7 @@ var RunCommand = &cli.Command{
 			}
 		}
 		cflags = append(cflags, collectCImportPkgCFlags()...)
+		cflags = addTreeshakeCompileFlags(cflags, treeshakeEnabled)
 		gccArgs = append(gccArgs, cflags...)
 
 		// Add linker flags from CLI + project + cimport pkg-config libraries.
@@ -705,6 +781,7 @@ var RunCommand = &cli.Command{
 			}
 		}
 		ldflags = append(ldflags, collectCImportPkgLibFlags(false)...)
+		ldflags = append(ldflags, treeshakeLinkerFlagsForPlatform(effectiveTargetPlatform(ctx), treeshakeEnabled)...)
 
 		gccArgs = append(gccArgs, "-o", tmpExe, cFile)
 		gccArgs = append(gccArgs, collectObjectInputs(projectCfg, targetKey)...)

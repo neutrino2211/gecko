@@ -1356,6 +1356,24 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 	// Type check the function call arguments
 	impl.CheckFunctionCallTypes(f, scope)
 
+	// Treeshake v1 safety gate: calls through function-pointer variables are dynamic
+	// and currently unsafe for static reachability pruning.
+	if f.StaticType == "" && f.Module == "" {
+		methodOpt := scope.ResolveMethod(f.Function)
+		if methodOpt.IsNil() {
+			varOpt := scope.ResolveSymbolAsVariable(f.Function)
+			if !varOpt.IsNil() {
+				v := varOpt.Unwrap()
+				if valueInfo, ok := (*CProgramValues)[v.GetFullName()]; ok && valueInfo != nil && valueInfo.GeckoType != nil && valueInfo.GeckoType.FuncType != nil {
+					RecordTreeshakeDynamicCall(
+						f.Pos,
+						"dynamic call through function pointer '"+f.Function+"'",
+					)
+				}
+			}
+		}
+	}
+
 	var funcName string
 	var baseFuncName string
 	var selfArg string

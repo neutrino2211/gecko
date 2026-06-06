@@ -1,0 +1,301 @@
+package notes_bridge
+
+import std.option use { Option }
+import sqlite_native use {
+    Sqlite,
+    SqliteStmt,
+    SQLITE_OK,
+    SQLITE_ROW,
+    SQLITE_MISUSE
+}
+import queries
+
+declare external func webview_bind(w: void*, name: string, fn: void*, arg: void*): int32
+declare external func webview_return(w: void*, id: string, status: int32, result: string): int32
+
+private const JSON_OK: string = "{\"ok\":true}"
+private const JSON_ERR: string = "{\"ok\":false}"
+
+private const REQ_CREATE_SQL: string = "SELECT COALESCE(CAST(json_extract(?1, '$[0]') AS TEXT), ''), COALESCE(CAST(json_extract(?1, '$[1]') AS TEXT), '')"
+private const REQ_UPDATE_SQL: string = "SELECT COALESCE(CAST(json_extract(?1, '$[0]') AS INTEGER), 0), COALESCE(CAST(json_extract(?1, '$[1]') AS TEXT), ''), COALESCE(CAST(json_extract(?1, '$[2]') AS TEXT), '')"
+private const REQ_ID_SQL: string = "SELECT COALESCE(CAST(json_extract(?1, '$[0]') AS INTEGER), 0)"
+private const REQ_LIST_SQL: string = "SELECT COALESCE(CAST(json_extract(?1, '$[0]') AS INTEGER), 200), COALESCE(CAST(json_extract(?1, '$[1]') AS INTEGER), 0)"
+private const REQ_SEARCH_SQL: string = "SELECT COALESCE(CAST(json_extract(?1, '$[0]') AS TEXT), ''), COALESCE(CAST(json_extract(?1, '$[1]') AS INTEGER), 200), COALESCE(CAST(json_extract(?1, '$[2]') AS INTEGER), 0)"
+private const CREATE_RESULT_SQL: string = "SELECT json_object('ok', 1, 'id', ?1)"
+
+private let g_webview_handle: void* = 0 as void*
+private let g_db_handle: void* = 0 as void*
+
+func get_db(): Option<Sqlite> {
+    return Sqlite::from_raw_handle(g_db_handle)
+}
+
+func return_error(id: string): void {
+    if (@is_null(g_webview_handle)) {
+        return
+    }
+    webview_return(g_webview_handle, id, 1, JSON_ERR)
+}
+
+func return_ok(id: string, payload: string): void {
+    if (@is_null(g_webview_handle)) {
+        return
+    }
+    webview_return(g_webview_handle, id, 0, payload)
+}
+
+func prepare_req_stmt(db: Sqlite, req: string, sql: string): Option<SqliteStmt> {
+    let stmt: SqliteStmt = try db.prepare(sql)
+
+    let bind_rc: int32 = stmt.bind_text(1, req)
+    if (bind_rc != SQLITE_OK) {
+        stmt.finalize()
+        return Option<SqliteStmt>::none()
+    }
+
+    let step_rc: int32 = stmt.step()
+    if (step_rc != SQLITE_ROW) {
+        stmt.finalize()
+        return Option<SqliteStmt>::none()
+    }
+
+    return Option<SqliteStmt>::some(stmt)
+}
+
+func return_json_stmt(id: string, stmt_opt: Option<SqliteStmt>): void {
+    if (stmt_opt.is_none()) {
+        return_error(id)
+        return
+    }
+
+    let stmt: SqliteStmt = stmt_opt.unwrap()
+    let step_rc: int32 = stmt.step()
+    if (step_rc != SQLITE_ROW) {
+        stmt.finalize()
+        return_error(id)
+        return
+    }
+
+    let payload: string = stmt.column_text(0)
+    if (@is_null(payload as void*)) {
+        stmt.finalize()
+        return_error(id)
+        return
+    }
+
+    return_ok(id, payload)
+    stmt.finalize()
+}
+
+func on_notes_list(id: string, req: string, _arg: void*): void {
+    let db_opt: Option<Sqlite> = get_db()
+    if (db_opt.is_none()) {
+        return_error(id)
+        return
+    }
+
+    let db: Sqlite = db_opt.unwrap()
+    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db, req, REQ_LIST_SQL)
+    if (args_opt.is_none()) {
+        return_error(id)
+        return
+    }
+
+    let args: SqliteStmt = args_opt.unwrap()
+    let limit: int64 = args.column_int64(0)
+    let offset: int64 = args.column_int64(1)
+    args.finalize()
+
+    return_json_stmt(id, queries.prepare_list_notes_json(db, limit, offset))
+}
+
+func on_notes_get(id: string, req: string, _arg: void*): void {
+    let db_opt: Option<Sqlite> = get_db()
+    if (db_opt.is_none()) {
+        return_error(id)
+        return
+    }
+
+    let db: Sqlite = db_opt.unwrap()
+    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db, req, REQ_ID_SQL)
+    if (args_opt.is_none()) {
+        return_error(id)
+        return
+    }
+
+    let args: SqliteStmt = args_opt.unwrap()
+    let note_id: int64 = args.column_int64(0)
+    args.finalize()
+
+    return_json_stmt(id, queries.prepare_get_note_json(db, note_id))
+}
+
+func on_notes_search(id: string, req: string, _arg: void*): void {
+    let db_opt: Option<Sqlite> = get_db()
+    if (db_opt.is_none()) {
+        return_error(id)
+        return
+    }
+
+    let db: Sqlite = db_opt.unwrap()
+    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db, req, REQ_SEARCH_SQL)
+    if (args_opt.is_none()) {
+        return_error(id)
+        return
+    }
+
+    let args: SqliteStmt = args_opt.unwrap()
+    let term: string = args.column_text(0)
+    let limit: int64 = args.column_int64(1)
+    let offset: int64 = args.column_int64(2)
+    args.finalize()
+
+    return_json_stmt(id, queries.prepare_search_notes_json(db, term, limit, offset))
+}
+
+func on_notes_create(id: string, req: string, _arg: void*): void {
+    let db_opt: Option<Sqlite> = get_db()
+    if (db_opt.is_none()) {
+        return_error(id)
+        return
+    }
+
+    let db: Sqlite = db_opt.unwrap()
+    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db, req, REQ_CREATE_SQL)
+    if (args_opt.is_none()) {
+        return_error(id)
+        return
+    }
+
+    let args: SqliteStmt = args_opt.unwrap()
+    let title: string = args.column_text(0)
+    let body: string = args.column_text(1)
+
+    let create_rc: int32 = queries.create_note(db, title, body)
+    args.finalize()
+    if (create_rc != SQLITE_OK) {
+        return_error(id)
+        return
+    }
+
+    let result_stmt: SqliteStmt = try db.prepare(CREATE_RESULT_SQL)
+    let bind_rc: int32 = result_stmt.bind_int64(1, db.last_insert_rowid())
+    if (bind_rc != SQLITE_OK) {
+        result_stmt.finalize()
+        return_error(id)
+        return
+    }
+
+    let step_rc: int32 = result_stmt.step()
+    if (step_rc != SQLITE_ROW) {
+        result_stmt.finalize()
+        return_error(id)
+        return
+    }
+
+    let payload: string = result_stmt.column_text(0)
+    if (@is_null(payload as void*)) {
+        result_stmt.finalize()
+        return_error(id)
+        return
+    }
+
+    return_ok(id, payload)
+    result_stmt.finalize()
+}
+
+func on_notes_update(id: string, req: string, _arg: void*): void {
+    let db_opt: Option<Sqlite> = get_db()
+    if (db_opt.is_none()) {
+        return_error(id)
+        return
+    }
+
+    let db: Sqlite = db_opt.unwrap()
+    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db, req, REQ_UPDATE_SQL)
+    if (args_opt.is_none()) {
+        return_error(id)
+        return
+    }
+
+    let args: SqliteStmt = args_opt.unwrap()
+    let note_id: int64 = args.column_int64(0)
+    let title: string = args.column_text(1)
+    let body: string = args.column_text(2)
+
+    let update_rc: int32 = queries.update_note(db, note_id, title, body)
+    args.finalize()
+    if (update_rc != SQLITE_OK) {
+        return_error(id)
+        return
+    }
+
+    return_ok(id, JSON_OK)
+}
+
+func on_notes_delete(id: string, req: string, _arg: void*): void {
+    let db_opt: Option<Sqlite> = get_db()
+    if (db_opt.is_none()) {
+        return_error(id)
+        return
+    }
+
+    let db: Sqlite = db_opt.unwrap()
+    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db, req, REQ_ID_SQL)
+    if (args_opt.is_none()) {
+        return_error(id)
+        return
+    }
+
+    let args: SqliteStmt = args_opt.unwrap()
+    let note_id: int64 = args.column_int64(0)
+    args.finalize()
+
+    let delete_rc: int32 = queries.delete_note(db, note_id)
+    if (delete_rc != SQLITE_OK) {
+        return_error(id)
+        return
+    }
+
+    return_ok(id, JSON_OK)
+}
+
+func bind_function(name: string, fn: void*): int32 {
+    return webview_bind(g_webview_handle, name, fn, 0 as void*)
+}
+
+public func bind(app_handle: void*, db_handle: void*): int32 {
+    if (@is_null(app_handle) || @is_null(db_handle)) {
+        return SQLITE_MISUSE
+    }
+
+    g_webview_handle = app_handle
+    g_db_handle = db_handle
+
+    let bind_list_rc: int32 = bind_function("notes_list", on_notes_list as void*)
+    if (bind_list_rc != SQLITE_OK) {
+        return bind_list_rc
+    }
+
+    let bind_get_rc: int32 = bind_function("notes_get", on_notes_get as void*)
+    if (bind_get_rc != SQLITE_OK) {
+        return bind_get_rc
+    }
+
+    let bind_search_rc: int32 = bind_function("notes_search", on_notes_search as void*)
+    if (bind_search_rc != SQLITE_OK) {
+        return bind_search_rc
+    }
+
+    let bind_create_rc: int32 = bind_function("notes_create", on_notes_create as void*)
+    if (bind_create_rc != SQLITE_OK) {
+        return bind_create_rc
+    }
+
+    let bind_update_rc: int32 = bind_function("notes_update", on_notes_update as void*)
+    if (bind_update_rc != SQLITE_OK) {
+        return bind_update_rc
+    }
+
+    return bind_function("notes_delete", on_notes_delete as void*)
+}

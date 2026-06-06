@@ -24,7 +24,7 @@ declare external func webview_destroy(w: void*): int32
 declare external func webview_run(w: void*): int32
 declare external func webview_terminate(w: void*): int32
 declare external func webview_set_title(w: void*, title: string): int32
-declare external func gecko_webview_set_size(w: void*, width: int32, height: int32, hints: int32): int32
+declare external func webview_set_size(w: void*, width: int32, height: int32, hints: int32): int32
 declare external func webview_navigate(w: void*, url: string): int32
 declare external func webview_set_html(w: void*, html: string): int32
 
@@ -64,7 +64,7 @@ impl WebView {
         if (@is_null(self.handle)) {
             return WEBVIEW_ERROR_INVALID_STATE
         }
-        return gecko_webview_set_size(self.handle, width, height, hints)
+        return webview_set_size(self.handle, width, height, hints)
     }
 
     public func navigate(self, url: string): int32 {

@@ -1,35 +1,35 @@
 // GNote - A Gecko executable
 
-import utils.fs use { write_text, read_text, free_text_buffer }
-import utils.sqlite_native use { Sqlite }
+import utils.fs use { free_text_buffer }
+import utils.sqlite_native use { Sqlite, SQLITE_OK }
 import utils.webview
+import utils.queries
+import utils.notes_bridge
 
 declare external func puts(s: string): int32
 
 external func main(): int32 {
-    let note_path: string = "note_from_fs.txt"
-    let message: string = "Hello from fs.gecko!\nThis was written and read using pure Gecko externs."
-
-    let write_ok: bool = write_text(note_path, message)
-    if (!write_ok) {
-        puts("fs.write_text failed")
-        return 1
-    }
-
-    let loaded: string = try read_text(note_path)
-    puts("Read back from note_from_fs.txt:")
-    puts(loaded)
-    free_text_buffer(loaded)
-
     let db: Sqlite = try Sqlite::open("db.sqlite")
     if (!db.is_open()) {
         puts("Failed to open db.sqlite")
         return 1
     }
 
+    let schema_rc: int32 = queries.ensure_notes_schema(db)
+    if (schema_rc != SQLITE_OK) {
+        puts("Failed to initialize notes table")
+        return 1
+    }
+
     let app: webview.WebView = try webview.WebView::create(true)
     app.set_title("GNote")
     app.set_size(980, 720, webview.WEBVIEW_HINT_NONE)
+
+    let bridge_rc: int32 = notes_bridge.bind(app.raw(), db.raw() as void*)
+    if (bridge_rc != webview.WEBVIEW_ERROR_OK) {
+        puts("Failed to bind notes bridge")
+        return 1
+    }
 
     let html: string = webview.notes_html_page()
     let html_rc: int32 = app.set_html(html)

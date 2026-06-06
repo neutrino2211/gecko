@@ -14,6 +14,9 @@ public const NOTES_SELECT_LIST_SQL: string = "SELECT id, title, body, created_at
 public const NOTES_SELECT_SEARCH_SQL: string = "SELECT id, title, body, created_at, updated_at FROM notes WHERE title LIKE ?1 OR body LIKE ?1 ORDER BY updated_at DESC LIMIT ?2 OFFSET ?3"
 public const NOTES_UPDATE_SQL: string = "UPDATE notes SET title = ?1, body = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?3"
 public const NOTES_DELETE_SQL: string = "DELETE FROM notes WHERE id = ?1"
+public const NOTES_SELECT_LIST_JSON_SQL: string = "SELECT COALESCE(json_group_array(json_object('id', id, 'title', title, 'body', body, 'created_at', created_at, 'updated_at', updated_at)), '[]') FROM (SELECT id, title, body, created_at, updated_at FROM notes ORDER BY updated_at DESC LIMIT ?1 OFFSET ?2)"
+public const NOTES_SELECT_SEARCH_JSON_SQL: string = "SELECT COALESCE(json_group_array(json_object('id', id, 'title', title, 'body', body, 'created_at', created_at, 'updated_at', updated_at)), '[]') FROM (SELECT id, title, body, created_at, updated_at FROM notes WHERE title LIKE ('%' || ?1 || '%') OR body LIKE ('%' || ?1 || '%') ORDER BY updated_at DESC LIMIT ?2 OFFSET ?3)"
+public const NOTES_SELECT_BY_ID_JSON_SQL: string = "SELECT COALESCE((SELECT json_object('id', id, 'title', title, 'body', body, 'created_at', created_at, 'updated_at', updated_at) FROM notes WHERE id = ?1), 'null')"
 
 func run_statement_no_rows(db: Sqlite, sql: string): int32 {
 	let stmt: SqliteStmt = try db.prepare(sql)
@@ -152,6 +155,58 @@ public func prepare_search_notes(db: Sqlite, like_pattern: string, limit: int64,
 		return Option<SqliteStmt>::none()
 	}
 
+    return Option<SqliteStmt>::some(stmt)
+}
+
+public func prepare_list_notes_json(db: Sqlite, limit: int64, offset: int64): Option<SqliteStmt> {
+    let stmt: SqliteStmt = try db.prepare(NOTES_SELECT_LIST_JSON_SQL)
+
+    let bind_limit_rc: int32 = stmt.bind_int64(1, limit)
+    if (bind_limit_rc != SQLITE_OK) {
+        stmt.finalize()
+        return Option<SqliteStmt>::none()
+    }
+
+    let bind_offset_rc: int32 = stmt.bind_int64(2, offset)
+    if (bind_offset_rc != SQLITE_OK) {
+        stmt.finalize()
+        return Option<SqliteStmt>::none()
+    }
+
+    return Option<SqliteStmt>::some(stmt)
+}
+
+public func prepare_search_notes_json(db: Sqlite, term: string, limit: int64, offset: int64): Option<SqliteStmt> {
+    let stmt: SqliteStmt = try db.prepare(NOTES_SELECT_SEARCH_JSON_SQL)
+
+    let bind_term_rc: int32 = stmt.bind_text(1, term)
+    if (bind_term_rc != SQLITE_OK) {
+        stmt.finalize()
+        return Option<SqliteStmt>::none()
+    }
+
+    let bind_limit_rc: int32 = stmt.bind_int64(2, limit)
+    if (bind_limit_rc != SQLITE_OK) {
+        stmt.finalize()
+        return Option<SqliteStmt>::none()
+    }
+
+    let bind_offset_rc: int32 = stmt.bind_int64(3, offset)
+    if (bind_offset_rc != SQLITE_OK) {
+        stmt.finalize()
+        return Option<SqliteStmt>::none()
+    }
+
+    return Option<SqliteStmt>::some(stmt)
+}
+
+public func prepare_get_note_json(db: Sqlite, id: int64): Option<SqliteStmt> {
+    let stmt: SqliteStmt = try db.prepare(NOTES_SELECT_BY_ID_JSON_SQL)
+    let bind_id_rc: int32 = stmt.bind_int64(1, id)
+    if (bind_id_rc != SQLITE_OK) {
+        stmt.finalize()
+        return Option<SqliteStmt>::none()
+    }
     return Option<SqliteStmt>::some(stmt)
 }
 

@@ -5,7 +5,6 @@ PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
 BUILD_DIR="$PROJECT_ROOT/.gecko_build/vendor"
 SQLITE_DIR="$PROJECT_ROOT/vendor/sqlite"
 SQLITE_BRIDGE_C="$PROJECT_ROOT/scripts/sqlite_bridge.c"
-WEBVIEW_BRIDGE_C="$PROJECT_ROOT/scripts/webview_bridge.c"
 WEBVIEW_DIR="$PROJECT_ROOT/vendor/webview"
 
 mkdir -p "$BUILD_DIR"
@@ -47,8 +46,3 @@ fi
     -I"$WEBVIEW_DIR/core/include" \
     -c "$WEBVIEW_DIR/core/src/webview.cc" \
     -o "$BUILD_DIR/webview.o"
-
-"${CC:-cc}" -O2 -fPIC \
-    -I"$WEBVIEW_DIR/core/include" \
-    -c "$WEBVIEW_BRIDGE_C" \
-    -o "$BUILD_DIR/webview_bridge.o"

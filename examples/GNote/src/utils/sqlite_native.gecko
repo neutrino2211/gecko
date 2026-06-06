@@ -259,6 +259,18 @@ public class SqliteStmt {
 }
 
 impl Sqlite {
+    public func from_raw_handle(handle: void*): Option<Sqlite> {
+        if (@is_null(handle)) {
+            return Option<Sqlite>::none()
+        }
+
+        let conn: Sqlite
+        conn.handle = handle as sqlite3*
+        // version == 0 marks a borrowed/non-owning wrapper.
+        conn.version = 0
+        return Option<Sqlite>::some(conn)
+    }
+
     public func open(path: string): Option<Sqlite> {
         let db: sqlite3* = 0 as sqlite3*
         let rc: int32 = sqlite3_open(path, out db)
@@ -291,6 +303,12 @@ impl Sqlite {
 
     public func close(self): int32 {
         if (@is_null(self.handle as void*)) {
+            return SQLITE_OK
+        }
+
+        // Borrowed wrappers must not close the underlying shared connection.
+        if (self.version == 0) {
+            self.handle = 0 as sqlite3*
             return SQLITE_OK
         }
 
@@ -334,6 +352,13 @@ impl Sqlite {
 
     public func raw(self): sqlite3* {
         return self.handle
+    }
+
+    public func last_insert_rowid(self): int64 {
+        if (@is_null(self.handle as void*)) {
+            return -1
+        }
+        return sqlite3_last_insert_rowid(self.handle)
     }
 }
 
@@ -407,6 +432,31 @@ impl SqliteStmt {
             return SQLITE_MISUSE
         }
         return sqlite3_bind_text(self.handle, index, value, -1, SQLITE_TRANSIENT_DTOR as void*)
+    }
+
+    public func column_int(self, index: int32): int32 {
+        if (@is_null(self.handle as void*)) {
+            return 0
+        }
+        return sqlite3_column_int(self.handle, index)
+    }
+
+    public func column_int64(self, index: int32): int64 {
+        if (@is_null(self.handle as void*)) {
+            return 0
+        }
+        return sqlite3_column_int64(self.handle, index)
+    }
+
+    public func column_text(self, index: int32): string {
+        if (@is_null(self.handle as void*)) {
+            return 0 as string
+        }
+        let ptr: uint8* = sqlite3_column_text(self.handle, index)
+        if (@is_null(ptr as void*)) {
+            return 0 as string
+        }
+        return ptr as string
     }
 
     public func raw(self): sqlite3_stmt* {

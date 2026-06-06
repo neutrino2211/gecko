@@ -3,8 +3,6 @@ package sqlite
 import std.option use { Option }
 import std.core.traits use { Drop }
 
-declare external variardic func printf(format: string)
-
 // Opaque SQLite C types.
 declare external type sqlite3
 declare external type sqlite3_stmt
@@ -342,7 +340,6 @@ impl Sqlite {
 impl Drop for Sqlite {
     func drop(self: Sqlite) {
         self.close()
-        printf("Dropped!\n")
     }
 }
 
@@ -414,5 +411,9 @@ impl SqliteStmt {
 
     public func raw(self): sqlite3_stmt* {
         return self.handle
+    }
+
+    public func close(self) {
+        self.finalize()
     }
 }

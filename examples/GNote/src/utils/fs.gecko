@@ -1,9 +1,22 @@
 package fs
 
 import std.option use { Option }
+import std.core.traits use { Drop }
 
 declare external type FILE
 declare external func fopen(file: string, mode: string): FILE*
+declare external func fclose(fp: FILE*): int32
+declare external func fread(ptr: void*, size: uint, count: uint, fp: FILE*): uint
+declare external func fwrite(ptr: void*, size: uint, count: uint, fp: FILE*): uint
+declare external func fseek(fp: FILE*, offset: int64, whence: int32): int32
+declare external func ftell(fp: FILE*): int64
+declare external func strlen(value: string): uint
+declare external func calloc(count: uint, size: uint): void*
+declare external func free(ptr: void*): void
+
+public const SEEK_SET: int32 = 0
+public const SEEK_CUR: int32 = 1
+public const SEEK_END: int32 = 2
 
 public class File {
     private let internal_ptr: FILE*
@@ -31,9 +44,97 @@ impl File {
     public func is_open(self): bool {
         return !@is_null(self.internal_ptr as void*)
     }
+
+    public func close(self): int32 {
+        if (@is_null(self.internal_ptr as void*)) {
+            return 0
+        }
+
+        let rc: int32 = fclose(self.internal_ptr)
+        if (rc == 0) {
+            self.internal_ptr = 0 as FILE*
+        }
+        return rc
+    }
+
+    public func write_string(self, content: string): bool {
+        if (@is_null(self.internal_ptr as void*)) {
+            return false
+        }
+
+        let size: uint = strlen(content)
+        if (size == 0) {
+            return true
+        }
+
+        let written: uint = fwrite(content as void*, 1, size, self.internal_ptr)
+        return written == size
+    }
+
+    public func read_all(self): Option<string> {
+        if (@is_null(self.internal_ptr as void*)) {
+            return Option<string>::none()
+        }
+
+        if (fseek(self.internal_ptr, 0, SEEK_END) != 0) {
+            return Option<string>::none()
+        }
+
+        let raw_size: int64 = ftell(self.internal_ptr)
+        if (raw_size < 0) {
+            return Option<string>::none()
+        }
+
+        if (fseek(self.internal_ptr, 0, SEEK_SET) != 0) {
+            return Option<string>::none()
+        }
+
+        let size: uint = raw_size as uint
+        let buffer: void* = calloc(size + 1, 1)
+        if (@is_null(buffer)) {
+            return Option<string>::none()
+        }
+
+        if (size > 0) {
+            let read_count: uint = fread(buffer, 1, size, self.internal_ptr)
+            if (read_count != size) {
+                free(buffer)
+                return Option<string>::none()
+            }
+        }
+
+        return Option<string>::some(buffer as string)
+    }
+}
+
+impl Drop for File {
+    public func drop(self): void {
+        self.close()
+    }
 }
 
 public func open_checked(path: string, mode: string): Option<File> {
     let file: File = try File::open(path, mode)
     return Option<File>::some(file)
+}
+
+public func write_text(path: string, content: string): bool {
+    let file: File = try File::open(path, "wb")
+    let write_ok: bool = file.write_string(content)
+    let close_rc: int32 = file.close()
+    return write_ok && close_rc == 0
+}
+
+public func read_text(path: string): Option<string> {
+    let file: File = try File::open(path, "rb")
+    let content: string = try file.read_all()
+    file.close()
+    return Option<string>::some(content)
+}
+
+public func free_text_buffer(value: string): void {
+    if (@is_null(value as void*)) {
+        return
+    }
+    free(value as void*)
 }

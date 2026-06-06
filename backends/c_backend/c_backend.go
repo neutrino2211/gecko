@@ -1894,7 +1894,7 @@ func (impl *CBackendImplementation) CImplementationForClass(scope *ast.Ast, i *t
 			mangledTraitName := traitName
 			if len(i.GetTypeArgs()) > 0 {
 				for _, typeArg := range i.GetTypeArgs() {
-					mangledTraitName += "__" + typeArg.Type
+					mangledTraitName += "__" + MangleTypeArgForIdentifier(typeArg.Type)
 				}
 			}
 			if class.Traits == nil {
@@ -1931,7 +1931,7 @@ func (impl *CBackendImplementation) CImplementationForClass(scope *ast.Ast, i *t
 	mangledTraitName := traitName
 	if len(i.GetTypeArgs()) > 0 {
 		for _, typeArg := range i.GetTypeArgs() {
-			mangledTraitName += "__" + TypeRefToCType(typeArg, scope)
+			mangledTraitName += "__" + MangleTypeArgForIdentifier(TypeRefToCType(typeArg, scope))
 		}
 	}
 
@@ -2102,7 +2102,7 @@ func (impl *CBackendImplementation) GenerateGenericTraitImpl(scope *ast.Ast, cla
 			if concrete, ok := typeMap[substitutedType]; ok {
 				substitutedType = concrete
 			}
-			mangledTraitName += "__" + substitutedType
+			mangledTraitName += "__" + MangleTypeArgForIdentifier(substitutedType)
 		}
 	}
 

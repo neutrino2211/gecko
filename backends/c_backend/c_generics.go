@@ -5,6 +5,7 @@ package cbackend
 import (
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/neutrino2211/gecko/tokens"
 )
@@ -192,7 +193,50 @@ func mangleName(name string, typeArgs []string) string {
 	if len(typeArgs) == 0 {
 		return name
 	}
-	return name + "__" + strings.Join(typeArgs, "__")
+	mangled := make([]string, len(typeArgs))
+	for i, typeArg := range typeArgs {
+		mangled[i] = MangleTypeArgForIdentifier(typeArg)
+	}
+	return name + "__" + strings.Join(mangled, "__")
+}
+
+// MangleTypeArgForIdentifier converts a concrete type string (possibly C-like, e.g. "const char*")
+// into an identifier-safe fragment used in generated symbol names.
+func MangleTypeArgForIdentifier(typeArg string) string {
+	raw := strings.TrimSpace(typeArg)
+	if raw == "" {
+		return "void"
+	}
+
+	var b strings.Builder
+	prevUnderscore := false
+	for _, r := range raw {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
+			b.WriteRune(r)
+			prevUnderscore = false
+			continue
+		}
+
+		repl := "_"
+		if r == '*' {
+			repl = "_ptr"
+		}
+
+		if repl == "_" && prevUnderscore {
+			continue
+		}
+		b.WriteString(repl)
+		prevUnderscore = strings.HasSuffix(repl, "_")
+	}
+
+	out := strings.Trim(b.String(), "_")
+	if out == "" {
+		out = "void"
+	}
+	if unicode.IsDigit(rune(out[0])) {
+		out = "t_" + out
+	}
+	return out
 }
 
 // SubstituteTypeParams replaces type parameters with concrete types

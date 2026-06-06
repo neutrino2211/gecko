@@ -1,0 +1,20 @@
+// spec: spec/types.md, spec/functions.md, spec/traits.md, spec/modules.md, spec/control-flow.md
+
+package main
+
+import std.option use { Option }
+
+func maybe_text(ok: bool): Option<string> {
+    if (ok) {
+        return Option<string>::some("hello")
+    }
+    return Option<string>::none()
+}
+
+external func main(): int32 {
+    let text: string = try maybe_text(true)
+    if (text == "hello") {
+        return 0
+    }
+    return 1
+}

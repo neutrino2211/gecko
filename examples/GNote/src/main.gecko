@@ -1,13 +1,42 @@
 // GNote - A Gecko executable
 
-import utils.fs use { File }
+import utils.fs use { write_text, read_text, free_text_buffer }
 import utils.sqlite_native use { Sqlite }
+import utils.webview
+import std.option use { Option }
 
 declare external func puts(s: string): int32
 
 external func main(): int32 {
-    let db: Sqlite = try Sqlite::open("db.sqlite")
+    let note_path: string = "note_from_fs.txt"
+    let message: string = "Hello from fs.gecko!\nThis was written and read using pure Gecko externs."
 
-    puts("Hello from GNote!")
-    return 0
+    let write_ok: bool = write_text(note_path, message)
+    if (!write_ok) {
+        puts("fs.write_text failed")
+        return 1
+    }
+
+    let loaded: string = try read_text(note_path)
+    puts("Read back from note_from_fs.txt:")
+    puts(loaded)
+    free_text_buffer(loaded)
+
+    let db: Sqlite = try Sqlite::open("db.sqlite")
+    if (!db.is_open()) {
+        puts("Failed to open db.sqlite")
+        return 1
+    }
+
+    let app: webview.WebView = try webview.WebView::create(true)
+    app.set_title("GNote")
+    app.set_size(980, 720, webview.WEBVIEW_HINT_NONE)
+
+    let html_rc: int32 = app.set_html(webview.notes_html_page())
+    if (html_rc != webview.WEBVIEW_ERROR_OK) {
+        puts("Failed to load note-taking page into WebView")
+        return 1
+    }
+
+    return app.run()
 }

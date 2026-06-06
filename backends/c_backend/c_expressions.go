@@ -67,7 +67,7 @@ func concretizeGenericTraitName(traitName string, baseTypeName string, typeArgSt
 	paramToArg := make(map[string]string, len(classToken.TypeParams))
 	for i, param := range classToken.TypeParams {
 		if i < len(typeArgStrs) {
-			paramToArg[param.Name] = typeArgStrs[i]
+			paramToArg[param.Name] = MangleTypeArgForIdentifier(typeArgStrs[i])
 		}
 	}
 
@@ -1023,9 +1023,11 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 		// For generic types, mangle: Box<T> -> Box__T
 		mangledType := l.StructType
 		if len(l.StructTypeArgs) > 0 {
-			for _, arg := range l.StructTypeArgs {
-				mangledType += "__" + TypeRefToCType(arg, scope)
+			typeArgStrs := make([]string, len(l.StructTypeArgs))
+			for i, arg := range l.StructTypeArgs {
+				typeArgStrs[i] = TypeRefToCType(arg, scope)
 			}
+			mangledType = mangleName(l.StructType, typeArgStrs)
 		}
 		base = "(" + mangledType + "){ "
 		for i, kv := range l.StructFields {
@@ -1397,7 +1399,7 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 			// Validate class type parameter constraints
 			impl.ValidateClassTypeArgs(f.StaticType, f.StaticTypeArgs, scope, f.Pos)
 
-			typeName = typeName + "__" + strings.Join(typeArgStrs, "__")
+			typeName = mangleName(typeName, typeArgStrs)
 
 			// Get origin module for proper method naming
 			effectivePrefix := modulePrefix

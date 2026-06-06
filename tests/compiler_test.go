@@ -170,6 +170,7 @@ var compileTests = []compileTest{
 	{"error_handling_or_lazy", "test_sources/compile_tests/error_handling_or_lazy/main.gecko", 0, false},
 	{"error_handling_try_generic", "test_sources/compile_tests/error_handling_try_generic/main.gecko", 0, false},
 	{"error_handling_try_imported_option", "test_sources/compile_tests/error_handling_try_imported_option/main.gecko", 42, false},
+	{"error_handling_try_string", "test_sources/compile_tests/error_handling_try_string/main.gecko", 0, false},
 	{"error_handling_try_stdlib", "test_sources/compile_tests/error_handling_try_stdlib/main.gecko", 0, false},
 	{"error_handling_try_or_assignment", "test_sources/compile_tests/error_handling_try_or_assignment/main.gecko", 0, false},
 

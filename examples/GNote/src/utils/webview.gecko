@@ -1,0 +1,117 @@
+package webview
+
+import std.option use { Option }
+import std.core.traits use { Drop }
+
+// webview_error_t values.
+public const WEBVIEW_ERROR_OK: int32 = 0
+public const WEBVIEW_ERROR_INVALID_STATE: int32 = -3
+
+// webview_hint_t values.
+public const WEBVIEW_HINT_NONE: int32 = 0
+public const WEBVIEW_HINT_MIN: int32 = 1
+public const WEBVIEW_HINT_MAX: int32 = 2
+public const WEBVIEW_HINT_FIXED: int32 = 3
+
+public func notes_html_page(): string {
+    return "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>GNote</title><style>:root{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}body{margin:0;padding:16px;background:#f5f6f8;color:#1a1d22}h1{margin:0 0 12px;font-size:20px}textarea{width:100%;height:70vh;resize:vertical;border:1px solid #c9ced6;border-radius:10px;padding:12px;font:15px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#fff;box-sizing:border-box}.actions{display:flex;gap:8px;align-items:center;margin-top:10px}button{border:0;border-radius:8px;padding:8px 12px;cursor:pointer;background:#1f6feb;color:#fff}button.secondary{background:#5f6c7a}#status{font-size:13px;color:#4e5968}</style></head><body><h1>GNote</h1><textarea id='note' placeholder='Write your note...'></textarea><div class='actions'><button id='save'>Save</button><button class='secondary' id='clear'>Clear</button><span id='status'></span></div><script>const key='gnote.note';const note=document.getElementById('note');const status=document.getElementById('status');note.value=localStorage.getItem(key)||'';const show=(m)=>{status.textContent=m;setTimeout(()=>status.textContent='',1200)};document.getElementById('save').onclick=()=>{localStorage.setItem(key,note.value);show('Saved')};document.getElementById('clear').onclick=()=>{note.value='';localStorage.removeItem(key);show('Cleared')};note.addEventListener('keydown',(e)=>{if((e.metaKey||e.ctrlKey)&&e.key==='s'){e.preventDefault();localStorage.setItem(key,note.value);show('Saved')}});</script></body></html>"
+}
+
+declare external func webview_create(debug: int32, window: void*): void*
+declare external func webview_destroy(w: void*): int32
+declare external func webview_run(w: void*): int32
+declare external func webview_terminate(w: void*): int32
+declare external func webview_set_title(w: void*, title: string): int32
+declare external func gecko_webview_set_size(w: void*, width: int32, height: int32, hints: int32): int32
+declare external func webview_navigate(w: void*, url: string): int32
+declare external func webview_set_html(w: void*, html: string): int32
+
+public class WebView {
+    private let handle: void*
+}
+
+impl WebView {
+    public func create(debug: bool): Option<WebView> {
+        let debug_flag: int32 = 0
+        if (debug) {
+            debug_flag = 1
+        }
+
+        let native: void* = webview_create(debug_flag, 0 as void*)
+        if (@is_null(native)) {
+            return Option<WebView>::none()
+        }
+
+        let view: WebView
+        view.handle = native
+        return Option<WebView>::some(view)
+    }
+
+    public func is_open(self): bool {
+        return !@is_null(self.handle)
+    }
+
+    public func set_title(self, title: string): int32 {
+        if (@is_null(self.handle)) {
+            return WEBVIEW_ERROR_INVALID_STATE
+        }
+        return webview_set_title(self.handle, title)
+    }
+
+    public func set_size(self, width: int32, height: int32, hints: int32): int32 {
+        if (@is_null(self.handle)) {
+            return WEBVIEW_ERROR_INVALID_STATE
+        }
+        return gecko_webview_set_size(self.handle, width, height, hints)
+    }
+
+    public func navigate(self, url: string): int32 {
+        if (@is_null(self.handle)) {
+            return WEBVIEW_ERROR_INVALID_STATE
+        }
+        return webview_navigate(self.handle, url)
+    }
+
+    public func set_html(self, html: string): int32 {
+        if (@is_null(self.handle)) {
+            return WEBVIEW_ERROR_INVALID_STATE
+        }
+        return webview_set_html(self.handle, html)
+    }
+
+    public func run(self): int32 {
+        if (@is_null(self.handle)) {
+            return WEBVIEW_ERROR_INVALID_STATE
+        }
+        return webview_run(self.handle)
+    }
+
+    public func terminate(self): int32 {
+        if (@is_null(self.handle)) {
+            return WEBVIEW_ERROR_INVALID_STATE
+        }
+        return webview_terminate(self.handle)
+    }
+
+    public func close(self): int32 {
+        if (@is_null(self.handle)) {
+            return WEBVIEW_ERROR_OK
+        }
+
+        let rc: int32 = webview_destroy(self.handle)
+        if (rc == WEBVIEW_ERROR_OK) {
+            self.handle = 0 as void*
+        }
+        return rc
+    }
+
+    public func raw(self): void* {
+        return self.handle
+    }
+}
+
+impl Drop for WebView {
+    public func drop(self): void {
+        self.close()
+    }
+}

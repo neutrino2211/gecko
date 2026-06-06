@@ -126,6 +126,7 @@ var compileTests = []compileTest{
 
 	// C import tests
 	{"cimport", "test_sources/compile_tests/cimport/main.gecko", 0, false},
+	{"import_use_constants", "test_sources/compile_tests/import_use_constants/main.gecko", 42, false},
 
 	// Packed structs
 	{"packed", "test_sources/compile_tests/packed/packed.gecko", 0, false},

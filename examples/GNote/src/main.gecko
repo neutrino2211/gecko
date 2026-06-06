@@ -3,7 +3,6 @@
 import utils.fs use { write_text, read_text, free_text_buffer }
 import utils.sqlite_native use { Sqlite }
 import utils.webview
-import std.option use { Option }
 
 declare external func puts(s: string): int32
 
@@ -32,7 +31,9 @@ external func main(): int32 {
     app.set_title("GNote")
     app.set_size(980, 720, webview.WEBVIEW_HINT_NONE)
 
-    let html_rc: int32 = app.set_html(webview.notes_html_page())
+    let html: string = webview.notes_html_page()
+    let html_rc: int32 = app.set_html(html)
+    free_text_buffer(html)
     if (html_rc != webview.WEBVIEW_ERROR_OK) {
         puts("Failed to load note-taking page into WebView")
         return 1

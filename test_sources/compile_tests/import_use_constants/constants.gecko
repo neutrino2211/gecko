@@ -1,0 +1,12 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md
+
+package constants
+
+import nested use { INNER_CONST }
+
+public const LOCAL_CONST: int32 = 20
+public const NESTED_CONST: int32 = INNER_CONST
+
+public func add_three(a: int32, b: int32, c: int32): int32 {
+    return a + b + c
+}

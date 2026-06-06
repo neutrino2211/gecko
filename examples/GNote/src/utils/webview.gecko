@@ -2,6 +2,7 @@ package webview
 
 import std.option use { Option }
 import std.core.traits use { Drop }
+import fs use { read_text }
 
 // webview_error_t values.
 public const WEBVIEW_ERROR_OK: int32 = 0
@@ -14,7 +15,8 @@ public const WEBVIEW_HINT_MAX: int32 = 2
 public const WEBVIEW_HINT_FIXED: int32 = 3
 
 public func notes_html_page(): string {
-    return "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>GNote</title><style>:root{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}body{margin:0;padding:16px;background:#f5f6f8;color:#1a1d22}h1{margin:0 0 12px;font-size:20px}textarea{width:100%;height:70vh;resize:vertical;border:1px solid #c9ced6;border-radius:10px;padding:12px;font:15px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#fff;box-sizing:border-box}.actions{display:flex;gap:8px;align-items:center;margin-top:10px}button{border:0;border-radius:8px;padding:8px 12px;cursor:pointer;background:#1f6feb;color:#fff}button.secondary{background:#5f6c7a}#status{font-size:13px;color:#4e5968}</style></head><body><h1>GNote</h1><textarea id='note' placeholder='Write your note...'></textarea><div class='actions'><button id='save'>Save</button><button class='secondary' id='clear'>Clear</button><span id='status'></span></div><script>const key='gnote.note';const note=document.getElementById('note');const status=document.getElementById('status');note.value=localStorage.getItem(key)||'';const show=(m)=>{status.textContent=m;setTimeout(()=>status.textContent='',1200)};document.getElementById('save').onclick=()=>{localStorage.setItem(key,note.value);show('Saved')};document.getElementById('clear').onclick=()=>{note.value='';localStorage.removeItem(key);show('Cleared')};note.addEventListener('keydown',(e)=>{if((e.metaKey||e.ctrlKey)&&e.key==='s'){e.preventDefault();localStorage.setItem(key,note.value);show('Saved')}});</script></body></html>"
+    let html: string = try read_text("web/notes.html")
+    return html
 }
 
 declare external func webview_create(debug: int32, window: void*): void*

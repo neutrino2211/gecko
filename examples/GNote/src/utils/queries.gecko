@@ -1,0 +1,161 @@
+package queries
+
+import std.option use { Option }
+import sqlite_native use { Sqlite, SqliteStmt, SQLITE_OK, SQLITE_ROW, SQLITE_DONE }
+
+// Schema and index creation.
+public const NOTES_CREATE_TABLE_SQL: string = "CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+public const NOTES_CREATE_UPDATED_INDEX_SQL: string = "CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at DESC)"
+
+// CRUD statements.
+public const NOTES_INSERT_SQL: string = "INSERT INTO notes (title, body) VALUES (?1, ?2)"
+public const NOTES_SELECT_BY_ID_SQL: string = "SELECT id, title, body, created_at, updated_at FROM notes WHERE id = ?1"
+public const NOTES_SELECT_LIST_SQL: string = "SELECT id, title, body, created_at, updated_at FROM notes ORDER BY updated_at DESC LIMIT ?1 OFFSET ?2"
+public const NOTES_SELECT_SEARCH_SQL: string = "SELECT id, title, body, created_at, updated_at FROM notes WHERE title LIKE ?1 OR body LIKE ?1 ORDER BY updated_at DESC LIMIT ?2 OFFSET ?3"
+public const NOTES_UPDATE_SQL: string = "UPDATE notes SET title = ?1, body = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?3"
+public const NOTES_DELETE_SQL: string = "DELETE FROM notes WHERE id = ?1"
+
+func run_statement_no_rows(db: Sqlite, sql: string): int32 {
+	let stmt: SqliteStmt = try db.prepare(sql)
+	let step_rc: int32 = stmt.step()
+	stmt.finalize()
+	if (step_rc == SQLITE_DONE) {
+		return SQLITE_OK
+	}
+	return step_rc
+}
+
+public func ensure_notes_schema(db: Sqlite): int32 {
+	let create_rc: int32 = run_statement_no_rows(db, NOTES_CREATE_TABLE_SQL)
+	if (create_rc != SQLITE_OK) {
+		return create_rc
+	}
+	return run_statement_no_rows(db, NOTES_CREATE_UPDATED_INDEX_SQL)
+}
+
+public func create_note(db: Sqlite, title: string, body: string): int32 {
+	let stmt: SqliteStmt = try db.prepare(NOTES_INSERT_SQL)
+
+	let bind_title_rc: int32 = stmt.bind_text(1, title)
+	if (bind_title_rc != SQLITE_OK) {
+		stmt.finalize()
+		return bind_title_rc
+	}
+
+	let bind_body_rc: int32 = stmt.bind_text(2, body)
+	if (bind_body_rc != SQLITE_OK) {
+		stmt.finalize()
+		return bind_body_rc
+	}
+
+	let step_rc: int32 = stmt.step()
+	stmt.finalize()
+	if (step_rc == SQLITE_DONE) {
+		return SQLITE_OK
+	}
+	return step_rc
+}
+
+public func update_note(db: Sqlite, id: int64, title: string, body: string): int32 {
+	let stmt: SqliteStmt = try db.prepare(NOTES_UPDATE_SQL)
+
+	let bind_title_rc: int32 = stmt.bind_text(1, title)
+	if (bind_title_rc != SQLITE_OK) {
+		stmt.finalize()
+		return bind_title_rc
+	}
+
+	let bind_body_rc: int32 = stmt.bind_text(2, body)
+	if (bind_body_rc != SQLITE_OK) {
+		stmt.finalize()
+		return bind_body_rc
+	}
+
+	let bind_id_rc: int32 = stmt.bind_int64(3, id)
+	if (bind_id_rc != SQLITE_OK) {
+		stmt.finalize()
+		return bind_id_rc
+	}
+
+	let step_rc: int32 = stmt.step()
+	stmt.finalize()
+	if (step_rc == SQLITE_DONE) {
+		return SQLITE_OK
+	}
+	return step_rc
+}
+
+public func delete_note(db: Sqlite, id: int64): int32 {
+	let stmt: SqliteStmt = try db.prepare(NOTES_DELETE_SQL)
+
+	let bind_id_rc: int32 = stmt.bind_int64(1, id)
+	if (bind_id_rc != SQLITE_OK) {
+		stmt.finalize()
+		return bind_id_rc
+	}
+
+	let step_rc: int32 = stmt.step()
+	stmt.finalize()
+	if (step_rc == SQLITE_DONE) {
+		return SQLITE_OK
+	}
+	return step_rc
+}
+
+// Read helpers return prepared statements so callers can step/read rows and then finalize.
+public func prepare_read_note_by_id(db: Sqlite, id: int64): Option<SqliteStmt> {
+	let stmt: SqliteStmt = try db.prepare(NOTES_SELECT_BY_ID_SQL)
+	let bind_rc: int32 = stmt.bind_int64(1, id)
+	if (bind_rc != SQLITE_OK) {
+		stmt.finalize()
+		return Option<SqliteStmt>::none()
+	}
+    return Option<SqliteStmt>::some(stmt)
+}
+
+public func prepare_list_notes(db: Sqlite, limit: int64, offset: int64): Option<SqliteStmt> {
+	let stmt: SqliteStmt = try db.prepare(NOTES_SELECT_LIST_SQL)
+
+	let bind_limit_rc: int32 = stmt.bind_int64(1, limit)
+	if (bind_limit_rc != SQLITE_OK) {
+		stmt.finalize()
+		return Option<SqliteStmt>::none()
+	}
+
+	let bind_offset_rc: int32 = stmt.bind_int64(2, offset)
+	if (bind_offset_rc != SQLITE_OK) {
+		stmt.finalize()
+		return Option<SqliteStmt>::none()
+	}
+
+    return Option<SqliteStmt>::some(stmt)
+}
+
+public func prepare_search_notes(db: Sqlite, like_pattern: string, limit: int64, offset: int64): Option<SqliteStmt> {
+	let stmt: SqliteStmt = try db.prepare(NOTES_SELECT_SEARCH_SQL)
+
+	let bind_pattern_rc: int32 = stmt.bind_text(1, like_pattern)
+	if (bind_pattern_rc != SQLITE_OK) {
+		stmt.finalize()
+		return Option<SqliteStmt>::none()
+	}
+
+	let bind_limit_rc: int32 = stmt.bind_int64(2, limit)
+	if (bind_limit_rc != SQLITE_OK) {
+		stmt.finalize()
+		return Option<SqliteStmt>::none()
+	}
+
+	let bind_offset_rc: int32 = stmt.bind_int64(3, offset)
+	if (bind_offset_rc != SQLITE_OK) {
+		stmt.finalize()
+		return Option<SqliteStmt>::none()
+	}
+
+    return Option<SqliteStmt>::some(stmt)
+}
+
+public func statement_has_row(stmt: SqliteStmt): bool {
+	let rc: int32 = stmt.step()
+	return rc == SQLITE_ROW
+}

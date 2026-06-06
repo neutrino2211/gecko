@@ -1,0 +1,10 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md
+
+package main
+
+import constants use { LOCAL_CONST, NESTED_CONST, add_three }
+
+external func main(): int32 {
+    let value: int32 = add_three(LOCAL_CONST, NESTED_CONST, 1)
+    return value
+}

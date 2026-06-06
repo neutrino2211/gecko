@@ -344,6 +344,9 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 			}
 			if objects, ok := localUseObjects[nestedModuleKey]; ok {
 				for _, objName := range objects {
+					if variable, found := nestedScope.Variables[objName]; found {
+						importScope.Variables[objName] = variable
+					}
 					if cls, found := nestedScope.Classes[objName]; found {
 						importScope.Classes[objName] = cls
 					}
@@ -375,6 +378,10 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 		}
 		if objects, ok := useObjects[moduleKey]; ok {
 			for _, objName := range objects {
+				// Copy variables/constants.
+				if variable, found := importScope.Variables[objName]; found {
+					file.Variables[objName] = variable
+				}
 				// Copy classes
 				if cls, found := importScope.Classes[objName]; found {
 					file.Classes[objName] = cls

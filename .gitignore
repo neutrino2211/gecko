@@ -1,6 +1,7 @@
 # Binaries for programs and plugins
 gecko
 gecko-lsp
+a.out
 *.exe
 *.exe~
 *.dll
@@ -10,6 +11,8 @@ gecko-lsp
 
 # Generated C files from gecko compiler
 *.gecko.c
+/*.gecko.ll
+examples/llvm_only/*.gecko.ll
 
 # Test binary, built with `go test -c`
 *.test

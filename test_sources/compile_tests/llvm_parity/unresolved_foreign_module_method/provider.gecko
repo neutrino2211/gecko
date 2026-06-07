@@ -1,0 +1,5 @@
+package provider
+
+public func probe(x: missing.Payload*): int32 {
+    return x.size()
+}

@@ -20,6 +20,8 @@ type LocalContext struct {
 	MainBlock     *ir.Block
 	Branches      map[string]*ir.Block
 	Types         map[string]*types.Type
+	LoopBreak     []*ir.Block
+	LoopContinue  []*ir.Block
 }
 
 type ExecutionContext struct {
@@ -42,6 +44,12 @@ func (l *LocalContext) Init(fn *ir.Func) {
 	}
 	if l.Types == nil {
 		l.Types = make(map[string]*types.Type)
+	}
+	if l.LoopBreak == nil {
+		l.LoopBreak = make([]*ir.Block, 0)
+	}
+	if l.LoopContinue == nil {
+		l.LoopContinue = make([]*ir.Block, 0)
 	}
 }
 
@@ -71,4 +79,32 @@ func NewLocalContext(fn *ir.Func) *LocalContext {
 	ctx := &LocalContext{}
 	ctx.Init(fn)
 	return ctx
+}
+
+func (l *LocalContext) PushLoopTargets(breakTarget *ir.Block, continueTarget *ir.Block) {
+	l.LoopBreak = append(l.LoopBreak, breakTarget)
+	l.LoopContinue = append(l.LoopContinue, continueTarget)
+}
+
+func (l *LocalContext) PopLoopTargets() {
+	if len(l.LoopBreak) > 0 {
+		l.LoopBreak = l.LoopBreak[:len(l.LoopBreak)-1]
+	}
+	if len(l.LoopContinue) > 0 {
+		l.LoopContinue = l.LoopContinue[:len(l.LoopContinue)-1]
+	}
+}
+
+func (l *LocalContext) CurrentLoopBreakTarget() *ir.Block {
+	if len(l.LoopBreak) == 0 {
+		return nil
+	}
+	return l.LoopBreak[len(l.LoopBreak)-1]
+}
+
+func (l *LocalContext) CurrentLoopContinueTarget() *ir.Block {
+	if len(l.LoopContinue) == 0 {
+		return nil
+	}
+	return l.LoopContinue[len(l.LoopContinue)-1]
 }

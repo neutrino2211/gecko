@@ -1,0 +1,19 @@
+package provider
+
+public trait Metric {
+    public func score(self): int32
+}
+
+public class Meter {
+    let value: int32
+}
+
+impl Metric for Meter {
+    public func score(self): int32 {
+        return self.value * 2
+    }
+}
+
+public func make_meter(v: int32): Meter {
+    return Meter { value: v }
+}

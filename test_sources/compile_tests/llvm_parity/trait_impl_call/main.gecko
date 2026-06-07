@@ -1,0 +1,9 @@
+package llvm_parity_trait_impl_call
+
+import provider use { Meter, make_meter }
+
+external func main(): int32 {
+    let m: Meter = make_meter(21)
+    m.score()
+    return m.score()
+}

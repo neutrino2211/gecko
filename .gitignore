@@ -33,6 +33,8 @@ examples/*/shapes
 examples/*/main
 examples/*/*.bin
 examples/*/*.iso
+examples/GNote/db.sqlite
+examples/GNote/note_from_fs.txt
 
 # Kernel build artifacts
 *.elf

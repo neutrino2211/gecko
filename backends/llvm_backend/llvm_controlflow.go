@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
 	"github.com/llir/llvm/ir/types"
@@ -180,7 +181,9 @@ func (impl *LLVMBackendImplementation) processWhileLoop(scope *ast.Ast, loop *to
 
 	// Process the loop body
 	info.LocalContext.MainBlock = bodyBlock
+	info.LocalContext.PushLoopTargets(exitBlock, headerBlock)
 	impl.Backend.ProcessEntries(loop.Value, scope)
+	info.LocalContext.PopLoopTargets()
 
 	// Add back-edge to header if not already terminated
 	if info.LocalContext.MainBlock.Term == nil {
@@ -239,7 +242,9 @@ func (impl *LLVMBackendImplementation) processForOfLoop(scope *ast.Ast, loop *to
 	}
 
 	// Process loop body
+	info.LocalContext.PushLoopTargets(exitBlock, headerBlock)
 	impl.Backend.ProcessEntries(loop.Value, scope)
+	info.LocalContext.PopLoopTargets()
 
 	// Increment index
 	if info.LocalContext.MainBlock.Term == nil {
@@ -298,7 +303,9 @@ func (impl *LLVMBackendImplementation) processForInLoop(scope *ast.Ast, loop *to
 	}
 
 	// Process loop body
+	info.LocalContext.PushLoopTargets(exitBlock, headerBlock)
 	impl.Backend.ProcessEntries(loop.Value, scope)
+	info.LocalContext.PopLoopTargets()
 
 	// Increment index
 	if info.LocalContext.MainBlock.Term == nil {
@@ -424,14 +431,48 @@ func (impl *LLVMBackendImplementation) NewAssignment(scope *ast.Ast, assignment 
 	varInfo.Value = newValue
 }
 
-// NewBreak handles break statements (stub - LLVM control flow needs proper basic blocks)
 func (impl *LLVMBackendImplementation) NewBreak(scope *ast.Ast) {
-	// TODO: Implement proper LLVM break with basic block jumps
+	info := LLVMGetScopeInformation(scope)
+	if info.LocalContext == nil || info.LocalContext.MainBlock == nil {
+		scope.ErrorScope.NewCompileTimeError("Control Flow Error", "break statement must be inside a function", lexer.Position{})
+		return
+	}
+
+	breakTarget := info.LocalContext.CurrentLoopBreakTarget()
+	if breakTarget == nil {
+		scope.ErrorScope.NewCompileTimeError("Control Flow Error", "break statement must be inside a loop", lexer.Position{})
+		return
+	}
+
+	if info.LocalContext.MainBlock.Term == nil {
+		info.LocalContext.MainBlock.NewBr(breakTarget)
+	}
+
+	// Continue lowering subsequent statements into a dead block so IR remains structurally valid.
+	dead := info.LocalContext.Func.NewBlock(fmt.Sprintf("loop.break.dead.%d", getUniqueBlockID()))
+	info.LocalContext.MainBlock = dead
 }
 
-// NewContinue handles continue statements (stub - LLVM control flow needs proper basic blocks)
 func (impl *LLVMBackendImplementation) NewContinue(scope *ast.Ast) {
-	// TODO: Implement proper LLVM continue with basic block jumps
+	info := LLVMGetScopeInformation(scope)
+	if info.LocalContext == nil || info.LocalContext.MainBlock == nil {
+		scope.ErrorScope.NewCompileTimeError("Control Flow Error", "continue statement must be inside a function", lexer.Position{})
+		return
+	}
+
+	continueTarget := info.LocalContext.CurrentLoopContinueTarget()
+	if continueTarget == nil {
+		scope.ErrorScope.NewCompileTimeError("Control Flow Error", "continue statement must be inside a loop", lexer.Position{})
+		return
+	}
+
+	if info.LocalContext.MainBlock.Term == nil {
+		info.LocalContext.MainBlock.NewBr(continueTarget)
+	}
+
+	// Continue lowering subsequent statements into a dead block so IR remains structurally valid.
+	dead := info.LocalContext.Func.NewBlock(fmt.Sprintf("loop.continue.dead.%d", getUniqueBlockID()))
+	info.LocalContext.MainBlock = dead
 }
 
 // NewCImport handles cimport statements (no-op for LLVM - linking handled externally)

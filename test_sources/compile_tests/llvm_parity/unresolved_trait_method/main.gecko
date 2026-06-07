@@ -1,0 +1,8 @@
+package llvm_parity_unresolved_trait_method
+
+import provider use { Person, make_person }
+
+external func main(): int32 {
+    let p: Person = make_person(1)
+    return p.greet()
+}

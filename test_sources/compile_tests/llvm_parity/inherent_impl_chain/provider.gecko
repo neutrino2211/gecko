@@ -1,0 +1,15 @@
+package provider
+
+public class Counter {
+    let value: int32
+}
+
+impl Counter {
+    public func inc(self): int32 {
+        return self.value + 1
+    }
+}
+
+public func make_counter(v: int32): Counter {
+    return Counter { value: v }
+}

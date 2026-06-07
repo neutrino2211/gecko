@@ -1,0 +1,9 @@
+package llvm_parity_trait_inheritance_override
+
+import provider use { Probe, make_probe }
+
+external func main(): int32 {
+    let p: Probe = make_probe(23)
+    p.score()
+    return p.score()
+}

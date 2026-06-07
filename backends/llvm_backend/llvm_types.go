@@ -43,6 +43,15 @@ type LLVMStructInfo struct {
 // LLVMStructMap maps class names to their struct info
 var LLVMStructMap = make(map[string]*LLVMStructInfo)
 
+// LLVMEnumInfo stores lowered enum metadata for symbol/type resolution.
+type LLVMEnumInfo struct {
+	LLVMType *types.IntType
+	Cases    map[string]int64
+}
+
+// LLVMEnumMap maps fully-qualified enum scope names to enum metadata.
+var LLVMEnumMap = make(map[string]*LLVMEnumInfo)
+
 // TraitDefinitionOrigins stores the defining package for trait declarations.
 // Maps trait name (e.g., "Iterator") to origin package (e.g., "traits").
 var TraitDefinitionOrigins = make(map[string]string)

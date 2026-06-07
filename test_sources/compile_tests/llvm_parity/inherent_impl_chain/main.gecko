@@ -1,0 +1,9 @@
+package llvm_parity_inherent_impl_chain
+
+import provider use { Counter, make_counter }
+
+external func main(): int32 {
+    let c: Counter = make_counter(41)
+    c.inc()
+    return c.inc()
+}

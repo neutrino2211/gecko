@@ -1,0 +1,15 @@
+package provider
+
+public class Counter {
+    let value: int32
+}
+
+impl Counter {
+    func hidden(self): int32 {
+        return self.value
+    }
+}
+
+public func make_counter(v: int32): Counter {
+    return Counter { value: v }
+}

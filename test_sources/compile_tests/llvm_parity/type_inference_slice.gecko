@@ -1,0 +1,9 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/control-flow.md
+
+package llvm_parity
+
+func check_inference(): int32 {
+    let x = 41
+    let flag = true
+    return 0
+}

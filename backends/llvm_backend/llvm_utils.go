@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/alecthomas/participle/v2/lexer"
-	"github.com/alecthomas/repr"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/types"
 	"github.com/llir/llvm/ir/value"
@@ -73,10 +72,19 @@ func (impl *LLVMBackendImplementation) TypeRefGetLLIRType(t *tokens.TypeRef, sco
 		if prim != nil {
 			baseType = prim.Type
 		} else {
-			// Try to find struct type from LLVMStructMap
-			structInfo, ok := LLVMStructMap[t.Type]
-			if ok && structInfo.Type != nil {
-				baseType = structInfo.Type
+			// Try to resolve user-defined types (structs/enums).
+			if classScope := impl.resolveClassFromTypeRef(scope, t); classScope != nil {
+				if enumInfo, ok := LLVMEnumMap[classScope.FullScopeName()]; ok && enumInfo != nil && enumInfo.LLVMType != nil {
+					baseType = enumInfo.LLVMType
+				}
+			}
+
+			if baseType == nil {
+				// Struct map is keyed by type name as emitted during class lowering.
+				structInfo, ok := LLVMStructMap[t.Type]
+				if ok && structInfo.Type != nil {
+					baseType = structInfo.Type
+				}
 			}
 		}
 	}
@@ -113,7 +121,6 @@ func (impl *LLVMBackendImplementation) LLVMResolveLLIRType(a *ast.Ast, typ strin
 	info := LLVMGetScopeInformation(&scope)
 
 	t, ok := info.LocalContext.Types[typ]
-	repr.Println(t, ok, info.LocalContext.Types)
 
 	for !ok {
 		if scope.Parent == nil {
@@ -127,7 +134,6 @@ func (impl *LLVMBackendImplementation) LLVMResolveLLIRType(a *ast.Ast, typ strin
 		}
 
 		t, ok = info.LocalContext.Types[typ]
-		repr.Println(scope.FullScopeName(), info.LocalContext.Types)
 	}
 
 	return option.Some(t)
@@ -135,6 +141,12 @@ func (impl *LLVMBackendImplementation) LLVMResolveLLIRType(a *ast.Ast, typ strin
 
 func (impl *LLVMBackendImplementation) LLVMAssignArgumentsToMethodArguments(args []*tokens.Value, mth *ast.Method) {
 	for _, v := range args {
+		if v == nil {
+			continue
+		}
+		if v.Type == nil {
+			continue
+		}
 		var def value.Value = nil
 
 		if v.Default != nil {
@@ -279,7 +291,29 @@ func (impl *LLVMBackendImplementation) LLVMImplementationForClass(scope *ast.Ast
 		mthdList = *traitMthds
 	} else {
 		for _, m := range impl.LLVMImplementationToMethodTokens(class, i) {
-			mthdList = append(mthdList, impl.LLVMGetAstMethod(scope, m))
+			mangledName := class.Scope + "__" + i.GetName()
+			if len(i.GetTypeArgs()) > 0 {
+				for _, typeArg := range i.GetTypeArgs() {
+					mangledName += "__" + typeRefToMangledName(typeArg)
+				}
+			}
+			mangledName += "__" + m.Name
+
+			lowered := *m
+			lowered.Name = mangledName
+
+			impl.NewMethod(class, &lowered)
+
+			traitMethod, ok := class.Methods[mangledName]
+			if !ok || traitMethod == nil {
+				scope.ErrorScope.NewCompileTimeError(
+					"Implementation Error",
+					"unable to register trait method '"+m.Name+"' for trait '"+i.GetName()+"' on type '"+class.Scope+"'",
+					i.Pos,
+				)
+				continue
+			}
+			mthdList = append(mthdList, traitMethod)
 		}
 	}
 
@@ -363,6 +397,26 @@ func (impl *LLVMBackendImplementation) LLVMTraitGetMethods(t *tokens.Trait) []*t
 	return mthds
 }
 
+func (impl *LLVMBackendImplementation) newTraitMethodMetadata(scope *ast.Ast, m *tokens.Method) *ast.Method {
+	if m == nil {
+		return nil
+	}
+
+	returnType := "void"
+	if m.Type != nil {
+		returnType = m.Type.ToCString(scope)
+	}
+
+	return &ast.Method{
+		Name:       m.Name,
+		Scope:      nil,
+		Arguments:  make([]ast.Variable, 0),
+		Visibility: m.Visibility,
+		Parent:     scope,
+		Type:       returnType,
+	}
+}
+
 func (impl *LLVMBackendImplementation) TraitAssignToScope(scope *ast.Ast, t *tokens.Trait) {
 	// Register parent link first so cycle detection can see the current edge.
 	TraitParents[t.Name] = t.Parent
@@ -413,7 +467,10 @@ func (impl *LLVMBackendImplementation) TraitAssignToScope(scope *ast.Ast, t *tok
 
 	// Add/override with child methods.
 	for _, m := range impl.LLVMTraitGetMethods(t) {
-		method := impl.LLVMGetAstMethod(scope, m)
+		method := impl.newTraitMethodMetadata(scope, m)
+		if method == nil {
+			continue
+		}
 		if idx, exists := indexByName[method.Name]; exists {
 			mthds[idx] = method
 			continue

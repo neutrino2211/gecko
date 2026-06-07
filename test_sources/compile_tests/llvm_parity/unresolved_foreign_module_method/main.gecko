@@ -1,0 +1,7 @@
+package llvm_parity_unresolved_foreign_module_method
+
+import provider use { probe }
+
+external func main(): int32 {
+    return 0
+}

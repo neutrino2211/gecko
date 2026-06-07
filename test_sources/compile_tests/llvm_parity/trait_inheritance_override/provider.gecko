@@ -1,0 +1,23 @@
+package provider
+
+public trait BaseMetric {
+    public func score(self): int32
+}
+
+public trait ChildMetric: BaseMetric {
+    public func score(self): int32
+}
+
+public class Probe {
+    let value: int32
+}
+
+impl ChildMetric for Probe {
+    public func score(self): int32 {
+        return self.value + 100
+    }
+}
+
+public func make_probe(v: int32): Probe {
+    return Probe { value: v }
+}

@@ -1,0 +1,28 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/control-flow.md
+
+package llvm_parity_method_chain_slice
+
+class Inner {
+    let value: int32
+
+    func double(self): int32 {
+        return self.value + self.value
+    }
+}
+
+class Outer {
+    let inner: Inner*
+
+    func get_double(self): int32 {
+        return self.inner.double()
+    }
+}
+
+external func main(): int32 {
+    let inner: Inner = Inner { value: 21 }
+    let outer: Outer = Outer { inner: &inner }
+
+    outer.inner.double()
+    let from_expr: int32 = outer.inner.double()
+    return from_expr
+}

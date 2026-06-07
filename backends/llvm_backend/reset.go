@@ -15,4 +15,7 @@ func ResetState() {
 	LLVMScopeDataMap = &LLVMScopeData{}
 	LLVMProgramValues = &LLVMValuesMap{}
 	LLVMStructMap = make(map[string]*LLVMStructInfo)
+	LLVMEnumMap = make(map[string]*LLVMEnumInfo)
+	TraitDefinitionOrigins = make(map[string]string)
+	TraitParents = make(map[string]string)
 }

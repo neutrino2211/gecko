@@ -1,0 +1,15 @@
+package provider
+
+public trait Greeter {
+    public func greet(self): int32
+}
+
+public class Person {
+    let id: int32
+}
+
+default impl Greeter for Person
+
+public func make_person(v: int32): Person {
+    return Person { id: v }
+}

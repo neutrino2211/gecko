@@ -246,8 +246,8 @@ func NewCFeatureSet() *FeatureSet {
 // NewLLVMFeatureSet creates a feature set for LLVM backend
 func NewLLVMFeatureSet() *FeatureSet {
 	// Keep this conservative and aligned with actual implementation status.
-	// Experimental/incomplete areas (generics, traits/impl hooks, imports,
-	// operator overloads, type inference, and intrinsic pointer ops) are
+	// Experimental/incomplete areas (generics, traits/impl hooks,
+	// operator overloads, and intrinsic pointer ops) are
 	// intentionally not advertised as supported yet.
 	fs := NewFeatureSet("llvm")
 	fs.Enable(
@@ -261,6 +261,8 @@ func NewLLVMFeatureSet() *FeatureSet {
 		FeatureExternDecl,
 		FeatureCasts,
 		FeatureAddressOf,
+		FeatureImports,
+		FeatureTypeInfer,
 		FeatureNaked,
 		FeatureNoReturn,
 		FeatureSection,
@@ -268,7 +270,6 @@ func NewLLVMFeatureSet() *FeatureSet {
 		FeatureInlineAsm,
 	)
 	fs.Disable(
-		FeatureLoopControl,
 		FeatureIntrinsics,
 	)
 	fs.SetToolchain(ToolchainNative, "c", "asm") // LLVM can link with C and ASM

@@ -1,0 +1,37 @@
+// spec: spec/types.md, spec/functions.md, spec/classes.md, spec/modules.md, spec/control-flow.md, spec/attributes.md
+
+@backend("llvm")
+package llvm_only
+
+declare external variardic func printf(format: string): int32
+
+class Vec2 {
+    let x: int32
+    let y: int32
+
+    func sum(self): int32 {
+        return self.x + self.y
+    }
+}
+
+enum Mode {
+    Add
+    Bias
+}
+
+func apply(v: Vec2*, mode: Mode): int32 {
+    if mode == Mode.Add {
+        return v.sum()
+    }
+
+    return v.sum() + 10
+}
+
+external func main(): int32 {
+    let v: Vec2 = Vec2 { x: 7, y: 5 }
+    let out_add: int32 = apply(&v, Mode.Add)
+    let out_bias: int32 = apply(&v, Mode.Bias)
+
+    printf("%d\n", out_add + out_bias)
+    return 0
+}

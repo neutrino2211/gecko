@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/alecthomas/participle/v2/lexer"
-	"github.com/alecthomas/repr"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
 	"github.com/llir/llvm/ir/enum"
@@ -22,6 +21,26 @@ var CurrentBackend interfaces.BackendInteface = nil
 var FuncCalls map[string]*ir.InstCall
 var Methods map[string]*ast.Method
 var LLVMExecutionContext *ExecutionContext = nil
+
+func llvmFuncCallCacheKey(scope *ast.Ast, f *tokens.FuncCall) string {
+	if scope == nil || f == nil {
+		return ""
+	}
+
+	name := f.Function
+	if f.Module != "" {
+		name = f.Module + "." + f.Function
+	}
+	if f.StaticType != "" {
+		if f.StaticModule != "" {
+			name = f.StaticModule + "." + f.StaticType + "::" + f.Function
+		} else {
+			name = f.StaticType + "::" + f.Function
+		}
+	}
+
+	return scope.FullScopeName() + "#" + name
+}
 
 func (info *LLVMScopeInformation) Init(a *ast.Ast) {
 	var executionContext = LLVMExecutionContext
@@ -60,13 +79,105 @@ func (impl *LLVMBackendImplementation) NewReturnLiteral(scope *ast.Ast, literal 
 		return
 	}
 
-	val := impl.ExpressionToLLIRValue(literal, scope, &tokens.TypeRef{})
+	if info.LocalContext.Func == nil || info.LocalContext.Func.Sig == nil || info.LocalContext.Func.Sig.RetType == nil {
+		scope.ErrorScope.NewCompileTimeError("Return Error", "unable to resolve function return type", literal.Pos)
+		return
+	}
+	if _, isVoid := info.LocalContext.Func.Sig.RetType.(*types.VoidType); isVoid {
+		scope.ErrorScope.NewCompileTimeError("Return Error", "cannot return a value from a void function", literal.Pos)
+		return
+	}
+
+	expectedType := llirTypeToGeckoTypeRef(info.LocalContext.Func.Sig.RetType)
+	val := impl.ExpressionToLLIRValue(literal, scope, expectedType)
 	if val == nil {
 		scope.ErrorScope.NewCompileTimeError("Return Error", "unable to evaluate return expression", literal.Pos)
 		return
 	}
 
+	val = impl.coerceValueToType(val, info.LocalContext.Func.Sig.RetType, scope, literal.Pos)
+	if val == nil {
+		return
+	}
+
 	info.LocalContext.MainBlock.NewRet(val)
+}
+
+func llirTypeToGeckoTypeRef(t types.Type) *tokens.TypeRef {
+	switch tt := t.(type) {
+	case *types.IntType:
+		switch tt.BitSize {
+		case 1:
+			return &tokens.TypeRef{Type: "bool"}
+		case 8:
+			return &tokens.TypeRef{Type: "int8"}
+		case 16:
+			return &tokens.TypeRef{Type: "int16"}
+		case 32:
+			return &tokens.TypeRef{Type: "int32"}
+		case 64:
+			return &tokens.TypeRef{Type: "int64"}
+		default:
+			return &tokens.TypeRef{Type: "int64"}
+		}
+	case *types.PointerType:
+		base := llirTypeToGeckoTypeRef(tt.ElemType)
+		if base == nil {
+			base = &tokens.TypeRef{Type: "int8"}
+		}
+		cloned := *base
+		cloned.Pointer = true
+		return &cloned
+	case *types.VoidType:
+		return &tokens.TypeRef{Type: "void"}
+	default:
+		return &tokens.TypeRef{Type: "int64"}
+	}
+}
+
+func (impl *LLVMBackendImplementation) coerceValueToType(val value.Value, target types.Type, scope *ast.Ast, pos lexer.Position) value.Value {
+	if val == nil || target == nil {
+		return nil
+	}
+
+	if val.Type().Equal(target) {
+		return val
+	}
+
+	info := LLVMGetScopeInformation(scope)
+	if info.LocalContext == nil || info.LocalContext.MainBlock == nil {
+		return val
+	}
+
+	switch dst := target.(type) {
+	case *types.IntType:
+		switch src := val.Type().(type) {
+		case *types.IntType:
+			if src.BitSize > dst.BitSize {
+				return info.LocalContext.MainBlock.NewTrunc(val, dst)
+			}
+			if src.BitSize < dst.BitSize {
+				return info.LocalContext.MainBlock.NewSExt(val, dst)
+			}
+			return val
+		case *types.PointerType:
+			return info.LocalContext.MainBlock.NewPtrToInt(val, dst)
+		}
+	case *types.PointerType:
+		switch val.Type().(type) {
+		case *types.IntType:
+			return info.LocalContext.MainBlock.NewIntToPtr(val, dst)
+		case *types.PointerType:
+			return info.LocalContext.MainBlock.NewBitCast(val, dst)
+		}
+	}
+
+	scope.ErrorScope.NewCompileTimeError(
+		"Return Error",
+		fmt.Sprintf("cannot return value of type '%s' from function returning '%s'", val.Type().String(), target.String()),
+		pos,
+	)
+	return nil
 }
 
 func (*LLVMBackendImplementation) Declaration(scope *ast.Ast, decl *tokens.Declaration) {
@@ -93,6 +204,7 @@ func (impls *LLVMBackendImplementation) NewClass(scope *ast.Ast, c *tokens.Class
 	classAst := &ast.Ast{
 		Scope:        c.Name,
 		Parent:       scope,
+		Visibility:   c.Visibility,
 		OriginModule: scope.GetRoot().Scope,
 		SourceFile:   scope.GetSourceFile(),
 	}
@@ -108,6 +220,7 @@ func (impls *LLVMBackendImplementation) NewClass(scope *ast.Ast, c *tokens.Class
 	fieldTypes := make([]types.Type, 0)
 	fieldNames := make([]string, 0)
 	geckoFieldTypes := make([]*tokens.TypeRef, 0)
+	classMethods := make([]*tokens.Method, 0)
 
 	for _, f := range c.Fields {
 		if f.Field != nil {
@@ -124,13 +237,14 @@ func (impls *LLVMBackendImplementation) NewClass(scope *ast.Ast, c *tokens.Class
 			impls.NewClassField(classAst, f.Field)
 		}
 		if f.Method != nil {
-			impls.NewMethod(classAst, f.Method)
+			classMethods = append(classMethods, f.Method)
 		}
 	}
 
 	// Create LLVM struct type
 	info := LLVMGetScopeInformation(scope)
 	structType := types.NewStruct(fieldTypes...)
+	structType.SetName(c.Name)
 	structType.Packed = isPacked
 
 	// Register the struct type in the module
@@ -149,13 +263,21 @@ func (impls *LLVMBackendImplementation) NewClass(scope *ast.Ast, c *tokens.Class
 		var t types.Type = structType
 		info.LocalContext.Types[c.Name] = &t
 	}
+
+	// Lower class methods after struct registration so `self` type resolution can
+	// see the class in LLVMStructMap.
+	for _, m := range classMethods {
+		impls.NewMethod(classAst, m)
+	}
 }
 
 // NewClassField registers a field in the class AST without generating local variable code
 func (impls *LLVMBackendImplementation) NewClassField(scope *ast.Ast, f *tokens.Field) {
 	if f.Type == nil {
-		scope.ErrorScope.NewCompileTimeError("TODO: Infer variable type", "variable type inference not implemented", f.Pos)
-		f.Type = &tokens.TypeRef{Type: "int"}
+		f.Type = impls.inferFieldType(scope, f)
+	}
+	if f.Type == nil {
+		f.Type = &tokens.TypeRef{Type: "int32"}
 	}
 
 	fieldVariable := ast.Variable{
@@ -178,15 +300,82 @@ func (impls *LLVMBackendImplementation) NewClassField(scope *ast.Ast, f *tokens.
 }
 
 func (impls *LLVMBackendImplementation) MethodCall(scope *ast.Ast, m *tokens.MethodCall) {
-	// TODO: Implement chained method calls for LLVM backend
-	scope.ErrorScope.NewCompileTimeError("Not Implemented", "Chained method calls are not yet supported in the LLVM backend", m.Pos)
+	if m == nil || len(m.Chain) == 0 {
+		return
+	}
+
+	if !m.IsValid() {
+		scope.ErrorScope.NewCompileTimeError("Call Error", "invalid method call chain: terminal chain element must be a method call", m.Pos)
+		return
+	}
+
+	impls.ResolveSymbolChainValue(scope, m.Base, m.Chain, m.Pos, false)
 }
 
 func (impls *LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncCall) {
-	mth := scope.ResolveMethod(f.Function)
+	if f == nil {
+		return
+	}
+
+	// Handle variable method call expressions parsed as FuncCall:
+	// `x.method(...)` where `x` is in `Module`.
+	if f.StaticType == "" && f.Module != "" {
+		varOpt := scope.ResolveSymbolAsVariable(f.Module)
+		if !varOpt.IsNil() {
+			variable := varOpt.Unwrap()
+			valueInfo := LLVMGetValueInformation(variable)
+			if valueInfo == nil || valueInfo.Value == nil {
+				scope.ErrorScope.NewCompileTimeError("Call Error", "unable to resolve receiver for method call '"+f.Module+"."+f.Function+"'", f.Pos)
+				return
+			}
+
+			chain := &tokens.ChainAccess{
+				Name:      f.Function,
+				HasParens: true,
+				Args:      f.Arguments,
+			}
+			chain.Pos = f.Pos
+
+			state := llvmChainState{
+				Value:     valueInfo.Value,
+				GeckoType: cloneTypeRef(valueInfo.GeckoType),
+			}
+			if state.GeckoType == nil && variable.IsPointer {
+				state.GeckoType = &tokens.TypeRef{Pointer: true}
+			}
+
+			callValue := impls.lowerMethodCall(scope, state, chain)
+			if callValue == nil {
+				return
+			}
+
+			callInst, ok := callValue.(*ir.InstCall)
+			if !ok || callInst == nil {
+				scope.ErrorScope.NewCompileTimeError("Call Error", "internal LLVM method-call lowering did not produce a call instruction", f.Pos)
+				return
+			}
+
+			FuncCalls[llvmFuncCallCacheKey(scope, f)] = callInst
+			return
+		}
+	}
+
+	lookupScope := scope
+	if f.Module != "" {
+		root := scope.GetRoot()
+		if importedModule, ok := root.Children[f.Module]; ok {
+			lookupScope = importedModule
+		}
+	}
+
+	mth := lookupScope.ResolveMethod(f.Function)
 
 	if mth.IsNil() {
-		scope.ErrorScope.NewCompileTimeError("Function resolution error", fmt.Sprintf("Unable to resolve the function \"%s\"", f.Function), f.Pos)
+		symbol := f.Function
+		if f.Module != "" {
+			symbol = f.Module + "." + f.Function
+		}
+		scope.ErrorScope.NewCompileTimeError("Function resolution error", fmt.Sprintf("Unable to resolve the function \"%s\"", symbol), f.Pos)
 		return
 	}
 
@@ -211,15 +400,31 @@ func (impls *LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncC
 		if retType == nil {
 			retType = VoidType.Type
 		}
-		fn = ir.NewFunc(f.Function, retType)
-		fn.Linkage = enum.LinkageExternal
+		symbolName := mthUnwrapped.GetFullName()
+		if symbolName == "" {
+			symbolName = f.Function
+			if f.Module != "" {
+				symbolName = f.Module + "__" + f.Function
+			}
+		}
+
+		if callerInfo.ProgramContext != nil && callerInfo.ProgramContext.Module != nil {
+			if declared := findIRFuncByName(callerInfo.ProgramContext.Module, symbolName, f.Function); declared != nil {
+				fn = declared
+			}
+		}
+
+		if fn == nil {
+			fn = ir.NewFunc(symbolName, retType)
+			fn.Linkage = enum.LinkageExternal
+		}
 	}
 
 	fn.CallingConv = CallingConventions[scope.Config.Arch][scope.Config.Platform]
 
 	args := make([]value.Value, 0)
 
-	for _, a := range f.Arguments {
+	for idx, a := range f.Arguments {
 		tr := &tokens.TypeRef{}
 
 		if a.Out {
@@ -229,6 +434,20 @@ func (impls *LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncC
 				f.Pos,
 			)
 			return
+		}
+
+		if idx < len(mthUnwrapped.Arguments) {
+			argVar := mthUnwrapped.Arguments[idx]
+			argInfo := LLVMGetValueInformation(&argVar)
+			if argInfo.GeckoType != nil {
+				tr = argInfo.GeckoType
+			} else if argInfo.Type != nil {
+				if inferred := llirTypeToGeckoTypeRef(argInfo.Type); inferred != nil {
+					tr = inferred
+				}
+			} else if argVar.IsPointer {
+				tr = &tokens.TypeRef{Type: "int8", Pointer: true}
+			}
 		}
 
 		argValue := impls.ExpressionToLLIRValue(a.Value, scope, tr)
@@ -242,7 +461,7 @@ func (impls *LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncC
 
 	call := callerInfo.LocalContext.MainBlock.NewCall(fn, args...)
 
-	FuncCalls[scope.FullScopeName()+"#"+f.Function] = call
+	FuncCalls[llvmFuncCallCacheKey(scope, f)] = call
 }
 
 func (impl *LLVMBackendImplementation) NewImplementation(scope *ast.Ast, i *tokens.Implementation) {
@@ -265,7 +484,44 @@ func (impl *LLVMBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait)
 }
 
 func (impl *LLVMBackendImplementation) NewEnum(scope *ast.Ast, e *tokens.Enum) {
-	// TODO: Implement LLVM enum generation
+	if e == nil {
+		return
+	}
+
+	enumAst := &ast.Ast{
+		Scope:        e.Name,
+		Parent:       scope,
+		OriginModule: scope.GetRoot().Scope,
+		SourceFile:   scope.GetSourceFile(),
+	}
+	enumAst.Init(scope.ErrorScope)
+
+	enumInfo := &LLVMEnumInfo{
+		LLVMType: types.I32,
+		Cases:    make(map[string]int64),
+	}
+
+	for idx, caseName := range e.Cases {
+		enumAst.Variables[caseName] = ast.Variable{
+			Name:    caseName,
+			IsConst: true,
+			Parent:  enumAst,
+		}
+
+		caseVar := enumAst.Variables[caseName]
+		caseValue := int64(idx)
+		enumInfo.Cases[caseName] = caseValue
+
+		(*LLVMProgramValues)[caseVar.GetFullName()] = &LLVMValueInformation{
+			Type:       enumInfo.LLVMType,
+			Value:      constant.NewInt(enumInfo.LLVMType, caseValue),
+			GeckoType:  &tokens.TypeRef{Type: e.Name},
+			IsVolatile: false,
+		}
+	}
+
+	scope.Classes[e.Name] = enumAst
+	LLVMEnumMap[enumAst.FullScopeName()] = enumInfo
 }
 
 func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) {
@@ -291,13 +547,38 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 	}
 
 	fnParams := make([]*ir.Param, 0)
+	resolvedArgTypes := make([]*tokens.TypeRef, len(m.Arguments))
 
-	for _, a := range m.Arguments {
-		// Validate parameter type
-		if a.Type != nil {
-			a.Type.Check(scope)
+	for idx, a := range m.Arguments {
+		resolvedType := a.Type
+		if resolvedType == nil && a.Name == "self" {
+			if !scope.ResolveClass(scope.Scope).IsNil() {
+				resolvedType = &tokens.TypeRef{Type: scope.Scope, Pointer: true}
+			}
 		}
-		ty := impl.TypeRefGetLLIRType(a.Type, scope)
+		if resolvedType == nil {
+			scope.ErrorScope.NewCompileTimeError(
+				"Type Inference Error",
+				"unable to infer parameter type for '"+a.Name+"'; please add an explicit type annotation",
+				m.Pos,
+			)
+			// Keep lowering in a non-panicking state to surface all diagnostics.
+			resolvedType = &tokens.TypeRef{Type: "int8", Pointer: true}
+		}
+		resolvedArgTypes[idx] = resolvedType
+		m.Arguments[idx].Type = resolvedType
+
+		// Validate parameter type
+		resolvedType.Check(scope)
+		ty := impl.TypeRefGetLLIRType(resolvedType, scope)
+		if ty == nil {
+			scope.ErrorScope.NewCompileTimeError(
+				"Type Check Error",
+				"unable to lower LLVM type for parameter '"+a.Name+"'",
+				m.Pos,
+			)
+			ty = types.I8Ptr
+		}
 		if m.Visibility == "external" && a.Out {
 			ty = types.NewPointer(ty)
 		}
@@ -359,20 +640,25 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 	}
 	scope.Methods[m.Name] = astMth
 
+	methodScopeKey := methodScope.GetFullName()
+	(*LLVMScopeDataMap)[methodScopeKey] = mthInfo
 	(*LLVMScopeDataMap)[astMth.GetFullName()] = mthInfo
-	repr.Println(*LLVMScopeDataMap, mthInfo)
 
 	info.ChildContexts[astMth.GetFullName()] = mthInfo.LocalContext
+	info.ChildContexts[methodScopeKey] = mthInfo.LocalContext
 	info.ProgramContext.Module.Funcs = append(info.ProgramContext.Module.Funcs, mthInfo.LocalContext.Func)
 
 	// Add arguments as variables
 
-	for _, v := range m.Arguments {
-		repr.Println(v.Type, v.Name)
+	for idx, v := range m.Arguments {
+		argType := resolvedArgTypes[idx]
+		if argType == nil {
+			argType = &tokens.TypeRef{Type: "int8", Pointer: true}
+		}
 		mVariable := ast.Variable{
-			IsPointer:  v.Type.Pointer || (m.Visibility == "external" && v.Out),
-			IsConst:    v.Type.Const,
-			IsVolatile: v.Type.Volatile,
+			IsPointer:  argType.Pointer || (m.Visibility == "external" && v.Out),
+			IsConst:    argType.Const,
+			IsVolatile: argType.Volatile,
 			IsExternal: false,
 			IsArgument: true,
 			Name:       v.Name,
@@ -381,13 +667,16 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 
 		methodScope.Variables[v.Name] = mVariable
 
-		vIrType := impl.TypeRefGetLLIRType(v.Type, scope)
+		vIrType := impl.TypeRefGetLLIRType(argType, scope)
+		if vIrType == nil {
+			vIrType = types.I8Ptr
+		}
 
 		(*LLVMProgramValues)[mVariable.GetFullName()] = &LLVMValueInformation{
 			Type:       vIrType,
 			Value:      ir.NewParam(v.Name, vIrType),
-			GeckoType:  v.Type,
-			IsVolatile: v.Type.Volatile,
+			GeckoType:  argType,
+			IsVolatile: argType.Volatile,
 		}
 	}
 
@@ -407,9 +696,15 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 }
 
 func (impl *LLVMBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field) {
+	typeWasExplicit := f.Type != nil
 	if f.Type == nil {
-		scope.ErrorScope.NewCompileTimeError("TODO: Infer variable type", "variable type inference not implemented", f.Pos)
-		f.Type = &tokens.TypeRef{}
+		f.Type = impl.inferFieldType(scope, f)
+	}
+	if f.Type == nil {
+		f.Type = &tokens.TypeRef{Type: "int32"}
+	}
+	if typeWasExplicit {
+		f.Type.Check(scope)
 	}
 
 	// Check for const - either from Type.Const or from Mutability == "const"
@@ -419,8 +714,6 @@ func (impl *LLVMBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Fie
 		scope.ErrorScope.NewCompileTimeError("Uninitialized constant", "constant must be initialized with a value", f.Pos)
 		f.Value = &tokens.Expression{}
 	}
-
-	repr.Println(scope.GetFullName())
 
 	info := LLVMGetScopeInformation(scope)
 
@@ -453,6 +746,43 @@ func (impl *LLVMBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Fie
 	}
 
 	scope.Variables[f.Name] = fieldVariable
+}
+
+func (impl *LLVMBackendImplementation) inferFieldType(scope *ast.Ast, f *tokens.Field) *tokens.TypeRef {
+	if f == nil {
+		return nil
+	}
+	if f.Type != nil {
+		return f.Type
+	}
+	if f.Value == nil {
+		scope.ErrorScope.NewCompileTimeError(
+			"Type Inference Error",
+			"Unable to infer variable type; please provide an explicit type annotation",
+			f.Pos,
+		)
+		return nil
+	}
+
+	resolveSymbol := func(name string) *tokens.TypeRef {
+		opt := scope.ResolveSymbolAsVariable(name)
+		if opt.IsNil() {
+			return nil
+		}
+		v := opt.Unwrap()
+		info := LLVMGetValueInformation(v)
+		return info.GeckoType
+	}
+
+	inferred := tokens.InferType(f.Value, resolveSymbol)
+	if inferred == nil {
+		scope.ErrorScope.NewCompileTimeError(
+			"Type Inference Error",
+			"Unable to infer variable type; please provide an explicit type annotation",
+			f.Pos,
+		)
+	}
+	return inferred
 }
 
 // NewGlobalVariable creates a global LLVM variable with optional section attribute

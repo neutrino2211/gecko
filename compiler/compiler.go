@@ -758,10 +758,54 @@ func Compile(file string, config *config.CompileCfg) string {
 	}
 
 	if err != nil {
-		compileErrorScope.NewCompileTimeError("Compilation Backend Error", "Error compiling for backend '"+backend+"' "+err.Error(), lexer.Position{})
+		msg := "Error compiling for backend '" + backend + "' " + err.Error()
+		if backend == "llvm" && strings.Contains(err.Error(), "\"llc\"") && strings.Contains(err.Error(), "executable file not found") {
+			msg = "LLVM toolchain error: llc not found in PATH"
+		}
+		compileErrorScope.NewCompileTimeError("Compilation Backend Error", msg, lexer.Position{})
+		return ""
 	}
 
-	return compiledName
+	artifactPath := expectedArtifactPath(backend, file, outName, compiledName, config)
+	if artifactPath == "" {
+		return ""
+	}
+
+	if _, statErr := os.Stat(artifactPath); statErr != nil {
+		compileErrorScope.NewCompileTimeError(
+			"Compilation Backend Error",
+			"Expected backend artifact '"+artifactPath+"' was not generated: "+statErr.Error(),
+			lexer.Position{},
+		)
+		return ""
+	}
+
+	return artifactPath
+}
+
+func expectedArtifactPath(backend, sourceFile, irPath, objPath string, cfg *config.CompileCfg) string {
+	irOnly := cfg != nil && cfg.Ctx != nil && cfg.Ctx.Bool("ir-only")
+
+	switch backend {
+	case "llvm":
+		if irOnly {
+			return irPath
+		}
+		return objPath
+	case "c":
+		if irOnly {
+			if cfg != nil && cfg.Project != nil {
+				return cfg.Project.GetArtifactPath(sourceFile, ".c")
+			}
+			return sourceFile + ".c"
+		}
+		return objPath
+	default:
+		if irOnly {
+			return irPath
+		}
+		return objPath
+	}
 }
 
 func haveErrors() bool {

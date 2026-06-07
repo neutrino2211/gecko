@@ -5,7 +5,7 @@ package llvmbackend
 import (
 	"strconv"
 
-	"github.com/alecthomas/repr"
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/llir/llvm/ir/constant"
 	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/types"
@@ -30,6 +30,14 @@ var comparisonOps map[string]enum.IPred = map[string]enum.IPred{
 	">=": enum.IPredSGE, // signed greater than or equal
 	"<":  enum.IPredSLT, // signed less than
 	"<=": enum.IPredSLE, // signed less than or equal
+}
+
+func (impl *LLVMBackendImplementation) requireBinaryOperands(scope *ast.Ast, op string, left value.Value, right value.Value, pos lexer.Position) bool {
+	if left == nil || right == nil {
+		scope.ErrorScope.NewCompileTimeError("Expression Error", "unable to evaluate operands for operator '"+op+"'", pos)
+		return false
+	}
+	return true
 }
 
 func (impl *LLVMBackendImplementation) ExpressionToLLIRValue(e *tokens.Expression, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
@@ -57,6 +65,9 @@ func (impl *LLVMBackendImplementation) LogicalOrToLLIRValue(lo *tokens.LogicalOr
 
 	if lo.Next != nil {
 		v := impl.LogicalOrToLLIRValue(lo.Next, scope, expressionType)
+		if !impl.requireBinaryOperands(scope, "||", base, v, lo.Pos) {
+			return nil
+		}
 		info := LLVMGetScopeInformation(scope)
 		base = info.LocalContext.MainBlock.NewOr(base, v)
 	}
@@ -75,6 +86,9 @@ func (impl *LLVMBackendImplementation) LogicalAndToLLIRValue(la *tokens.LogicalA
 
 	if la.Next != nil {
 		v := impl.LogicalAndToLLIRValue(la.Next, scope, expressionType)
+		if !impl.requireBinaryOperands(scope, "&&", base, v, la.Pos) {
+			return nil
+		}
 		info := LLVMGetScopeInformation(scope)
 		base = info.LocalContext.MainBlock.NewAnd(base, v)
 	}
@@ -91,9 +105,13 @@ func (impl *LLVMBackendImplementation) EqualityToLLIRValue(eq *tokens.Equality, 
 
 	if eq.Next != nil {
 		v := impl.EqualityToLLIRValue(eq.Next, scope, expressionType)
+		left := impl.ComparisonToLLIRValue(eq.Comparison, scope, expressionType)
+		if !impl.requireBinaryOperands(scope, eq.Op, left, v, eq.Pos) {
+			return nil
+		}
 		info := LLVMGetScopeInformation(scope)
 
-		base = info.LocalContext.MainBlock.NewICmp(equalityOps[eq.Op], impl.ComparisonToLLIRValue(eq.Comparison, scope, expressionType), v)
+		base = info.LocalContext.MainBlock.NewICmp(equalityOps[eq.Op], left, v)
 		// base += eq.Op
 		// base += eq.Next.ToLLIRValue(scope)
 	} else {
@@ -112,9 +130,13 @@ func (impl *LLVMBackendImplementation) ComparisonToLLIRValue(c *tokens.Compariso
 
 	if c.Next != nil {
 		v := impl.ComparisonToLLIRValue(c.Next, scope, expressionType)
+		left := impl.AdditionToLLIRValue(c.Addition, scope, expressionType)
+		if !impl.requireBinaryOperands(scope, c.Op, left, v, c.Pos) {
+			return nil
+		}
 		info := LLVMGetScopeInformation(scope)
 
-		base = info.LocalContext.MainBlock.NewICmp(comparisonOps[c.Op], impl.AdditionToLLIRValue(c.Addition, scope, expressionType), v)
+		base = info.LocalContext.MainBlock.NewICmp(comparisonOps[c.Op], left, v)
 	} else {
 		base = impl.AdditionToLLIRValue(c.Addition, scope, expressionType)
 	}
@@ -132,6 +154,9 @@ func (impl *LLVMBackendImplementation) AdditionToLLIRValue(a *tokens.Addition, s
 	if a.Next != nil {
 		left := impl.MultiplicationToLLIRValue(a.Multiplication, scope, expressionType)
 		right := impl.AdditionToLLIRValue(a.Next, scope, expressionType)
+		if !impl.requireBinaryOperands(scope, a.Op, left, right, a.Pos) {
+			return nil
+		}
 		info := LLVMGetScopeInformation(scope)
 
 		switch a.Op {
@@ -171,6 +196,9 @@ func (impl *LLVMBackendImplementation) MultiplicationToLLIRValue(m *tokens.Multi
 	if m.Next != nil {
 		left := impl.UnaryToLLIRValue(m.Unary, scope, expressionType)
 		right := impl.MultiplicationToLLIRValue(m.Next, scope, expressionType)
+		if !impl.requireBinaryOperands(scope, m.Op, left, right, m.Pos) {
+			return nil
+		}
 		info := LLVMGetScopeInformation(scope)
 
 		switch m.Op {
@@ -198,6 +226,10 @@ func (impl *LLVMBackendImplementation) UnaryToLLIRValue(u *tokens.Unary, scope *
 
 	if u.Unary != nil {
 		operand := impl.UnaryToLLIRValue(u.Unary, scope, expressionType)
+		if operand == nil {
+			scope.ErrorScope.NewCompileTimeError("Expression Error", "unable to evaluate operand for unary operator '"+u.Op+"'", u.Pos)
+			return nil
+		}
 		info := LLVMGetScopeInformation(scope)
 
 		switch u.Op {
@@ -340,8 +372,17 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 		}
 
 		str := constant.NewCharArrayFromString(actual + string('\x00'))
-		println(actual, p.Literal.IsPointer)
+		// Gecko string literals are pointer-oriented (C-string style) in call/assignment contexts.
+		// Keep the previous array form only when an explicit array type is expected.
+		lowerAsPointer := true
+		if expressionType != nil && expressionType.Array != nil {
+			lowerAsPointer = false
+		}
 		if p.Literal.IsPointer {
+			lowerAsPointer = true
+		}
+
+		if lowerAsPointer {
 			def := info.ProgramContext.Module.NewGlobalDef(".str."+p.GetID(), str)
 			def.Linkage = enum.LinkagePrivate
 
@@ -369,7 +410,6 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 				Literal: e,
 			}
 			v := impl.PrimaryToLLIRValue(p, scope, expressionType)
-			repr.Println(v.Type().LLString(), memDirect.Typ.LLString())
 
 			// info.LocalContext.MainBlock.NewStore(v, mem)
 
@@ -405,23 +445,12 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 		}
 
 	} else if p.Literal.Symbol != "" {
-		symbolName := p.Literal.Symbol
-		symbolVariable := scope.ResolveSymbolAsVariable(symbolName)
-
-		if !symbolVariable.IsNil() {
-			variable := symbolVariable.Unwrap()
-
-			base = LLVMGetValueInformation(variable).Value
-			repr.Println(variable.GetFullName(), base)
-			// repr.Println(symbolVariable.Unwrap().GetLLIRType(scope))
-		} else {
-			scope.ErrorScope.NewCompileTimeError("Variable Resolution Error", "Unable to resolve the variable '"+symbolName+"'", p.Pos)
-		}
+		base = impl.ResolveSymbolChainValue(scope, p.Literal.Symbol, p.Literal.Chain, p.Pos, p.Literal.IsPointer)
 	} else if p.Literal.FuncCall != nil {
 		// base = p.FuncCall.(scope)
 		CurrentBackend.GetImpls().FuncCall(scope, p.Literal.FuncCall)
 
-		call := FuncCalls[scope.FullScopeName()+"#"+p.Literal.FuncCall.Function]
+		call := FuncCalls[llvmFuncCallCacheKey(scope, p.Literal.FuncCall)]
 
 		if call != nil {
 			base = call

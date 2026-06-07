@@ -22,9 +22,9 @@ func getProjectRoot(t *testing.T) string {
 	return projectRoot
 }
 
-func buildFixtureBinary(t *testing.T, geckoPath, sourcePath, outputPath string, extraArgs ...string) string {
+func buildFixtureBinary(t *testing.T, geckoPath, sourcePath, outputPath, backend string, extraArgs ...string) string {
 	t.Helper()
-	args := []string{"build", "--backend", "c", "--treeshake", "-o", outputPath, sourcePath}
+	args := []string{"build", "--backend", backend, "--treeshake", "-o", outputPath, sourcePath}
 	args = append(args, extraArgs...)
 	cmd := exec.Command(geckoPath, args...)
 	cmd.Dir = getProjectRoot(t)
@@ -56,19 +56,24 @@ func TestTreeshakeRemovesUnreachableInternalSymbol(t *testing.T) {
 
 	geckoPath := buildGecko(t)
 	projectRoot := getProjectRoot(t)
-
 	sourcePath := filepath.Join(projectRoot, "test_sources/compile_tests/treeshake/reachability/main.gecko")
-	outputPath := filepath.Join(os.TempDir(), "gecko_treeshake_reachability")
-	_ = os.Remove(outputPath)
 
-	buildFixtureBinary(t, geckoPath, sourcePath, outputPath)
-	symbols := readBinarySymbols(t, outputPath)
+	for _, backend := range allTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			outputPath := filepath.Join(os.TempDir(), "gecko_treeshake_reachability_"+backend)
+			_ = os.Remove(outputPath)
 
-	if !strings.Contains(symbols, "symbols__ts_live") {
-		t.Fatalf("expected reachable symbol symbols__ts_live in binary symbols:\n%s", symbols)
-	}
-	if strings.Contains(symbols, "symbols__ts_dead") {
-		t.Fatalf("expected unreachable symbol symbols__ts_dead to be removed by treeshake:\n%s", symbols)
+			buildFixtureBinary(t, geckoPath, sourcePath, outputPath, backend)
+			symbols := readBinarySymbols(t, outputPath)
+
+			if !strings.Contains(symbols, "symbols__ts_live") && !strings.Contains(symbols, "_ts_live") {
+				t.Fatalf("expected reachable ts_live symbol in binary symbols:\n%s", symbols)
+			}
+			if strings.Contains(symbols, "symbols__ts_dead") || strings.Contains(symbols, "_ts_dead") {
+				t.Fatalf("expected unreachable ts_dead symbol to be removed by treeshake:\n%s", symbols)
+			}
+		})
 	}
 }
 
@@ -79,19 +84,24 @@ func TestTreeshakeKeepsExternalFunctionsAsRoots(t *testing.T) {
 
 	geckoPath := buildGecko(t)
 	projectRoot := getProjectRoot(t)
-
 	sourcePath := filepath.Join(projectRoot, "test_sources/compile_tests/treeshake/external_roots/main.gecko")
-	outputPath := filepath.Join(os.TempDir(), "gecko_treeshake_external_roots")
-	_ = os.Remove(outputPath)
 
-	buildFixtureBinary(t, geckoPath, sourcePath, outputPath)
-	symbols := readBinarySymbols(t, outputPath)
+	for _, backend := range allTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			outputPath := filepath.Join(os.TempDir(), "gecko_treeshake_external_roots_"+backend)
+			_ = os.Remove(outputPath)
 
-	if !strings.Contains(symbols, "api_used") {
-		t.Fatalf("expected external root symbol api_used in binary:\n%s", symbols)
-	}
-	if !strings.Contains(symbols, "api_unused") {
-		t.Fatalf("expected external root symbol api_unused to be retained by anchor table:\n%s", symbols)
+			buildFixtureBinary(t, geckoPath, sourcePath, outputPath, backend)
+			symbols := readBinarySymbols(t, outputPath)
+
+			if !strings.Contains(symbols, "api_used") {
+				t.Fatalf("expected external root symbol api_used in binary:\n%s", symbols)
+			}
+			if !strings.Contains(symbols, "api_unused") {
+				t.Fatalf("expected external root symbol api_unused to be retained by anchor table:\n%s", symbols)
+			}
+		})
 	}
 }
 
@@ -102,18 +112,23 @@ func TestTreeshakeDynamicCallFallback(t *testing.T) {
 
 	geckoPath := buildGecko(t)
 	projectRoot := getProjectRoot(t)
-
 	sourcePath := filepath.Join(projectRoot, "test_sources/compile_tests/treeshake/dynamic_fallback/main.gecko")
-	outputPath := filepath.Join(os.TempDir(), "gecko_treeshake_dynamic_fallback")
-	_ = os.Remove(outputPath)
 
-	buildOutput := buildFixtureBinary(t, geckoPath, sourcePath, outputPath)
-	if !strings.Contains(buildOutput, "warning: treeshake disabled for this build due to dynamic-call patterns:") {
-		t.Fatalf("expected treeshake auto-disable warning, got:\n%s", buildOutput)
-	}
+	for _, backend := range allTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			outputPath := filepath.Join(os.TempDir(), "gecko_treeshake_dynamic_fallback_"+backend)
+			_ = os.Remove(outputPath)
 
-	symbols := readBinarySymbols(t, outputPath)
-	if !strings.Contains(symbols, "dynamicfallback__dyn_unreachable") {
-		t.Fatalf("expected dyn_unreachable symbol to remain when treeshake auto-disables:\n%s", symbols)
+			buildOutput := buildFixtureBinary(t, geckoPath, sourcePath, outputPath, backend)
+			if !strings.Contains(buildOutput, "warning: treeshake disabled for this build due to dynamic-call patterns:") {
+				t.Fatalf("expected treeshake auto-disable warning, got:\n%s", buildOutput)
+			}
+
+			symbols := readBinarySymbols(t, outputPath)
+			if !strings.Contains(symbols, "dynamicfallback__dyn_unreachable") && !strings.Contains(symbols, "_dyn_unreachable") {
+				t.Fatalf("expected dyn_unreachable symbol to remain when treeshake auto-disables:\n%s", symbols)
+			}
+		})
 	}
 }

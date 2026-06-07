@@ -16,6 +16,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+var commandTestBackends = []string{"c", "llvm"}
+
 func requireTool(t *testing.T, tool string) {
 	t.Helper()
 	if _, err := exec.LookPath(tool); err != nil {
@@ -23,7 +25,20 @@ func requireTool(t *testing.T, tool string) {
 	}
 }
 
-func writeLLVMFixtureMain(t *testing.T, returnCode int32) string {
+func requireBackendToolchain(t *testing.T, backend string) {
+	t.Helper()
+	switch backend {
+	case "llvm":
+		requireTool(t, "llc")
+		requireTool(t, "clang")
+	case "c":
+		requireTool(t, "gcc")
+	default:
+		t.Fatalf("unknown backend %q", backend)
+	}
+}
+
+func writeBackendFixtureMain(t *testing.T, returnCode int32) string {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -35,6 +50,26 @@ external func main(): int32 {
     return code
 }
 `, returnCode)
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+		t.Fatalf("failed writing fixture: %v", err)
+	}
+	return sourcePath
+}
+
+func writeBackendFixtureGlobalAssignment(t *testing.T, assignedValue int32) string {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "main.gecko")
+	source := fmt.Sprintf(`package main
+
+let g_code: int32 = 0
+
+external func main(): int32 {
+    g_code = %d
+    return g_code
+}
+`, assignedValue)
 	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
 		t.Fatalf("failed writing fixture: %v", err)
 	}
@@ -61,12 +96,12 @@ func runGeckoCommand(t *testing.T, geckoPath, projectRoot string, args ...string
 	return string(output), exitCode
 }
 
-func newLLVMCompilerContext(t *testing.T, irOnly bool) *cli.Context {
+func newCompilerContext(t *testing.T, backend string, irOnly bool) *cli.Context {
 	t.Helper()
 
-	fs := flag.NewFlagSet("llvm-compiler-artifact", flag.ContinueOnError)
+	fs := flag.NewFlagSet("backend-compiler-artifact", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	fs.String("backend", "llvm", "")
+	fs.String("backend", backend, "")
 	fs.String("target-arch", runtime.GOARCH, "")
 	fs.String("target-platform", runtime.GOOS, "")
 	fs.String("target-vendor", "", "")
@@ -93,25 +128,29 @@ func diagnosticsString(diags []compiler.DiagnosticMessage) string {
 	return strings.Join(lines, "\n")
 }
 
-func TestLLVMCompileCommandProducesObjectArtifact(t *testing.T) {
-	requireTool(t, "llc")
-
+func TestBackendCompileCommandProducesObjectArtifact(t *testing.T) {
 	geckoPath := buildGecko(t)
 	projectRoot := projectRootForTests(t)
-	sourcePath := writeLLVMFixtureMain(t, 17)
+	sourcePath := writeBackendFixtureMain(t, 17)
 	objectPath := sourcePath + ".o"
 
-	_, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "compile", "--backend", "llvm", sourcePath)
-	if exitCode != 0 {
-		t.Fatalf("expected compile command to exit with code 0, got %d", exitCode)
-	}
-	if _, err := os.Stat(objectPath); err != nil {
-		t.Fatalf("expected LLVM object artifact at %s: %v", objectPath, err)
+	for _, backend := range commandTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			requireBackendToolchain(t, backend)
+			_, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "compile", "--backend", backend, sourcePath)
+			if exitCode != 0 {
+				t.Fatalf("expected compile command to exit with code 0, got %d", exitCode)
+			}
+			if _, err := os.Stat(objectPath); err != nil {
+				t.Fatalf("expected object artifact at %s: %v", objectPath, err)
+			}
+		})
 	}
 }
 
 func TestLLVMOnlyExampleCompileCommandProducesObjectArtifact(t *testing.T) {
-	requireTool(t, "llc")
+	requireBackendToolchain(t, "llvm")
 
 	geckoPath := buildGecko(t)
 	projectRoot := projectRootForTests(t)
@@ -129,12 +168,11 @@ func TestLLVMOnlyExampleCompileCommandProducesObjectArtifact(t *testing.T) {
 }
 
 func TestLLVMOnlyExampleRunCommandUsesSourceBackendAttribute(t *testing.T) {
-	requireTool(t, "llc")
-	requireTool(t, "clang")
+	requireBackendToolchain(t, "llvm")
 
 	geckoPath := buildGecko(t)
 	projectRoot := projectRootForTests(t)
-	sourcePath := writeLLVMFixtureMain(t, 34)
+	sourcePath := writeBackendFixtureMain(t, 34)
 
 	output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "run", sourcePath)
 	if exitCode != 34 {
@@ -142,27 +180,36 @@ func TestLLVMOnlyExampleRunCommandUsesSourceBackendAttribute(t *testing.T) {
 	}
 }
 
-func TestLLVMCompileCommandIROnlyProducesIRArtifact(t *testing.T) {
+func TestBackendCompileCommandIROnlyProducesIRArtifact(t *testing.T) {
 	geckoPath := buildGecko(t)
 	projectRoot := projectRootForTests(t)
-	sourcePath := writeLLVMFixtureMain(t, 17)
-	irPath := sourcePath + ".ll"
+	sourcePath := writeBackendFixtureMain(t, 17)
 
-	_, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "compile", "--backend", "llvm", "--ir-only", sourcePath)
-	if exitCode != 0 {
-		t.Fatalf("expected ir-only compile command to exit with code 0, got %d", exitCode)
-	}
-	if _, err := os.Stat(irPath); err != nil {
-		t.Fatalf("expected LLVM IR artifact at %s: %v", irPath, err)
+	for _, backend := range commandTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			requireBackendToolchain(t, backend)
+			_, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "compile", "--backend", backend, "--ir-only", sourcePath)
+			if exitCode != 0 {
+				t.Fatalf("expected ir-only compile command to exit with code 0, got %d", exitCode)
+			}
+
+			ext := ".c"
+			if backend == "llvm" {
+				ext = ".ll"
+			}
+			irPath := sourcePath + ext
+			if _, err := os.Stat(irPath); err != nil {
+				t.Fatalf("expected %s ir-only artifact at %s: %v", backend, irPath, err)
+			}
+		})
 	}
 }
 
-func TestLLVMCompileCommandSupportsInt32ReturnLiteral(t *testing.T) {
-	requireTool(t, "llc")
-
+func TestBackendCompileCommandSupportsInt32ReturnLiteral(t *testing.T) {
 	geckoPath := buildGecko(t)
 	projectRoot := projectRootForTests(t)
-	sourcePath := writeLLVMFixtureMain(t, 17)
+	sourcePath := writeBackendFixtureMain(t, 17)
 	objectPath := sourcePath + ".o"
 
 	// Re-write fixture to use a raw integer literal return to guard against i64 return emission.
@@ -175,66 +222,96 @@ external func main(): int32 {
 		t.Fatalf("failed writing fixture: %v", err)
 	}
 
-	output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "compile", "--backend", "llvm", sourcePath)
-	if exitCode != 0 {
-		t.Fatalf("expected literal-return compile command to exit with code 0, got %d\n%s", exitCode, output)
-	}
-	if _, err := os.Stat(objectPath); err != nil {
-		t.Fatalf("expected LLVM object artifact at %s: %v", objectPath, err)
-	}
-}
-
-func TestLLVMBuildCommandProducesRunnableBinary(t *testing.T) {
-	requireTool(t, "llc")
-	requireTool(t, "clang")
-
-	geckoPath := buildGecko(t)
-	projectRoot := projectRootForTests(t)
-	sourcePath := writeLLVMFixtureMain(t, 17)
-	outputBin := filepath.Join(t.TempDir(), "llvm_build_output")
-
-	output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "build", "--backend", "llvm", "-o", outputBin, sourcePath)
-	if exitCode != 0 {
-		t.Fatalf("build command failed with exit %d\n%s", exitCode, output)
-	}
-	if _, err := os.Stat(outputBin); err != nil {
-		t.Fatalf("expected built binary at %s: %v", outputBin, err)
-	}
-
-	runCmd := exec.Command(outputBin)
-	runOutput, err := runCmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("expected binary to exit with code 17, got success\n%s", runOutput)
-	}
-	exitErr, ok := err.(*exec.ExitError)
-	if !ok {
-		t.Fatalf("failed to execute built binary: %v\n%s", err, runOutput)
-	}
-	if exitErr.ExitCode() != 17 {
-		t.Fatalf("expected built binary exit code 17, got %d\n%s", exitErr.ExitCode(), runOutput)
+	for _, backend := range commandTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			requireBackendToolchain(t, backend)
+			output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "compile", "--backend", backend, sourcePath)
+			if exitCode != 0 {
+				t.Fatalf("expected literal-return compile command to exit with code 0, got %d\n%s", exitCode, output)
+			}
+			if _, err := os.Stat(objectPath); err != nil {
+				t.Fatalf("expected object artifact at %s: %v", objectPath, err)
+			}
+		})
 	}
 }
 
-func TestLLVMRunCommandExecutesBinary(t *testing.T) {
-	requireTool(t, "llc")
-	requireTool(t, "clang")
-
+func TestBackendBuildCommandProducesRunnableBinary(t *testing.T) {
 	geckoPath := buildGecko(t)
 	projectRoot := projectRootForTests(t)
-	sourcePath := writeLLVMFixtureMain(t, 17)
+	sourcePath := writeBackendFixtureMain(t, 17)
 
-	output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "run", "--backend", "llvm", sourcePath)
-	if exitCode != 17 {
-		t.Fatalf("expected gecko run exit code 17, got %d\n%s", exitCode, output)
+	for _, backend := range commandTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			requireBackendToolchain(t, backend)
+			outputBin := filepath.Join(t.TempDir(), "build_output_"+backend)
+
+			output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "build", "--backend", backend, "-o", outputBin, sourcePath)
+			if exitCode != 0 {
+				t.Fatalf("build command failed with exit %d\n%s", exitCode, output)
+			}
+			if _, err := os.Stat(outputBin); err != nil {
+				t.Fatalf("expected built binary at %s: %v", outputBin, err)
+			}
+
+			runCmd := exec.Command(outputBin)
+			runOutput, err := runCmd.CombinedOutput()
+			if err == nil {
+				t.Fatalf("expected binary to exit with code 17, got success\n%s", runOutput)
+			}
+			exitErr, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatalf("failed to execute built binary: %v\n%s", err, runOutput)
+			}
+			if exitErr.ExitCode() != 17 {
+				t.Fatalf("expected built binary exit code 17, got %d\n%s", exitErr.ExitCode(), runOutput)
+			}
+		})
+	}
+}
+
+func TestBackendRunCommandExecutesBinary(t *testing.T) {
+	geckoPath := buildGecko(t)
+	projectRoot := projectRootForTests(t)
+	sourcePath := writeBackendFixtureMain(t, 17)
+
+	for _, backend := range commandTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			requireBackendToolchain(t, backend)
+			output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "run", "--backend", backend, sourcePath)
+			if exitCode != 17 {
+				t.Fatalf("expected gecko run exit code 17, got %d\n%s", exitCode, output)
+			}
+		})
+	}
+}
+
+func TestBackendRunCommandStoresGlobalAssignment(t *testing.T) {
+	geckoPath := buildGecko(t)
+	projectRoot := projectRootForTests(t)
+	sourcePath := writeBackendFixtureGlobalAssignment(t, 42)
+
+	for _, backend := range commandTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			requireBackendToolchain(t, backend)
+			output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "run", "--backend", backend, sourcePath)
+			if exitCode != 42 {
+				t.Fatalf("expected gecko run exit code 42 after global assignment, got %d\n%s", exitCode, output)
+			}
+		})
 	}
 }
 
 func TestLLVMCompileHardFailsWithoutCFallback(t *testing.T) {
-	requireTool(t, "llc")
+	requireBackendToolchain(t, "llvm")
 
 	geckoPath := buildGecko(t)
 	projectRoot := projectRootForTests(t)
-	sourcePath := writeLLVMFixtureMain(t, 17)
+	sourcePath := writeBackendFixtureMain(t, 17)
 	objectPath := sourcePath + ".o"
 	cPath := sourcePath + ".c"
 
@@ -260,9 +337,7 @@ func TestLLVMCompileHardFailsWithoutCFallback(t *testing.T) {
 	}
 }
 
-func TestLLVMCompileReportsExpressionErrorsWithoutPanic(t *testing.T) {
-	requireTool(t, "llc")
-
+func TestBackendCompileReportsExpressionErrorsWithoutPanic(t *testing.T) {
 	geckoPath := buildGecko(t)
 	projectRoot := projectRootForTests(t)
 
@@ -281,19 +356,23 @@ external func main(): int32 {
 		t.Fatalf("failed writing fixture: %v", err)
 	}
 
-	output, _ := runGeckoCommand(t, geckoPath, projectRoot, "compile", "--backend", "llvm", sourcePath)
-	if strings.Contains(output, "panic:") {
-		t.Fatalf("llvm compile should not panic on invalid expression\n%s", output)
-	}
-	if !outputHasErrorSummary(output) {
-		t.Fatalf("expected llvm compile to report an error summary for invalid expression\n%s", output)
+	for _, backend := range commandTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			requireBackendToolchain(t, backend)
+			output, _ := runGeckoCommand(t, geckoPath, projectRoot, "compile", "--backend", backend, sourcePath)
+			if strings.Contains(output, "panic:") {
+				t.Fatalf("%s compile should not panic on invalid expression\n%s", backend, output)
+			}
+			if !outputHasErrorSummary(output) {
+				t.Fatalf("expected %s compile to report an error summary for invalid expression\n%s", backend, output)
+			}
+		})
 	}
 }
 
-func TestCompilerLLVMArtifactContract(t *testing.T) {
-	requireTool(t, "llc")
-
-	sourcePath := writeLLVMFixtureMain(t, 17)
+func TestCompilerArtifactContract(t *testing.T) {
+	sourcePath := writeBackendFixtureMain(t, 17)
 	baseCfg := config.CompileCfg{
 		Arch:      runtime.GOARCH,
 		Platform:  runtime.GOOS,
@@ -306,31 +385,42 @@ func TestCompilerLLVMArtifactContract(t *testing.T) {
 		Project:   nil,
 	}
 
-	compiler.ResetCompilationState()
-	irCfg := baseCfg
-	irCfg.Ctx = newLLVMCompilerContext(t, true)
-	irArtifact := compiler.Compile(sourcePath, &irCfg)
-	if irArtifact == "" {
-		t.Fatalf("expected LLVM ir-only compile to return .ll artifact, got empty path\nDiagnostics:\n%s", diagnosticsString(compiler.GetAllErrors()))
-	}
-	if filepath.Ext(irArtifact) != ".ll" {
-		t.Fatalf("expected LLVM ir-only artifact extension .ll, got %s", irArtifact)
-	}
-	if _, err := os.Stat(irArtifact); err != nil {
-		t.Fatalf("expected LLVM ir-only artifact to exist at %s: %v", irArtifact, err)
-	}
+	for _, backend := range commandTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			requireBackendToolchain(t, backend)
 
-	compiler.ResetCompilationState()
-	objCfg := baseCfg
-	objCfg.Ctx = newLLVMCompilerContext(t, false)
-	objArtifact := compiler.Compile(sourcePath, &objCfg)
-	if objArtifact == "" {
-		t.Fatalf("expected LLVM object compile to return .o artifact, got empty path\nDiagnostics:\n%s", diagnosticsString(compiler.GetAllErrors()))
-	}
-	if filepath.Ext(objArtifact) != ".o" {
-		t.Fatalf("expected LLVM object artifact extension .o, got %s", objArtifact)
-	}
-	if _, err := os.Stat(objArtifact); err != nil {
-		t.Fatalf("expected LLVM object artifact to exist at %s: %v", objArtifact, err)
+			compiler.ResetCompilationState()
+			irCfg := baseCfg
+			irCfg.Ctx = newCompilerContext(t, backend, true)
+			irArtifact := compiler.Compile(sourcePath, &irCfg)
+			if irArtifact == "" {
+				t.Fatalf("expected %s ir-only compile to return artifact, got empty path\nDiagnostics:\n%s", backend, diagnosticsString(compiler.GetAllErrors()))
+			}
+			expectedIRExt := ".c"
+			if backend == "llvm" {
+				expectedIRExt = ".ll"
+			}
+			if filepath.Ext(irArtifact) != expectedIRExt {
+				t.Fatalf("expected %s ir-only artifact extension %s, got %s", backend, expectedIRExt, irArtifact)
+			}
+			if _, err := os.Stat(irArtifact); err != nil {
+				t.Fatalf("expected %s ir-only artifact to exist at %s: %v", backend, irArtifact, err)
+			}
+
+			compiler.ResetCompilationState()
+			objCfg := baseCfg
+			objCfg.Ctx = newCompilerContext(t, backend, false)
+			objArtifact := compiler.Compile(sourcePath, &objCfg)
+			if objArtifact == "" {
+				t.Fatalf("expected %s object compile to return .o artifact, got empty path\nDiagnostics:\n%s", backend, diagnosticsString(compiler.GetAllErrors()))
+			}
+			if filepath.Ext(objArtifact) != ".o" {
+				t.Fatalf("expected %s object artifact extension .o, got %s", backend, objArtifact)
+			}
+			if _, err := os.Stat(objArtifact); err != nil {
+				t.Fatalf("expected %s object artifact to exist at %s: %v", backend, objArtifact, err)
+			}
+		})
 	}
 }

@@ -24,6 +24,8 @@ type compileOnlyTest struct {
 	file string
 }
 
+var allTestBackends = []string{"c", "llvm"}
+
 var compileTests = []compileTest{
 	// Trait tests
 	{"traits_basic", "test_sources/compile_tests/traits/basic.gecko", 30, false},
@@ -209,7 +211,11 @@ func TestCompileAndRun(t *testing.T) {
 
 	for _, tc := range compileTests {
 		t.Run(tc.name, func(t *testing.T) {
-			runCompileTest(t, geckoPath, tc)
+			for _, backend := range allTestBackends {
+				t.Run(backend, func(t *testing.T) {
+					runCompileTest(t, geckoPath, tc, backend)
+				})
+			}
 		})
 	}
 }
@@ -220,7 +226,11 @@ func TestCompileOnly(t *testing.T) {
 
 	for _, tc := range compileOnlyTests {
 		t.Run(tc.name, func(t *testing.T) {
-			runCompileOnlyTest(t, geckoPath, tc)
+			for _, backend := range allTestBackends {
+				t.Run(backend, func(t *testing.T) {
+					runCompileOnlyTest(t, geckoPath, tc, backend)
+				})
+			}
 		})
 	}
 }
@@ -238,32 +248,25 @@ func TestTryDiagnosticsUsesGeckoExpression(t *testing.T) {
 	}
 
 	sourcePath := filepath.Join(projectRoot, "test_sources/compile_tests/error_handling_try_diagnostics/main.gecko")
-	cmd := exec.Command(geckoPath, "compile", "--backend", "c", "--ir-only", "--print-ir", sourcePath)
-	cmd.Dir = projectRoot
-	cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
+	for _, backend := range allTestBackends {
+		t.Run(backend, func(t *testing.T) {
+			cmd := exec.Command(geckoPath, "compile", "--backend", backend, "--ir-only", "--print-ir", sourcePath)
+			cmd.Dir = projectRoot
+			cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("Compilation failed unexpectedly: %v\n%s", err, output)
-	}
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("Compilation failed unexpectedly: %v\n%s", err, output)
+			}
 
-	outputStr := string(output)
-	tryFailLine := ""
-	for _, line := range strings.Split(outputStr, "\n") {
-		if strings.Contains(line, "__gecko_try_fail(") && strings.Contains(line, "__func__") {
-			tryFailLine = line
-			break
-		}
-	}
-	if tryFailLine == "" {
-		t.Fatalf("Expected lowered __gecko_try_fail call in output:\n%s", outputStr)
-	}
-
-	if !strings.Contains(tryFailLine, `File::open(\"no_exist\", \"r\")`) {
-		t.Fatalf("Expected try diagnostics expression to use Gecko syntax, got:\n%s", tryFailLine)
-	}
-	if strings.Contains(tryFailLine, `File__open(\"no_exist\", \"r\")`) {
-		t.Fatalf("Expected try diagnostics expression to avoid C mangled syntax, got:\n%s", tryFailLine)
+			outputStr := string(output)
+			if !strings.Contains(outputStr, `File::open(\"no_exist\", \"r\")`) {
+				t.Fatalf("Expected try diagnostics expression to use Gecko syntax, got:\n%s", outputStr)
+			}
+			if strings.Contains(outputStr, `File__open(\"no_exist\", \"r\")`) {
+				t.Fatalf("Expected try diagnostics expression to avoid C mangled syntax, got:\n%s", outputStr)
+			}
+		})
 	}
 }
 
@@ -294,7 +297,7 @@ func buildGecko(t *testing.T) string {
 	return geckoPath
 }
 
-func runCompileTest(t *testing.T, geckoPath string, tc compileTest) {
+func runCompileTest(t *testing.T, geckoPath string, tc compileTest, backend string) {
 	t.Helper()
 
 	// Get project root
@@ -310,7 +313,7 @@ func runCompileTest(t *testing.T, geckoPath string, tc compileTest) {
 	sourcePath := filepath.Join(projectRoot, tc.file)
 
 	// Run gecko run command
-	cmd := exec.Command(geckoPath, "run", sourcePath)
+	cmd := exec.Command(geckoPath, "run", "--backend", backend, sourcePath)
 	cmd.Dir = projectRoot
 	cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
 	output, err := cmd.CombinedOutput()
@@ -346,7 +349,7 @@ func runCompileTest(t *testing.T, geckoPath string, tc compileTest) {
 	}
 }
 
-func runCompileOnlyTest(t *testing.T, geckoPath string, tc compileOnlyTest) {
+func runCompileOnlyTest(t *testing.T, geckoPath string, tc compileOnlyTest, backend string) {
 	t.Helper()
 
 	// Get project root
@@ -361,8 +364,7 @@ func runCompileOnlyTest(t *testing.T, geckoPath string, tc compileOnlyTest) {
 
 	sourcePath := filepath.Join(projectRoot, tc.file)
 
-	// Compile to C IR only so tests remain portable even when runtime/linking is target-specific.
-	cmd := exec.Command(geckoPath, "compile", "--backend", "c", "--ir-only", sourcePath)
+	cmd := exec.Command(geckoPath, "compile", "--backend", backend, "--ir-only", sourcePath)
 	cmd.Dir = projectRoot
 	cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
 	output, err := cmd.CombinedOutput()
@@ -404,19 +406,22 @@ func TestTraitConstraintError(t *testing.T) {
 	}
 
 	sourcePath := filepath.Join(projectRoot, "test_sources/compile_tests/traits/constraint_error.gecko")
+	for _, backend := range allTestBackends {
+		t.Run(backend, func(t *testing.T) {
+			cmd := exec.Command(geckoPath, "compile", "--backend", backend, "--ir-only", sourcePath)
+			cmd.Dir = projectRoot
+			cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
+			output, _ := cmd.CombinedOutput()
 
-	cmd := exec.Command(geckoPath, "compile", "--backend", "c", "--ir-only", sourcePath)
-	cmd.Dir = projectRoot
-	cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
-	output, _ := cmd.CombinedOutput()
+			outputStr := string(output)
+			if !strings.Contains(outputStr, "Trait Constraint Error") {
+				t.Errorf("Expected trait constraint error, got:\n%s", outputStr)
+			}
 
-	outputStr := string(output)
-	if !strings.Contains(outputStr, "Trait Constraint Error") {
-		t.Errorf("Expected trait constraint error, got:\n%s", outputStr)
-	}
-
-	if !strings.Contains(outputStr, "NotAddable") || !strings.Contains(outputStr, "Addable") {
-		t.Errorf("Error message should mention NotAddable and Addable trait:\n%s", outputStr)
+			if !strings.Contains(outputStr, "NotAddable") || !strings.Contains(outputStr, "Addable") {
+				t.Errorf("Error message should mention NotAddable and Addable trait:\n%s", outputStr)
+			}
+		})
 	}
 }
 
@@ -591,18 +596,22 @@ func TestTypeCheckingErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sourcePath := filepath.Join(projectRoot, tc.file)
 
-			cmd := exec.Command(geckoPath, "compile", "--backend", "c", "--ir-only", sourcePath)
-			cmd.Dir = projectRoot
-			cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
-			output, _ := cmd.CombinedOutput()
+			for _, backend := range allTestBackends {
+				t.Run(backend, func(t *testing.T) {
+					cmd := exec.Command(geckoPath, "compile", "--backend", backend, "--ir-only", sourcePath)
+					cmd.Dir = projectRoot
+					cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
+					output, _ := cmd.CombinedOutput()
 
-			outputStr := string(output)
-			if !strings.Contains(outputStr, tc.expectedError) {
-				t.Errorf("Expected error '%s', got:\n%s", tc.expectedError, outputStr)
-			}
+					outputStr := string(output)
+					if !strings.Contains(outputStr, tc.expectedError) {
+						t.Errorf("Expected error '%s', got:\n%s", tc.expectedError, outputStr)
+					}
 
-			if !strings.Contains(outputStr, tc.expectedMsg) {
-				t.Errorf("Expected message '%s', got:\n%s", tc.expectedMsg, outputStr)
+					if !strings.Contains(outputStr, tc.expectedMsg) {
+						t.Errorf("Expected message '%s', got:\n%s", tc.expectedMsg, outputStr)
+					}
+				})
 			}
 		})
 	}

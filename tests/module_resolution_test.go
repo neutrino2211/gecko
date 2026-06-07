@@ -27,13 +27,13 @@ func writeFile(t *testing.T, path string, content string) {
 	}
 }
 
-func newTestCLIContext(t *testing.T) *cli.Context {
+func newTestCLIContext(t *testing.T, backend string) *cli.Context {
 	t.Helper()
 
 	app := cli.NewApp()
 	fs := flag.NewFlagSet("module-resolution-test", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	fs.String("backend", "c", "")
+	fs.String("backend", backend, "")
 	fs.String("target-arch", runtime.GOARCH, "")
 	fs.String("target-platform", runtime.GOOS, "")
 	fs.String("target-vendor", "", "")
@@ -44,9 +44,10 @@ func newTestCLIContext(t *testing.T) *cli.Context {
 	return cli.NewContext(app, fs, nil)
 }
 
-func compileAndCollectErrors(t *testing.T, sourcePath string, projectCfg *config.ProjectConfig) []compiler.DiagnosticMessage {
+func compileAndCollectErrors(t *testing.T, sourcePath string, projectCfg *config.ProjectConfig, backend string) []compiler.DiagnosticMessage {
 	t.Helper()
 
+	compiler.ResetCompilationState()
 	compiler.Compile(sourcePath, &config.CompileCfg{
 		Arch:      runtime.GOARCH,
 		Platform:  runtime.GOOS,
@@ -56,7 +57,7 @@ func compileAndCollectErrors(t *testing.T, sourcePath string, projectCfg *config
 		CLFlags:   []string{},
 		CObjects:  []string{},
 		CheckOnly: true,
-		Ctx:       newTestCLIContext(t),
+		Ctx:       newTestCLIContext(t, backend),
 		Project:   projectCfg,
 	})
 
@@ -74,6 +75,18 @@ func formatCompileErrors(errs []compiler.DiagnosticMessage) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func runResolutionCompileChecks(t *testing.T, sourcePath string, projectCfg *config.ProjectConfig, assertFn func(t *testing.T, backend string, errs []compiler.DiagnosticMessage)) {
+	t.Helper()
+
+	for _, backend := range allTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			errs := compileAndCollectErrors(t, sourcePath, projectCfg, backend)
+			assertFn(t, backend, errs)
+		})
+	}
 }
 
 func TestModuleResolutionPrefersImporterDirectory(t *testing.T) {
@@ -122,11 +135,11 @@ external func main(): int32 {
 		t.Fatalf("failed to load project config: %v", err)
 	}
 
-	compiler.ResetCompilationState()
-	errs := compileAndCollectErrors(t, mainPath, projectCfg)
-	if len(errs) > 0 {
-		t.Fatalf("expected compile success with importer-relative resolution, got errors:\n%s", formatCompileErrors(errs))
-	}
+	runResolutionCompileChecks(t, mainPath, projectCfg, func(t *testing.T, backend string, errs []compiler.DiagnosticMessage) {
+		if len(errs) > 0 {
+			t.Fatalf("expected compile success with importer-relative resolution, got errors:\n%s", formatCompileErrors(errs))
+		}
+	})
 }
 
 func TestModuleResolutionFallsBackToVendor(t *testing.T) {
@@ -167,11 +180,11 @@ external func main(): int32 {
 		t.Fatalf("failed to load project config: %v", err)
 	}
 
-	compiler.ResetCompilationState()
-	errs := compileAndCollectErrors(t, mainPath, projectCfg)
-	if len(errs) > 0 {
-		t.Fatalf("expected vendor fallback to resolve import, got errors:\n%s", formatCompileErrors(errs))
-	}
+	runResolutionCompileChecks(t, mainPath, projectCfg, func(t *testing.T, backend string, errs []compiler.DiagnosticMessage) {
+		if len(errs) > 0 {
+			t.Fatalf("expected vendor fallback to resolve import, got errors:\n%s", formatCompileErrors(errs))
+		}
+	})
 }
 
 func TestStdlibImportStripsPrefixDuringResolution(t *testing.T) {
@@ -209,11 +222,11 @@ external func main(): int32 {
 	}
 	defer os.Setenv("GECKO_HOME", oldHome)
 
-	compiler.ResetCompilationState()
-	errs := compileAndCollectErrors(t, mainPath, nil)
-	if len(errs) > 0 {
-		t.Fatalf("expected std.option to resolve to $GECKO_HOME/stdlib/option.gecko, got errors:\n%s", formatCompileErrors(errs))
-	}
+	runResolutionCompileChecks(t, mainPath, nil, func(t *testing.T, backend string, errs []compiler.DiagnosticMessage) {
+		if len(errs) > 0 {
+			t.Fatalf("expected std.option to resolve to $GECKO_HOME/stdlib/option.gecko, got errors:\n%s", formatCompileErrors(errs))
+		}
+	})
 }
 
 func TestDirectoryImportResolvesQualifiedTypeForDottedImportPath(t *testing.T) {
@@ -250,11 +263,11 @@ external func main(): int32 {
 }
 `)
 
-	compiler.ResetCompilationState()
-	errs := compileAndCollectErrors(t, mainPath, nil)
-	if len(errs) > 0 {
-		t.Fatalf("expected dotted directory import to resolve qualified type, got errors:\n%s", formatCompileErrors(errs))
-	}
+	runResolutionCompileChecks(t, mainPath, nil, func(t *testing.T, backend string, errs []compiler.DiagnosticMessage) {
+		if len(errs) > 0 {
+			t.Fatalf("expected dotted directory import to resolve qualified type, got errors:\n%s", formatCompileErrors(errs))
+		}
+	})
 }
 
 func TestSequentialCompilesDoNotLeakImportCacheAcrossFiles(t *testing.T) {
@@ -297,14 +310,18 @@ external func main(): int32 {
 }
 `)
 
-	compiler.ResetCompilationState()
-	errsA := compileAndCollectErrors(t, mainA, nil)
-	if len(errsA) > 0 {
-		t.Fatalf("first compile unexpectedly failed:\n%s", formatCompileErrors(errsA))
-	}
+	for _, backend := range allTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			errsA := compileAndCollectErrors(t, mainA, nil, backend)
+			if len(errsA) > 0 {
+				t.Fatalf("first compile unexpectedly failed:\n%s", formatCompileErrors(errsA))
+			}
 
-	errsB := compileAndCollectErrors(t, mainB, nil)
-	if len(errsB) > 0 {
-		t.Fatalf("second compile unexpectedly failed (possible cross-file import cache leak):\n%s", formatCompileErrors(errsB))
+			errsB := compileAndCollectErrors(t, mainB, nil, backend)
+			if len(errsB) > 0 {
+				t.Fatalf("second compile unexpectedly failed (possible cross-file import cache leak):\n%s", formatCompileErrors(errsB))
+			}
+		})
 	}
 }

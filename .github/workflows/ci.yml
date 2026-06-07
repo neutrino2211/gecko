@@ -19,6 +19,27 @@ jobs:
         with:
           go-version: '1.21'
 
+      - name: Install LLVM toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm clang
+
+          if ! command -v llc >/dev/null 2>&1; then
+            LLVM_LLC_PATH=$(find /usr/lib/llvm-* -type f -name llc 2>/dev/null | sort -V | tail -n1)
+            if [ -z "${LLVM_LLC_PATH}" ]; then
+              echo "llc not found after LLVM install"
+              exit 1
+            fi
+            echo "$(dirname "${LLVM_LLC_PATH}")" >> "${GITHUB_PATH}"
+          fi
+
+      - name: Verify LLVM tools
+        run: |
+          command -v llc
+          llc --version
+          command -v clang
+          clang --version
+
       - name: Install dependencies
         run: go mod download
 

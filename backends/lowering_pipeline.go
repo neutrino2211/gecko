@@ -74,7 +74,7 @@ func newImportedScope(importedFile *tokens.File, scopeName string, markImported 
 
 // PrepareSharedCompilePipeline performs backend-agnostic lowering preparation:
 // root scope creation, lazy resolver wiring, import graph processing, and entry lowering.
-func PrepareSharedCompilePipeline(b interfaces.BackendInteface, c *interfaces.BackendConfig, options SharedCompilePipelineOptions) *SharedCompilePipelineResult {
+func PrepareSharedCompilePipeline(b interfaces.BackendInterface, c *interfaces.BackendConfig, options SharedCompilePipelineOptions) *SharedCompilePipelineResult {
 	result := &SharedCompilePipelineResult{
 		ImportScopes: make([]*ast.Ast, 0),
 	}

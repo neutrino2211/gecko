@@ -31,6 +31,38 @@ type NullCheckInfo struct {
 	IsNotNull bool
 }
 
+// unwrapSubExpression walks the expression chain to extract a parenthesized sub-expression.
+func unwrapSubExpression(lo *tokens.LogicalOr) *tokens.Expression {
+	if lo == nil || lo.LogicalAnd == nil {
+		return nil
+	}
+	eq := lo.LogicalAnd.Equality
+	if eq == nil {
+		return nil
+	}
+	c := eq.Comparison
+	if c == nil {
+		return nil
+	}
+	a := c.Addition
+	if a == nil {
+		return nil
+	}
+	m := a.Multiplication
+	if m == nil {
+		return nil
+	}
+	u := m.Unary
+	if u == nil {
+		return nil
+	}
+	p := u.Primary
+	if p == nil {
+		return nil
+	}
+	return p.SubExpression
+}
+
 // DetectNullCheck analyzes an expression to see if it's a null check pattern.
 // Returns the variable name being checked and whether it's a != nil check.
 // Detects:
@@ -46,16 +78,10 @@ func DetectNullCheck(expr *tokens.Expression) *NullCheckInfo {
 
 	// Handle parenthesized expressions - unwrap SubExpression
 	lo := expr.GetLogicalOr()
-	if lo.LogicalAnd != nil && lo.LogicalAnd.Equality != nil &&
-		lo.LogicalAnd.Equality.Comparison != nil &&
-		lo.LogicalAnd.Equality.Comparison.Addition != nil &&
-		lo.LogicalAnd.Equality.Comparison.Addition.Multiplication != nil &&
-		lo.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary != nil &&
-		lo.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary != nil &&
-		lo.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary.SubExpression != nil {
+	if subExpr := unwrapSubExpression(lo); subExpr != nil {
 		// Recursively check the inner expression
 		narrowingDebug("DetectNullCheck: Found SubExpression, unwrapping")
-		return DetectNullCheck(lo.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary.SubExpression)
+		return DetectNullCheck(subExpr)
 	}
 
 	// Check for @is_not_null(ptr) or @is_null(ptr) intrinsic

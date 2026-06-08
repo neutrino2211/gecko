@@ -14,6 +14,7 @@ import (
 	cbackend "github.com/neutrino2211/gecko/backends/c_backend"
 	"github.com/neutrino2211/gecko/interfaces"
 	"github.com/neutrino2211/gecko/tokens"
+	"github.com/neutrino2211/gecko/utils"
 )
 
 type CBackend struct {
@@ -21,27 +22,22 @@ type CBackend struct {
 	features *FeatureSet
 }
 
-func dedupeStrings(values []string) []string {
-	out := make([]string, 0, len(values))
-	seen := make(map[string]bool, len(values))
-	for _, v := range values {
-		if v == "" {
-			continue
-		}
-		if seen[v] {
-			continue
-		}
-		seen[v] = true
-		out = append(out, v)
-	}
-	return out
-}
-
 func (b *CBackend) Init() {
 	b.features = NewCFeatureSet()
 	b.impls = &cbackend.CBackendImplementation{Backend: b}
 	cbackend.CurrentBackend = b
 	cbackend.Methods = make(map[string]*ast.Method)
+	cbackend.CScopeDataMap = &cbackend.CScopeData{}
+	cbackend.CProgramValues = &cbackend.CValuesMap{}
+	cbackend.MethodSignatures = make(map[string]*cbackend.MethodSignature)
+	cbackend.TraitDefinitions = make(map[string]*tokens.Trait)
+	cbackend.TraitDefinitionOrigins = make(map[string]string)
+	cbackend.EnumToCType = make(map[string]string)
+	cbackend.MethodReturnTypes = make(map[string]*tokens.TypeRef)
+	cbackend.Generics = cbackend.NewGenericRegistry()
+	cbackend.CurrentMonomorphContext = nil
+	cbackend.CurrentTypeState = nil
+	cbackend.InitTypeParameterChecker()
 }
 
 func (b *CBackend) ProcessEntries(entries []*tokens.Entry, scope *ast.Ast) {
@@ -228,10 +224,10 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	}
 
 	// Normalize include/library/object lists while preserving declaration order.
-	info.Includes = dedupeStrings(info.Includes)
-	info.CImportLibraries = dedupeStrings(info.CImportLibraries)
-	info.CImportObjects = dedupeStrings(info.CImportObjects)
-	info.ExternalRootSymbols = dedupeStrings(info.ExternalRootSymbols)
+	info.Includes = utils.DedupeStrings(info.Includes)
+	info.CImportLibraries = utils.DedupeStrings(info.CImportLibraries)
+	info.CImportObjects = utils.DedupeStrings(info.CImportObjects)
+	info.ExternalRootSymbols = utils.DedupeStrings(info.ExternalRootSymbols)
 
 	// Check for circular value dependencies (infinite size cycles)
 	cycles := cbackend.DetectCircularValueDependencies(info.StructDefs)
@@ -288,6 +284,25 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 		println(c.File + "\n" + strings.Repeat("_", len(c.File)) + "\n\n" + cCode)
 	}
 
+	outFile := writeCFile(c, cCode, file)
+	if outFile == "" {
+		return nil
+	}
+
+	if c.Ctx.Bool("ir-only") {
+		return nil
+	}
+
+	// Compile with gcc
+	gccArgs := buildGCCArgs(c.SourceFile, info, outFile)
+	cmd := exec.Command("gcc", gccArgs...)
+
+	return cmd
+}
+
+// writeCFile writes the C source code to disk and returns the output file path.
+// Returns empty string on failure.
+func writeCFile(c *interfaces.BackendConfig, cCode string, scope *ast.Ast) string {
 	// Write output file with .c extension
 	// c.OutName already contains the build directory path (e.g., /tmp/gecko/build/xxx/file.ll)
 	// Replace .ll extension with .c
@@ -308,8 +323,8 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 
 	err := os.WriteFile(outFile, []byte(cCode), 0o755)
 	if err != nil {
-		file.ErrorScope.NewCompileTimeError("File write error", "Error writing C file: "+err.Error(), lexer.Position{})
-		return nil
+		scope.ErrorScope.NewCompileTimeError("File write error", "Error writing C file: "+err.Error(), lexer.Position{})
+		return ""
 	}
 
 	if c.Ctx.Bool("ir-only") {
@@ -321,16 +336,18 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 		_ = os.MkdirAll(filepath.Dir(destFile), 0o755)
 
 		cmd := exec.Command("cp", outFile, destFile)
-		streamErr := streamCommand(cmd)
+		streamErr := utils.StreamCommand(cmd)
 
 		if streamErr != nil {
-			file.ErrorScope.NewCompileTimeError("C copy", "Error copying C file "+streamErr.Error(), lexer.Position{})
+			scope.ErrorScope.NewCompileTimeError("C copy", "Error copying C file "+streamErr.Error(), lexer.Position{})
 		}
-
-		return nil
 	}
 
-	// Compile with gcc
+	return outFile
+}
+
+// buildGCCArgs builds the gcc command line arguments for compiling the generated C file.
+func buildGCCArgs(file *tokens.File, info *cbackend.CScopeInformation, outFile string) []string {
 	gccArgs := []string{"-c"}
 	if file.Config != nil && file.Config.Treeshake {
 		gccArgs = append(gccArgs, "-ffunction-sections", "-fdata-sections")
@@ -381,9 +398,7 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	gccArgs = append(gccArgs, "-o", objFile)
 	gccArgs = append(gccArgs, outFile)
 
-	cmd := exec.Command("gcc", gccArgs...)
-
-	return cmd
+	return gccArgs
 }
 
 // generateCCode creates the final C source code from scope information.

@@ -51,7 +51,9 @@ func (t *TypeRef) checkTrait(typeAst *ast.Ast, scope *ast.Ast) bool {
 
 // IsTypeParameter is set by the backend during generic processing
 // to allow Check to skip type parameters like T
-var IsTypeParameter func(name string) bool
+var IsTypeParameter func(name string) bool = func(name string) bool {
+	return false
+}
 
 func (t *TypeRef) Check(scope *ast.Ast) bool {
 	if t.Array != nil {
@@ -86,7 +88,7 @@ func (t *TypeRef) Check(scope *ast.Ast) bool {
 	}
 
 	// Skip type parameters (e.g., T in generic contexts)
-	if IsTypeParameter != nil && IsTypeParameter(t.Type) {
+	if IsTypeParameter(t.Type) {
 		return true
 	}
 

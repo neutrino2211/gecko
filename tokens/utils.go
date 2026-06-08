@@ -3,21 +3,16 @@
 package tokens
 
 import (
-	"math/rand"
-	"strconv"
-	"time"
+	"crypto/rand"
+	"encoding/hex"
 )
 
 func (t *baseToken) GetID() string {
-	s := rand.NewSource(time.Now().UnixNano() + rand.Int63())
-	r := rand.New(s)
-	if t.RefID == "" {
-		i := 0
-		for i < 32 {
-			t.RefID += strconv.Itoa(r.Intn(9))
-			i++
-		}
+	if t.RefID != "" {
+		return t.RefID
 	}
-
+	b := make([]byte, 16)
+	rand.Read(b)
+	t.RefID = hex.EncodeToString(b)
 	return t.RefID
 }

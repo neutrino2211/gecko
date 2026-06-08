@@ -89,7 +89,7 @@ func (impl *LLVMBackendImplementation) TypeRefGetLLIRType(t *tokens.TypeRef, sco
 		baseType = types.NewPointer(types.NewFunc(returnType, paramTypes...))
 	} else {
 		// Generic type parameters are lowered as opaque pointers in LLVM for now.
-		if tokens.IsTypeParameter != nil && tokens.IsTypeParameter(t.Type) {
+		if tokens.IsTypeParameter(t.Type) {
 			baseType = types.I8Ptr
 		}
 

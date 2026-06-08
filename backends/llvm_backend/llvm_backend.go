@@ -18,7 +18,7 @@ import (
 	"github.com/neutrino2211/gecko/tokens"
 )
 
-var CurrentBackend interfaces.BackendInteface = nil
+var CurrentBackend interfaces.BackendInterface = nil
 var FuncCalls map[string]*ir.InstCall
 var Methods map[string]*ast.Method
 var LLVMExecutionContext *ExecutionContext = nil
@@ -259,10 +259,7 @@ func withTypeParameters(typeParams []*tokens.TypeParam, fn func()) {
 		if _, ok := set[name]; ok {
 			return true
 		}
-		if old != nil {
-			return old(name)
-		}
-		return false
+		return old(name)
 	}
 	defer func() { tokens.IsTypeParameter = old }()
 

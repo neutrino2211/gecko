@@ -14,7 +14,7 @@ import (
 	"github.com/neutrino2211/gecko/tokens"
 )
 
-var CurrentBackend interfaces.BackendInteface = nil
+var CurrentBackend interfaces.BackendInterface = nil
 var Methods map[string]*ast.Method
 
 const stdTryDiagnosticsInstallerMethod = "__gecko_install_try_error_handler"
@@ -809,10 +809,7 @@ func (impl *CBackendImplementation) GenerateClassMethodDef(scope *ast.Ast, class
 		if classTypeParams[name] {
 			return true
 		}
-		if oldIsTypeParameter != nil {
-			return oldIsTypeParameter(name)
-		}
-		return false
+		return oldIsTypeParameter(name)
 	}
 	defer func() {
 		tokens.IsTypeParameter = oldIsTypeParameter

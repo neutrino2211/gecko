@@ -309,6 +309,8 @@ func (impl *LLVMBackendImplementation) UnaryToLLIRValue(u *tokens.Unary, scope *
 		case "+":
 			// Unary plus is a no-op
 			base = operand
+		case "try":
+			base = impl.lowerTryUnary(scope, operand, expressionType, u.Pos)
 		default:
 			scope.ErrorScope.NewCompileTimeError("Unknown unary operator", "unknown unary operator '"+u.Op+"'", u.Unary.Pos)
 		}
@@ -512,6 +514,8 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 
 	} else if p.Literal.Symbol != "" {
 		base = impl.ResolveSymbolChainValue(scope, p.Literal.Symbol, p.Literal.Chain, p.Pos, p.Literal.IsPointer)
+	} else if p.Literal.Intrinsic != nil {
+		base = impl.IntrinsicToLLIRValue(scope, p.Literal.Intrinsic, expressionType)
 	} else if p.Literal.FuncCall != nil {
 		// base = p.FuncCall.(scope)
 		CurrentBackend.GetImpls().FuncCall(scope, p.Literal.FuncCall)

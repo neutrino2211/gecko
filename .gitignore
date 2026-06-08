@@ -13,6 +13,7 @@ a.out
 *.gecko.c
 /*.gecko.ll
 examples/llvm_only/*.gecko.ll
+test_sources/**/*.gecko.ll
 
 # Test binary, built with `go test -c`
 *.test

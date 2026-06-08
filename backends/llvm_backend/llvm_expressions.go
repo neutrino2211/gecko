@@ -40,6 +40,38 @@ func (impl *LLVMBackendImplementation) requireBinaryOperands(scope *ast.Ast, op 
 	return true
 }
 
+func (impl *LLVMBackendImplementation) coerceComparisonOperands(scope *ast.Ast, left value.Value, right value.Value, pos lexer.Position) (value.Value, value.Value, bool) {
+	if left == nil || right == nil {
+		return left, right, false
+	}
+	if left.Type().Equal(right.Type()) {
+		return left, right, true
+	}
+
+	if coercedRight := impl.coerceValueToType(right, left.Type(), scope, pos); coercedRight != nil {
+		return left, coercedRight, true
+	}
+	if coercedLeft := impl.coerceValueToType(left, right.Type(), scope, pos); coercedLeft != nil {
+		return coercedLeft, right, true
+	}
+
+	return left, right, false
+}
+
+func supportsICmpEqualityOperandType(t types.Type) bool {
+	switch t.(type) {
+	case *types.IntType, *types.PointerType, *types.VectorType:
+		return true
+	default:
+		return false
+	}
+}
+
+func supportsOrderedComparisonOperandType(t types.Type) bool {
+	_, ok := t.(*types.IntType)
+	return ok
+}
+
 func (impl *LLVMBackendImplementation) ExpressionToLLIRValue(e *tokens.Expression, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
 	if e == nil || e.GetLogicalOr() == nil {
 		return nil
@@ -109,6 +141,23 @@ func (impl *LLVMBackendImplementation) EqualityToLLIRValue(eq *tokens.Equality, 
 		if !impl.requireBinaryOperands(scope, eq.Op, left, v, eq.Pos) {
 			return nil
 		}
+		left, v, ok := impl.coerceComparisonOperands(scope, left, v, eq.Pos)
+		if !ok {
+			scope.ErrorScope.NewCompileTimeError(
+				"Expression Error",
+				"unable to compare values of incompatible types in equality expression",
+				eq.Pos,
+			)
+			return nil
+		}
+		if !supportsICmpEqualityOperandType(left.Type()) || !supportsICmpEqualityOperandType(v.Type()) {
+			scope.ErrorScope.NewCompileTimeError(
+				"Expression Error",
+				"equality comparison requires integer/pointer-compatible operand types",
+				eq.Pos,
+			)
+			return nil
+		}
 		info := LLVMGetScopeInformation(scope)
 
 		base = info.LocalContext.MainBlock.NewICmp(equalityOps[eq.Op], left, v)
@@ -132,6 +181,23 @@ func (impl *LLVMBackendImplementation) ComparisonToLLIRValue(c *tokens.Compariso
 		v := impl.ComparisonToLLIRValue(c.Next, scope, expressionType)
 		left := impl.AdditionToLLIRValue(c.Addition, scope, expressionType)
 		if !impl.requireBinaryOperands(scope, c.Op, left, v, c.Pos) {
+			return nil
+		}
+		left, v, ok := impl.coerceComparisonOperands(scope, left, v, c.Pos)
+		if !ok {
+			scope.ErrorScope.NewCompileTimeError(
+				"Expression Error",
+				"unable to compare values of incompatible types",
+				c.Pos,
+			)
+			return nil
+		}
+		if !supportsOrderedComparisonOperandType(left.Type()) || !supportsOrderedComparisonOperandType(v.Type()) {
+			scope.ErrorScope.NewCompileTimeError(
+				"Expression Error",
+				"ordered comparison requires integer operand types",
+				c.Pos,
+			)
 			return nil
 		}
 		info := LLVMGetScopeInformation(scope)
@@ -243,6 +309,8 @@ func (impl *LLVMBackendImplementation) UnaryToLLIRValue(u *tokens.Unary, scope *
 		case "+":
 			// Unary plus is a no-op
 			base = operand
+		case "try":
+			base = impl.lowerTryUnary(scope, operand, expressionType, u.Pos)
 		default:
 			scope.ErrorScope.NewCompileTimeError("Unknown unary operator", "unknown unary operator '"+u.Op+"'", u.Unary.Pos)
 		}
@@ -446,6 +514,8 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 
 	} else if p.Literal.Symbol != "" {
 		base = impl.ResolveSymbolChainValue(scope, p.Literal.Symbol, p.Literal.Chain, p.Pos, p.Literal.IsPointer)
+	} else if p.Literal.Intrinsic != nil {
+		base = impl.IntrinsicToLLIRValue(scope, p.Literal.Intrinsic, expressionType)
 	} else if p.Literal.FuncCall != nil {
 		// base = p.FuncCall.(scope)
 		CurrentBackend.GetImpls().FuncCall(scope, p.Literal.FuncCall)
@@ -457,14 +527,14 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 		}
 	} else if p.Literal.IsStructLiteral() {
 		// Handle struct literal: TypeName { field: value, ... }
-		base = impl.StructLiteralToLLIRValue(p.Literal, scope)
+		base = impl.StructLiteralToLLIRValue(p.Literal, scope, expressionType)
 	}
 
 	return base
 }
 
-// StructLiteralToLLIRValue converts a struct literal to an LLVM value
-func (impl *LLVMBackendImplementation) StructLiteralToLLIRValue(l *tokens.Literal, scope *ast.Ast) value.Value {
+// StructLiteralToLLIRValue converts a struct literal to an LLVM value.
+func (impl *LLVMBackendImplementation) StructLiteralToLLIRValue(l *tokens.Literal, scope *ast.Ast, expectedType *tokens.TypeRef) value.Value {
 	info := LLVMGetScopeInformation(scope)
 
 	// Look up struct info from the global map
@@ -520,7 +590,12 @@ func (impl *LLVMBackendImplementation) StructLiteralToLLIRValue(l *tokens.Litera
 		}
 	}
 
-	// Return the pointer to the struct (not the loaded value)
-	// The caller can decide whether to use the pointer or load from it
+	// If a by-value struct is expected (e.g., return/assignment to struct type),
+	// return the loaded value so downstream coercion/parity matches C backend behavior.
+	if expectedType != nil && !expectedType.Pointer {
+		return impl.NewVolatileLoad(info.LocalContext.MainBlock, structType, structPtr, false)
+	}
+
+	// Default to pointer form for callers that expect address semantics.
 	return structPtr
 }

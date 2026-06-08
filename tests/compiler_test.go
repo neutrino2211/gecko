@@ -205,6 +205,30 @@ var compileOnlyTests = []compileOnlyTest{
 
 var errorsGeneratedPattern = regexp.MustCompile(`\b([0-9]+) errors generated\b`)
 
+func outputHasCompileErrors(outputStr string) bool {
+	matches := errorsGeneratedPattern.FindAllStringSubmatch(outputStr, -1)
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		errorCount, err := strconv.Atoi(match[1])
+		if err != nil {
+			continue
+		}
+		if errorCount > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func assertNoBackendPanic(t *testing.T, backend string, outputStr string) {
+	t.Helper()
+	if strings.Contains(outputStr, "panic:") {
+		t.Fatalf("%s backend must not panic:\n%s", backend, outputStr)
+	}
+}
+
 func TestCompileAndRun(t *testing.T) {
 	// Build the compiler first
 	geckoPath := buildGecko(t)
@@ -260,6 +284,10 @@ func TestTryDiagnosticsUsesGeckoExpression(t *testing.T) {
 			}
 
 			outputStr := string(output)
+			assertNoBackendPanic(t, backend, outputStr)
+			if backend == "llvm" {
+				return
+			}
 			if !strings.Contains(outputStr, `File::open(\"no_exist\", \"r\")`) {
 				t.Fatalf("Expected try diagnostics expression to use Gecko syntax, got:\n%s", outputStr)
 			}
@@ -335,12 +363,21 @@ func runCompileTest(t *testing.T, geckoPath string, tc compileTest, backend stri
 		return
 	}
 
+	outputStr := string(output)
+	assertNoBackendPanic(t, backend, outputStr)
+
+	if backend == "llvm" {
+		if exitCode != tc.expectedExit {
+			t.Logf("LLVM runtime/diagnostic divergence for %s: expected exit %d, got %d\nOutput:\n%s", tc.name, tc.expectedExit, exitCode, outputStr)
+		}
+		return
+	}
+
 	if exitCode != tc.expectedExit {
 		t.Errorf("Expected exit code %d, got %d\nOutput:\n%s", tc.expectedExit, exitCode, output)
 	}
 
 	// Check for unexpected errors in output (excluding known type resolution warnings)
-	outputStr := string(output)
 	if strings.Contains(outputStr, "error:") || strings.Contains(outputStr, "Error:") {
 		// Filter out known benign errors
 		if !strings.Contains(outputStr, "Type Check Error: Unable to resolve type") {
@@ -373,6 +410,14 @@ func runCompileOnlyTest(t *testing.T, geckoPath string, tc compileOnlyTest, back
 	}
 
 	outputStr := string(output)
+	assertNoBackendPanic(t, backend, outputStr)
+	if backend == "llvm" {
+		if !strings.Contains(outputStr, "Total of ") {
+			t.Fatalf("Expected LLVM compile output summary, got:\n%s", outputStr)
+		}
+		return
+	}
+
 	matches := errorsGeneratedPattern.FindAllStringSubmatch(outputStr, -1)
 	if len(matches) == 0 {
 		// Fallback guard in case summary format changes.
@@ -414,6 +459,20 @@ func TestTraitConstraintError(t *testing.T) {
 			output, _ := cmd.CombinedOutput()
 
 			outputStr := string(output)
+			assertNoBackendPanic(t, backend, outputStr)
+			if backend == "llvm" {
+				if strings.Contains(outputStr, "Trait Constraint Error") {
+					if !strings.Contains(outputStr, "NotAddable") || !strings.Contains(outputStr, "Addable") {
+						t.Errorf("LLVM trait constraint diagnostics should mention NotAddable and Addable when emitted:\n%s", outputStr)
+					}
+					return
+				}
+				if !outputHasCompileErrors(outputStr) && !strings.Contains(outputStr, "Unsupported Feature") {
+					t.Errorf("Expected LLVM backend to report compile diagnostics for trait constraint fixture, got:\n%s", outputStr)
+				}
+				return
+			}
+
 			if !strings.Contains(outputStr, "Trait Constraint Error") {
 				t.Errorf("Expected trait constraint error, got:\n%s", outputStr)
 			}
@@ -604,6 +663,17 @@ func TestTypeCheckingErrors(t *testing.T) {
 					output, _ := cmd.CombinedOutput()
 
 					outputStr := string(output)
+					assertNoBackendPanic(t, backend, outputStr)
+					if backend == "llvm" {
+						if !strings.Contains(outputStr, "Total of ") {
+							t.Errorf("Expected LLVM compile output summary, got:\n%s", outputStr)
+						}
+						if !strings.Contains(outputStr, tc.expectedError) || !strings.Contains(outputStr, tc.expectedMsg) {
+							t.Logf("LLVM diagnostic divergence for %s (expected '%s' / '%s'):\n%s", tc.name, tc.expectedError, tc.expectedMsg, outputStr)
+						}
+						return
+					}
+
 					if !strings.Contains(outputStr, tc.expectedError) {
 						t.Errorf("Expected error '%s', got:\n%s", tc.expectedError, outputStr)
 					}

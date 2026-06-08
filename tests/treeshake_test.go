@@ -9,6 +9,22 @@ import (
 	"testing"
 )
 
+func hasAnySymbol(symbols string, names ...string) bool {
+	for _, line := range strings.Split(symbols, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		symbol := fields[len(fields)-1]
+		for _, name := range names {
+			if symbol == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func getProjectRoot(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -67,10 +83,10 @@ func TestTreeshakeRemovesUnreachableInternalSymbol(t *testing.T) {
 			buildFixtureBinary(t, geckoPath, sourcePath, outputPath, backend)
 			symbols := readBinarySymbols(t, outputPath)
 
-			if !strings.Contains(symbols, "symbols__ts_live") && !strings.Contains(symbols, "_ts_live") {
+			if !hasAnySymbol(symbols, "symbols__ts_live", "_symbols__ts_live", "_ts_live", "ts_live") {
 				t.Fatalf("expected reachable ts_live symbol in binary symbols:\n%s", symbols)
 			}
-			if strings.Contains(symbols, "symbols__ts_dead") || strings.Contains(symbols, "_ts_dead") {
+			if hasAnySymbol(symbols, "symbols__ts_dead", "_symbols__ts_dead", "_ts_dead", "ts_dead") {
 				t.Fatalf("expected unreachable ts_dead symbol to be removed by treeshake:\n%s", symbols)
 			}
 		})
@@ -95,10 +111,10 @@ func TestTreeshakeKeepsExternalFunctionsAsRoots(t *testing.T) {
 			buildFixtureBinary(t, geckoPath, sourcePath, outputPath, backend)
 			symbols := readBinarySymbols(t, outputPath)
 
-			if !strings.Contains(symbols, "api_used") {
+			if !hasAnySymbol(symbols, "api_used", "_api_used") {
 				t.Fatalf("expected external root symbol api_used in binary:\n%s", symbols)
 			}
-			if !strings.Contains(symbols, "api_unused") {
+			if !hasAnySymbol(symbols, "api_unused", "_api_unused") {
 				t.Fatalf("expected external root symbol api_unused to be retained by anchor table:\n%s", symbols)
 			}
 		})
@@ -123,7 +139,7 @@ func TestTreeshakeDynamicCallFallback(t *testing.T) {
 			buildOutput := buildFixtureBinary(t, geckoPath, sourcePath, outputPath, backend)
 			symbols := readBinarySymbols(t, outputPath)
 			hasAutoDisableWarning := strings.Contains(buildOutput, "warning: treeshake disabled for this build due to dynamic-call patterns:")
-			hasDynUnreachable := strings.Contains(symbols, "dynamicfallback__dyn_unreachable") || strings.Contains(symbols, "_dyn_unreachable")
+			hasDynUnreachable := hasAnySymbol(symbols, "dynamicfallback__dyn_unreachable", "_dynamicfallback__dyn_unreachable", "_dyn_unreachable", "dyn_unreachable")
 
 			if hasAutoDisableWarning {
 				if !hasDynUnreachable {

@@ -482,6 +482,11 @@ func generateCCode(info *cbackend.CScopeInformation, treeshakeEnabled bool) stri
 			sb.WriteString("    (void (*)(void))" + symbol + ",\n")
 		}
 		sb.WriteString("};\n\n")
+		sb.WriteString("/* Ensure external roots remain reachable when linker GC is enabled. */\n")
+		sb.WriteString("static void __attribute__((constructor)) __gecko_keep_external_roots(void) {\n")
+		sb.WriteString("    volatile const void* root = (const void*)__gecko_external_roots;\n")
+		sb.WriteString("    (void)root;\n")
+		sb.WriteString("}\n\n")
 	}
 
 	return sb.String()

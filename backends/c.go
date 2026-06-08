@@ -258,10 +258,11 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 
 	// Treeshake safety gate: disable for this invocation when dynamic calls
 	// make static reachability unsafe in v1.
-	if file.Config != nil && file.Config.Treeshake {
+	treeshakeEnabled := file.Config != nil && file.Config.Treeshake
+	if treeshakeEnabled {
 		warnings := cbackend.GetTreeshakeDynamicCallWarnings()
 		if len(warnings) > 0 {
-			file.Config.Treeshake = false
+			treeshakeEnabled = false
 			cbackend.LastTreeshakeAutoDisabled = true
 			cbackend.LastTreeshakeDisableWarnings = warnings
 
@@ -277,7 +278,6 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	}
 
 	// Generate C code
-	treeshakeEnabled := file.Config != nil && file.Config.Treeshake
 	cCode := generateCCode(info, treeshakeEnabled)
 
 	if c.Ctx.Bool("print-ir") {

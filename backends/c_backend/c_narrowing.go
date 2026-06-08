@@ -156,53 +156,47 @@ func DetectNullCheck(expr *tokens.Expression) *NullCheckInfo {
 	return nil
 }
 
+// walkToPrimary safely walks a simple expression chain (Next==nil at each level)
+// from LogicalOr down to Primary. Returns nil if the chain is compound or incomplete.
+func walkToPrimary(lo *tokens.LogicalOr) *tokens.Primary {
+	if lo == nil || lo.Next != nil || lo.LogicalAnd == nil {
+		return nil
+	}
+	la := lo.LogicalAnd
+	if la.Next != nil || la.Equality == nil {
+		return nil
+	}
+	eq := la.Equality
+	if eq.Next != nil || eq.Comparison == nil {
+		return nil
+	}
+	c := eq.Comparison
+	if c.Next != nil || c.Addition == nil {
+		return nil
+	}
+	a := c.Addition
+	if a.Next != nil || a.Multiplication == nil {
+		return nil
+	}
+	m := a.Multiplication
+	if m.Next != nil || m.Unary == nil {
+		return nil
+	}
+	return m.Unary.Primary
+}
+
 // detectIntrinsicNullCheck checks if the expression is an @is_not_null or @is_null intrinsic
 func detectIntrinsicNullCheck(expr *tokens.Expression) *NullCheckInfo {
 	if expr == nil || expr.GetLogicalOr() == nil {
 		return nil
 	}
 
-	lo := expr.GetLogicalOr()
-	if lo.Next != nil || lo.LogicalAnd == nil {
+	primary := walkToPrimary(expr.GetLogicalOr())
+	if primary == nil || primary.Literal == nil || primary.Literal.Intrinsic == nil {
 		return nil
 	}
 
-	la := lo.LogicalAnd
-	if la.Next != nil || la.Equality == nil {
-		return nil
-	}
-
-	eq := la.Equality
-	if eq.Next != nil || eq.Comparison == nil {
-		return nil
-	}
-
-	c := eq.Comparison
-	if c.Next != nil || c.Addition == nil {
-		return nil
-	}
-
-	a := c.Addition
-	if a.Next != nil || a.Multiplication == nil {
-		return nil
-	}
-
-	m := a.Multiplication
-	if m.Next != nil || m.Unary == nil {
-		return nil
-	}
-
-	u := m.Unary
-	if u.Primary == nil || u.Primary.Literal == nil {
-		return nil
-	}
-
-	lit := u.Primary.Literal
-	if lit.Intrinsic == nil {
-		return nil
-	}
-
-	intr := lit.Intrinsic
+	intr := primary.Literal.Intrinsic
 	if intr.Name != "is_not_null" && intr.Name != "is_null" {
 		return nil
 	}
@@ -232,15 +226,14 @@ func extractSymbolFromExpression(expr *tokens.Expression) string {
 	if expr == nil || expr.GetLogicalOr() == nil {
 		return ""
 	}
-	lo := expr.GetLogicalOr()
-	if lo.Next != nil || lo.LogicalAnd == nil {
+	p := walkToPrimary(expr.GetLogicalOr())
+	if p == nil || p.Literal == nil {
 		return ""
 	}
-	la := lo.LogicalAnd
-	if la.Next != nil || la.Equality == nil {
-		return ""
+	if p.Literal.Symbol != "" && p.Literal.SymbolModule == "" && len(p.Literal.Chain) == 0 && p.Literal.ArrayIndex == nil {
+		return p.Literal.Symbol
 	}
-	return extractSymbolFromEquality(la.Equality)
+	return ""
 }
 
 // extractSymbolFromComparison extracts a simple symbol name from a Comparison node

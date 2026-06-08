@@ -18,7 +18,7 @@ type FeatureChecker interface {
 	CanImportFrom(backend string) bool
 }
 
-type BackendInteface interface {
+type BackendInterface interface {
 	Init()
 	Compile(*BackendConfig) *exec.Cmd
 	GetImpls() BackendCodegenImplementations

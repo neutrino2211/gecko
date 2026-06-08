@@ -16,6 +16,7 @@ import (
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/logger"
 	"github.com/neutrino2211/gecko/parser"
+	"github.com/neutrino2211/gecko/utils"
 	"github.com/urfave/cli/v2"
 
 	"github.com/fatih/color"
@@ -142,6 +143,19 @@ func treeshakeLinkerFlagsForPlatform(platform string, enabled bool) []string {
 	}
 }
 
+func validateStaticLinkRequest(platform string, isStatic bool) error {
+	if !isStatic {
+		return nil
+	}
+	if platform == "linux" {
+		return nil
+	}
+	if platform == "darwin" {
+		return fmt.Errorf("static linking on darwin is not supported: crt0.o not found")
+	}
+	return nil
+}
+
 func effectiveTargetPlatform(ctx *cli.Context) string {
 	platform := strings.TrimSpace(ctx.String("target-platform"))
 	if platform == "" {
@@ -161,21 +175,7 @@ func defaultLLVMExecutableLinkFlags(platform string, isStatic bool) []string {
 	return flags
 }
 
-func dedupeStrings(values []string) []string {
-	out := make([]string, 0, len(values))
-	seen := make(map[string]bool, len(values))
-	for _, v := range values {
-		if v == "" {
-			continue
-		}
-		if seen[v] {
-			continue
-		}
-		seen[v] = true
-		out = append(out, v)
-	}
-	return out
-}
+
 
 func resolveEffectiveBackend(source string, requestedBackend string) string {
 	sourceContents, err := os.ReadFile(source)
@@ -200,7 +200,7 @@ func collectCImportPkgCFlags() []string {
 		return nil
 	}
 	var flags []string
-	for _, lib := range dedupeStrings(cbackend.LastCImportLibraries) {
+	for _, lib := range utils.DedupeStrings(cbackend.LastCImportLibraries) {
 		if pkgCFlags, err := runPkgConfig("--cflags", []string{lib}); err == nil {
 			flags = append(flags, pkgCFlags...)
 		}
@@ -218,7 +218,7 @@ func collectCImportPkgLibFlags(staticLink bool) []string {
 	}
 
 	var flags []string
-	for _, lib := range dedupeStrings(cbackend.LastCImportLibraries) {
+	for _, lib := range utils.DedupeStrings(cbackend.LastCImportLibraries) {
 		if pkgLibs, err := runPkgConfigWithFlags(pkgFlag, []string{lib}); err == nil {
 			flags = append(flags, pkgLibs...)
 		}
@@ -232,7 +232,7 @@ func collectObjectInputs(projectCfg *config.ProjectConfig, targetKey string) []s
 		objects = append(objects, projectCfg.GetNativeObjectsForTarget(targetKey)...)
 	}
 	objects = append(objects, cbackend.LastCImportObjects...)
-	return dedupeStrings(objects)
+	return utils.DedupeStrings(objects)
 }
 
 var CompileCommand = &cli.Command{

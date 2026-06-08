@@ -3,17 +3,13 @@
 package compiler
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/alecthomas/participle/v2/lexer"
@@ -27,51 +23,9 @@ import (
 	"github.com/neutrino2211/gecko/interfaces"
 	"github.com/neutrino2211/gecko/parser"
 	"github.com/neutrino2211/gecko/tokens"
+	"github.com/neutrino2211/gecko/utils"
 	"github.com/neutrino2211/go-option"
 )
-
-func streamPipe(std io.ReadCloser) {
-	defer std.Close()
-	buf := bufio.NewReader(std) // Notice that this is not in a loop
-	for {
-
-		line, _, err := buf.ReadLine()
-		if err != nil {
-			break
-		}
-		fmt.Println(string(line))
-	}
-}
-
-func streamCommand(cmd *exec.Cmd) error {
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return err
-	}
-	err = cmd.Start()
-	if err != nil {
-		return err
-	}
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		streamPipe(stdout)
-	}()
-
-	go func() {
-		defer wg.Done()
-		streamPipe(stderr)
-	}()
-
-	wg.Wait()
-	return cmd.Wait()
-}
 
 type compileState struct {
 	importCache map[string]*tokens.File
@@ -592,50 +546,159 @@ func Compile(file string, config *config.CompileCfg) string {
 		backend = config.Ctx.String("backend")
 	}
 
-	if tokenError != nil {
-		errorMsg := tokenError.Error()
-		var line, column int = 1, 1
-
-		// Try to extract position from Participle error format: "filename:line:col: message"
-		// or just "line:col: message"
-		parts := strings.SplitN(errorMsg, ":", 4)
-		if len(parts) >= 3 {
-			// Check if first part is a number (line) or filename
-			if l, err := strconv.Atoi(parts[0]); err == nil {
-				line = l
-				if c, err := strconv.Atoi(parts[1]); err == nil {
-					column = c
-				}
-			} else if len(parts) >= 4 {
-				// Format is "filename:line:col: message"
-				if l, err := strconv.Atoi(parts[1]); err == nil {
-					line = l
-					if c, err := strconv.Atoi(parts[2]); err == nil {
-						column = c
-					}
-				}
-			}
-		}
-
-		compileErrorScope.NewCompileTimeError(
-			"Syntax Error",
-			errorMsg,
-			lexer.Position{
-				Line:   line,
-				Column: column,
-			},
-		)
-	}
+	parseSyntaxError(tokenError, compileErrorScope)
 
 	compilationBackend, ok := backends.Backends[backend]
 
 	if !ok {
 		println(color.RedString("Backend '" + backend + "' not found."))
-		os.Exit(0)
+		return ""
 	}
 
-	// Validate that the file only uses features supported by the backend
+	if haveErrors() {
+		return ""
+	}
+
 	compilationBackend.Init()
+	unsupportedCount := validateFeatures(sourceFile, compilationBackend, backend, compileErrorScope, config)
+
+	if haveErrors() {
+		return ""
+	}
+
+	// If unsupported features exist, that means we reported errors above.
+	// Stop here if the LLVM backend has unsupported features detected in the import closure.
+	if unsupportedCount > 0 {
+		return ""
+	}
+
+	if err := os.MkdirAll(buildDir, 0o755); err != nil {
+		compileErrorScope.NewCompileTimeError(
+			"Build Directory Error",
+			"Failed to create build directory '"+buildDir+"': "+err.Error(),
+			lexer.Position{},
+		)
+		return ""
+	}
+
+	// Create lazy type resolver for directory imports
+	lazyResolver := func(typeName string) (*tokens.File, bool) {
+		return resolveTypeFromDirectoryImports(sourceFile, typeName, state)
+	}
+
+	// Create lazy method resolver for directory imports
+	lazyMethodResolver := func(methodName string) (*tokens.File, bool) {
+		return resolveMethodFromDirectoryImports(sourceFile, methodName, state)
+	}
+
+	// Create lazy module type resolver for qualified types (e.g., shapes.Circle)
+	lazyModuleTypeResolver := func(moduleName string, typeName string) (*tokens.File, bool) {
+		return resolveModuleTypeFromDirectoryImports(sourceFile, moduleName, typeName, state)
+	}
+
+	// Initialize type registry for suggestions
+	ResetTypeRegistry()
+	registry := GetTypeRegistry()
+	registry.ScanStdlib()
+	registry.ScanProjectDirectory(filepath.Dir(file))
+
+	// Create suggestion provider
+	suggestionProvider := func(typeName string) string {
+		return registry.FormatSuggestions(typeName)
+	}
+
+	cmd := compilationBackend.Compile(&interfaces.BackendConfig{
+		OutName:                outName,
+		File:                   file,
+		Ctx:                    config.Ctx,
+		SourceFile:             sourceFile,
+		LazyTypeResolver:       lazyResolver,
+		LazyMethodResolver:     lazyMethodResolver,
+		LazyModuleTypeResolver: lazyModuleTypeResolver,
+		SuggestionProvider:     suggestionProvider,
+	})
+
+	// Check for errors after codegen/type checking - bail early if any
+	if haveErrors() {
+		return ""
+	}
+
+	// For check-only mode, stop after type checking (don't run C compiler)
+	if config.CheckOnly {
+		return ""
+	}
+
+	var err error = nil
+
+	if cmd != nil {
+		err = utils.StreamCommand(cmd)
+	}
+
+	if err != nil {
+		msg := "Error compiling for backend '" + backend + "' " + err.Error()
+		if backend == "llvm" && strings.Contains(err.Error(), "\"llc\"") && strings.Contains(err.Error(), "executable file not found") {
+			msg = "LLVM toolchain error: llc not found in PATH"
+		}
+		compileErrorScope.NewCompileTimeError("Compilation Backend Error", msg, lexer.Position{})
+		return ""
+	}
+
+	artifactPath := expectedArtifactPath(backend, file, outName, compiledName, config)
+	if artifactPath == "" {
+		return ""
+	}
+
+	if _, statErr := os.Stat(artifactPath); statErr != nil {
+		compileErrorScope.NewCompileTimeError(
+			"Compilation Backend Error",
+			"Expected backend artifact '"+artifactPath+"' was not generated: "+statErr.Error(),
+			lexer.Position{},
+		)
+		return ""
+	}
+
+	return artifactPath
+}
+
+func parseSyntaxError(tokenError error, compileErrorScope *errors.ErrorScope) {
+	if tokenError == nil {
+		return
+	}
+	errorMsg := tokenError.Error()
+	var line, column int = 1, 1
+
+	// Try to extract position from Participle error format: "filename:line:col: message"
+	// or just "line:col: message"
+	parts := strings.SplitN(errorMsg, ":", 4)
+	if len(parts) >= 3 {
+		// Check if first part is a number (line) or filename
+		if l, err := strconv.Atoi(parts[0]); err == nil {
+			line = l
+			if c, err := strconv.Atoi(parts[1]); err == nil {
+				column = c
+			}
+		} else if len(parts) >= 4 {
+			// Format is "filename:line:col: message"
+			if l, err := strconv.Atoi(parts[1]); err == nil {
+				line = l
+				if c, err := strconv.Atoi(parts[2]); err == nil {
+					column = c
+				}
+			}
+		}
+	}
+
+	compileErrorScope.NewCompileTimeError(
+		"Syntax Error",
+		errorMsg,
+		lexer.Position{
+			Line:   line,
+			Column: column,
+		},
+	)
+}
+
+func validateFeatures(sourceFile *tokens.File, compilationBackend interfaces.BackendInterface, backend string, compileErrorScope *errors.ErrorScope, cfg *config.CompileCfg) int {
 	featureSet := compilationBackend.Features()
 	unsupportedSet := make(map[backends.Feature]struct{})
 	featureSources := make(map[backends.Feature][]string)
@@ -740,7 +803,7 @@ func Compile(file string, config *config.CompileCfg) string {
 	for _, importedFile := range sourceFile.Imports {
 		importBackend := importedFile.GetBackend()
 		if importBackend == "" {
-			importBackend = config.Ctx.String("backend")
+			importBackend = cfg.Ctx.String("backend")
 		}
 
 		if importBackend != backend && !featureSet.CanImportFrom(importBackend) {
@@ -752,89 +815,7 @@ func Compile(file string, config *config.CompileCfg) string {
 		}
 	}
 
-	if haveErrors() {
-		return ""
-	}
-
-	os.MkdirAll(buildDir, 0o755)
-
-	// Create lazy type resolver for directory imports
-	lazyResolver := func(typeName string) (*tokens.File, bool) {
-		return resolveTypeFromDirectoryImports(sourceFile, typeName, state)
-	}
-
-	// Create lazy method resolver for directory imports
-	lazyMethodResolver := func(methodName string) (*tokens.File, bool) {
-		return resolveMethodFromDirectoryImports(sourceFile, methodName, state)
-	}
-
-	// Create lazy module type resolver for qualified types (e.g., shapes.Circle)
-	lazyModuleTypeResolver := func(moduleName string, typeName string) (*tokens.File, bool) {
-		return resolveModuleTypeFromDirectoryImports(sourceFile, moduleName, typeName, state)
-	}
-
-	// Initialize type registry for suggestions
-	ResetTypeRegistry()
-	registry := GetTypeRegistry()
-	registry.ScanStdlib()
-	registry.ScanProjectDirectory(filepath.Dir(file))
-
-	// Create suggestion provider
-	suggestionProvider := func(typeName string) string {
-		return registry.FormatSuggestions(typeName)
-	}
-
-	cmd := compilationBackend.Compile(&interfaces.BackendConfig{
-		OutName:                outName,
-		File:                   file,
-		Ctx:                    config.Ctx,
-		SourceFile:             sourceFile,
-		LazyTypeResolver:       lazyResolver,
-		LazyMethodResolver:     lazyMethodResolver,
-		LazyModuleTypeResolver: lazyModuleTypeResolver,
-		SuggestionProvider:     suggestionProvider,
-	})
-
-	// Check for errors after codegen/type checking - bail early if any
-	if haveErrors() {
-		return ""
-	}
-
-	// For check-only mode, stop after type checking (don't run C compiler)
-	if config.CheckOnly {
-		return ""
-	}
-
-	var err error = nil
-
-	if cmd != nil {
-		err = streamCommand(cmd)
-	}
-
-	if err != nil {
-		msg := "Error compiling for backend '" + backend + "' " + err.Error()
-		if backend == "llvm" && strings.Contains(err.Error(), "\"llc\"") && strings.Contains(err.Error(), "executable file not found") {
-			msg = "LLVM toolchain error: llc not found in PATH"
-		}
-		compileErrorScope.NewCompileTimeError("Compilation Backend Error", msg, lexer.Position{})
-		return ""
-	}
-
-	artifactPath := expectedArtifactPath(backend, file, outName, compiledName, config)
-	if artifactPath == "" {
-		return ""
-	}
-
-	if _, statErr := os.Stat(artifactPath); statErr != nil {
-		compileErrorScope.NewCompileTimeError(
-			"Compilation Backend Error",
-			"Expected backend artifact '"+artifactPath+"' was not generated: "+statErr.Error(),
-			lexer.Position{},
-		)
-		return ""
-	}
-
-	return artifactPath
+	return len(unsupportedFeatures)
 }
 
 func expectedArtifactPath(backend, sourceFile, irPath, objPath string, cfg *config.CompileCfg) string {

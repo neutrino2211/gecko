@@ -52,11 +52,25 @@ var Generics = &GenericRegistry{
 	GeneratedMethods:     make(map[string]bool),
 }
 
+// NewGenericRegistry creates a fresh GenericRegistry.
+func NewGenericRegistry() *GenericRegistry {
+	return &GenericRegistry{
+		GenericClasses:       make(map[string]*tokens.Class),
+		GenericClassOrigins:  make(map[string]string),
+		GenericMethods:       make(map[string]*tokens.Method),
+		ClassInstantiations:  make([]*GenericInstantiation, 0),
+		MethodInstantiations: make([]*GenericInstantiation, 0),
+		GeneratedClasses:     make(map[string]bool),
+		GeneratedMethods:     make(map[string]bool),
+	}
+}
+
 // CurrentMonomorphContext is set during monomorphization to track type mappings
 var CurrentMonomorphContext *MonomorphContext
 
-func init() {
-	// Set up the type parameter checker for the tokens package
+// InitTypeParameterChecker sets up the type parameter checker in the tokens package.
+// Must be called during backend initialization, before compilation begins.
+func InitTypeParameterChecker() {
 	tokens.IsTypeParameter = func(name string) bool {
 		if CurrentMonomorphContext == nil {
 			return false

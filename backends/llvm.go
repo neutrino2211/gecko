@@ -10,7 +10,9 @@ import (
 
 	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/llir/llvm/ir"
+	"github.com/llir/llvm/ir/types"
 	"github.com/neutrino2211/gecko/ast"
+	cbackend "github.com/neutrino2211/gecko/backends/c_backend"
 	llvmbackend "github.com/neutrino2211/gecko/backends/llvm_backend"
 	"github.com/neutrino2211/gecko/interfaces"
 	"github.com/neutrino2211/gecko/tokens"
@@ -27,6 +29,15 @@ func (b *LLVMBackend) Init() {
 	llvmbackend.CurrentBackend = b
 	llvmbackend.FuncCalls = make(map[string]*ir.InstCall)
 	llvmbackend.Methods = make(map[string]*ast.Method)
+	llvmbackend.LLVMExecutionContext = nil
+	llvmbackend.LLVMScopeDataMap = &llvmbackend.LLVMScopeData{}
+	llvmbackend.LLVMProgramValues = &llvmbackend.LLVMValuesMap{}
+	llvmbackend.LLVMStructMap = make(map[string]*llvmbackend.LLVMStructInfo)
+	llvmbackend.LLVMOpaqueTypeMap = make(map[string]*types.StructType)
+	llvmbackend.LLVMEnumMap = make(map[string]*llvmbackend.LLVMEnumInfo)
+	llvmbackend.TraitDefinitionOrigins = make(map[string]string)
+	llvmbackend.TraitParents = make(map[string]string)
+	cbackend.InitTypeParameterChecker()
 }
 
 func (b *LLVMBackend) ProcessEntries(entries []*tokens.Entry, scope *ast.Ast) {

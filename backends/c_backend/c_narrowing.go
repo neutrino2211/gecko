@@ -31,6 +31,38 @@ type NullCheckInfo struct {
 	IsNotNull bool
 }
 
+// unwrapSubExpression walks the expression chain to extract a parenthesized sub-expression.
+func unwrapSubExpression(lo *tokens.LogicalOr) *tokens.Expression {
+	if lo == nil || lo.Next != nil || lo.LogicalAnd == nil {
+		return nil
+	}
+	eq := lo.LogicalAnd.Equality
+	if eq == nil {
+		return nil
+	}
+	c := eq.Comparison
+	if c == nil {
+		return nil
+	}
+	a := c.Addition
+	if a == nil {
+		return nil
+	}
+	m := a.Multiplication
+	if m == nil {
+		return nil
+	}
+	u := m.Unary
+	if u == nil {
+		return nil
+	}
+	p := u.Primary
+	if p == nil {
+		return nil
+	}
+	return p.SubExpression
+}
+
 // DetectNullCheck analyzes an expression to see if it's a null check pattern.
 // Returns the variable name being checked and whether it's a != nil check.
 // Detects:
@@ -46,16 +78,10 @@ func DetectNullCheck(expr *tokens.Expression) *NullCheckInfo {
 
 	// Handle parenthesized expressions - unwrap SubExpression
 	lo := expr.GetLogicalOr()
-	if lo.LogicalAnd != nil && lo.LogicalAnd.Equality != nil &&
-		lo.LogicalAnd.Equality.Comparison != nil &&
-		lo.LogicalAnd.Equality.Comparison.Addition != nil &&
-		lo.LogicalAnd.Equality.Comparison.Addition.Multiplication != nil &&
-		lo.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary != nil &&
-		lo.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary != nil &&
-		lo.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary.SubExpression != nil {
+	if subExpr := unwrapSubExpression(lo); subExpr != nil {
 		// Recursively check the inner expression
 		narrowingDebug("DetectNullCheck: Found SubExpression, unwrapping")
-		return DetectNullCheck(lo.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary.SubExpression)
+		return DetectNullCheck(subExpr)
 	}
 
 	// Check for @is_not_null(ptr) or @is_null(ptr) intrinsic
@@ -130,53 +156,47 @@ func DetectNullCheck(expr *tokens.Expression) *NullCheckInfo {
 	return nil
 }
 
+// walkToPrimary safely walks a simple expression chain (Next==nil at each level)
+// from LogicalOr down to Primary. Returns nil if the chain is compound or incomplete.
+func walkToPrimary(lo *tokens.LogicalOr) *tokens.Primary {
+	if lo == nil || lo.Next != nil || lo.LogicalAnd == nil {
+		return nil
+	}
+	la := lo.LogicalAnd
+	if la.Next != nil || la.Equality == nil {
+		return nil
+	}
+	eq := la.Equality
+	if eq.Next != nil || eq.Comparison == nil {
+		return nil
+	}
+	c := eq.Comparison
+	if c.Next != nil || c.Addition == nil {
+		return nil
+	}
+	a := c.Addition
+	if a.Next != nil || a.Multiplication == nil {
+		return nil
+	}
+	m := a.Multiplication
+	if m.Next != nil || m.Unary == nil {
+		return nil
+	}
+	return m.Unary.Primary
+}
+
 // detectIntrinsicNullCheck checks if the expression is an @is_not_null or @is_null intrinsic
 func detectIntrinsicNullCheck(expr *tokens.Expression) *NullCheckInfo {
 	if expr == nil || expr.GetLogicalOr() == nil {
 		return nil
 	}
 
-	lo := expr.GetLogicalOr()
-	if lo.Next != nil || lo.LogicalAnd == nil {
+	primary := walkToPrimary(expr.GetLogicalOr())
+	if primary == nil || primary.Literal == nil || primary.Literal.Intrinsic == nil {
 		return nil
 	}
 
-	la := lo.LogicalAnd
-	if la.Next != nil || la.Equality == nil {
-		return nil
-	}
-
-	eq := la.Equality
-	if eq.Next != nil || eq.Comparison == nil {
-		return nil
-	}
-
-	c := eq.Comparison
-	if c.Next != nil || c.Addition == nil {
-		return nil
-	}
-
-	a := c.Addition
-	if a.Next != nil || a.Multiplication == nil {
-		return nil
-	}
-
-	m := a.Multiplication
-	if m.Next != nil || m.Unary == nil {
-		return nil
-	}
-
-	u := m.Unary
-	if u.Primary == nil || u.Primary.Literal == nil {
-		return nil
-	}
-
-	lit := u.Primary.Literal
-	if lit.Intrinsic == nil {
-		return nil
-	}
-
-	intr := lit.Intrinsic
+	intr := primary.Literal.Intrinsic
 	if intr.Name != "is_not_null" && intr.Name != "is_null" {
 		return nil
 	}
@@ -206,15 +226,14 @@ func extractSymbolFromExpression(expr *tokens.Expression) string {
 	if expr == nil || expr.GetLogicalOr() == nil {
 		return ""
 	}
-	lo := expr.GetLogicalOr()
-	if lo.Next != nil || lo.LogicalAnd == nil {
+	p := walkToPrimary(expr.GetLogicalOr())
+	if p == nil || p.Literal == nil {
 		return ""
 	}
-	la := lo.LogicalAnd
-	if la.Next != nil || la.Equality == nil {
-		return ""
+	if p.Literal.Symbol != "" && p.Literal.SymbolModule == "" && len(p.Literal.Chain) == 0 && p.Literal.ArrayIndex == nil {
+		return p.Literal.Symbol
 	}
-	return extractSymbolFromEquality(la.Equality)
+	return ""
 }
 
 // extractSymbolFromComparison extracts a simple symbol name from a Comparison node

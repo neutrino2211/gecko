@@ -42,7 +42,7 @@ func findLocalDefinition(entry *tokens.Entry, name string, line, _ int, uri stri
 	// Check if we're in a method
 	if entry.Method != nil {
 		method := entry.Method
-		if method.Pos.Line <= line {
+		if method.Pos.Line <= line && line <= method.EndPos.Line {
 			// Check function arguments
 			for _, arg := range method.Arguments {
 				if arg.Name == name {
@@ -66,7 +66,7 @@ func findLocalDefinition(entry *tokens.Entry, name string, line, _ int, uri stri
 	// Check in class methods
 	if entry.Class != nil {
 		for _, field := range entry.Class.Fields {
-			if field.Method != nil && field.Method.Pos.Line <= line {
+			if field.Method != nil && field.Method.Pos.Line <= line && line <= field.Method.EndPos.Line {
 				for _, arg := range field.Method.Arguments {
 					if arg.Name == name {
 						return &protocol.Location{

@@ -33,7 +33,7 @@ type NullCheckInfo struct {
 
 // unwrapSubExpression walks the expression chain to extract a parenthesized sub-expression.
 func unwrapSubExpression(lo *tokens.LogicalOr) *tokens.Expression {
-	if lo == nil || lo.LogicalAnd == nil {
+	if lo == nil || lo.Next != nil || lo.LogicalAnd == nil {
 		return nil
 	}
 	eq := lo.LogicalAnd.Equality

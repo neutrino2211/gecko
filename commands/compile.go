@@ -143,6 +143,19 @@ func treeshakeLinkerFlagsForPlatform(platform string, enabled bool) []string {
 	}
 }
 
+func validateStaticLinkRequest(platform string, isStatic bool) error {
+	if !isStatic {
+		return nil
+	}
+	if platform == "linux" {
+		return nil
+	}
+	if platform == "darwin" {
+		return fmt.Errorf("static linking on darwin is not supported: crt0.o not found")
+	}
+	return nil
+}
+
 func effectiveTargetPlatform(ctx *cli.Context) string {
 	platform := strings.TrimSpace(ctx.String("target-platform"))
 	if platform == "" {

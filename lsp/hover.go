@@ -54,8 +54,8 @@ func findLocalVariable(entry *tokens.Entry, name string, line, _ int, file *toke
 	if entry.Method != nil {
 		method := entry.Method
 
-		// Check if cursor is within the method body (rough check based on method position)
-		if method.Pos.Line <= line {
+		// Check if cursor is within the method body
+		if method.Pos.Line <= line && line <= method.EndPos.Line {
 			// Check function arguments first
 			for _, arg := range method.Arguments {
 				if arg.Name == name {
@@ -80,7 +80,7 @@ func findLocalVariable(entry *tokens.Entry, name string, line, _ int, file *toke
 	// Check in class methods
 	if entry.Class != nil {
 		for _, field := range entry.Class.Fields {
-			if field.Method != nil && field.Method.Pos.Line <= line {
+			if field.Method != nil && field.Method.Pos.Line <= line && line <= field.Method.EndPos.Line {
 				// Check arguments
 				for _, arg := range field.Method.Arguments {
 					if arg.Name == name {
@@ -106,7 +106,7 @@ func findLocalVariable(entry *tokens.Entry, name string, line, _ int, file *toke
 	// Check in implementation methods
 	if entry.Implementation != nil {
 		for _, field := range entry.Implementation.GetFields() {
-			if field.Pos.Line <= line {
+			if field.Pos.Line <= line && line <= field.EndPos.Line {
 				// Check arguments
 				for _, arg := range field.Arguments {
 					if arg.Name == name {

@@ -572,7 +572,14 @@ func Compile(file string, config *config.CompileCfg) string {
 		return ""
 	}
 
-	os.MkdirAll(buildDir, 0o755)
+	if err := os.MkdirAll(buildDir, 0o755); err != nil {
+		compileErrorScope.NewCompileTimeError(
+			"Build Directory Error",
+			"Failed to create build directory '"+buildDir+"': "+err.Error(),
+			lexer.Position{},
+		)
+		return ""
+	}
 
 	// Create lazy type resolver for directory imports
 	lazyResolver := func(typeName string) (*tokens.File, bool) {

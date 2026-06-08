@@ -5,6 +5,8 @@ package tokens
 import (
 	"crypto/rand"
 	"encoding/hex"
+	mrand "math/rand"
+	"time"
 )
 
 func (t *baseToken) GetID() string {
@@ -12,7 +14,12 @@ func (t *baseToken) GetID() string {
 		return t.RefID
 	}
 	b := make([]byte, 16)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		rng := mrand.New(mrand.NewSource(time.Now().UnixNano()))
+		for i := range b {
+			b[i] = byte(rng.Intn(256))
+		}
+	}
 	t.RefID = hex.EncodeToString(b)
 	return t.RefID
 }

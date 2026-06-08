@@ -150,6 +150,17 @@ func effectiveTargetPlatform(ctx *cli.Context) string {
 	return platform
 }
 
+func defaultLLVMExecutableLinkFlags(platform string, isStatic bool) []string {
+	flags := make([]string, 0, 1)
+	// Linux toolchains often default to PIE executables. Our LLVM .o artifacts
+	// may contain absolute relocations; avoid PIE link-mode unless explicitly
+	// requested by user flags.
+	if platform == "linux" && !isStatic {
+		flags = append(flags, "-no-pie")
+	}
+	return flags
+}
+
 func dedupeStrings(values []string) []string {
 	out := make([]string, 0, len(values))
 	seen := make(map[string]bool, len(values))
@@ -704,6 +715,8 @@ var BuildCommand = &cli.Command{
 			if err != nil {
 				return err
 			}
+			treeshakeEnabled := resolveTreeshakeEnabled(ctx, projectCfg)
+			ldflags = append(ldflags, treeshakeLinkerFlagsForPlatform(effectiveTargetPlatform(ctx), treeshakeEnabled)...)
 
 			clangArgs := []string{}
 			if ctx.Bool("release") {
@@ -712,6 +725,7 @@ var BuildCommand = &cli.Command{
 			if isStatic {
 				clangArgs = append(clangArgs, "-static")
 			}
+			clangArgs = append(clangArgs, defaultLLVMExecutableLinkFlags(effectiveTargetPlatform(ctx), isStatic)...)
 
 			clangArgs = append(clangArgs, "-o", output, objFile)
 			clangArgs = append(clangArgs, collectObjectInputs(projectCfg, targetKey)...)
@@ -853,11 +867,19 @@ var RunCommand = &cli.Command{
 		wd, _ := os.Getwd()
 		projectCfg, _ := config.LoadProjectConfig(wd)
 
-		// Create temp executable
+		// Create temp executable in an isolated subdirectory.
+		// Some GUI runtimes (e.g. WebKit) expect to create
+		// $TMPDIR/<process_name>/... directories at startup.
+		// Avoid placing the executable directly at that path.
 		tmpDir := os.TempDir()
 		base := filepath.Base(source)
 		exeName := strings.TrimSuffix(base, filepath.Ext(base))
-		tmpExe := filepath.Join(tmpDir, "gecko_"+exeName)
+		tmpRunDir, err := os.MkdirTemp(tmpDir, "gecko-run-")
+		if err != nil {
+			return fmt.Errorf("failed to create temp run directory: %w", err)
+		}
+		defer os.RemoveAll(tmpRunDir)
+		tmpExe := filepath.Join(tmpRunDir, "gecko_"+exeName)
 		backend := resolveEffectiveBackend(source, ctx.String("backend"))
 		targetKey := resolveTargetKey(ctx, projectCfg)
 		pkgConfigPkgs := ctx.StringSlice("pkg-config")
@@ -883,8 +905,11 @@ var RunCommand = &cli.Command{
 			if err != nil {
 				return err
 			}
+			treeshakeEnabled := resolveTreeshakeEnabled(ctx, projectCfg)
+			ldflags = append(ldflags, treeshakeLinkerFlagsForPlatform(effectiveTargetPlatform(ctx), treeshakeEnabled)...)
 
 			clangArgs := []string{"-o", tmpExe, objFile}
+			clangArgs = append(clangArgs, defaultLLVMExecutableLinkFlags(effectiveTargetPlatform(ctx), false)...)
 			clangArgs = append(clangArgs, collectObjectInputs(projectCfg, targetKey)...)
 			clangArgs = append(clangArgs, ldflags...)
 
@@ -956,11 +981,10 @@ var RunCommand = &cli.Command{
 
 		runErr := runCmd.Run()
 
-		// Clean up executable
-		os.Remove(tmpExe)
-
 		if runErr != nil {
 			if exitErr, ok := runErr.(*exec.ExitError); ok {
+				// os.Exit skips defers; clean temp run directory explicitly.
+				_ = os.RemoveAll(tmpRunDir)
 				// Program exited with non-zero - propagate silently
 				os.Exit(exitErr.ExitCode())
 			}

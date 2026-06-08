@@ -17,17 +17,20 @@ loop.body.1:
 	br i1 %3, label %if.then.2, label %if.merge.2
 
 loop.exit.1:
-	ret i64 %6
+	%4 = load i64, i64* %result
+	ret i64 %4
 
 if.then.2:
 	br label %loop.exit.1
 
 if.merge.2:
-	%4 = load i64, i64* %result
-	%5 = load i64, i64* %i
-	%6 = add i64 %4, %5
-	%7 = load i64, i64* %i
-	%8 = add i64 %7, 1
+	%5 = load i64, i64* %result
+	%6 = load i64, i64* %i
+	%7 = add i64 %5, %6
+	store i64 %7, i64* %result
+	%8 = load i64, i64* %i
+	%9 = add i64 %8, 1
+	store i64 %9, i64* %i
 	br label %loop.header.1
 
 loop.break.dead.3:
@@ -50,18 +53,23 @@ loop.header.4:
 loop.body.4:
 	%2 = load i64, i64* %i
 	%3 = add i64 %2, 1
-	%4 = icmp eq i64 %3, 5
-	br i1 %4, label %if.then.5, label %if.merge.5
+	store i64 %3, i64* %i
+	%4 = load i64, i64* %i
+	%5 = icmp eq i64 %4, 5
+	br i1 %5, label %if.then.5, label %if.merge.5
 
 loop.exit.4:
+	%6 = load i64, i64* %result
 	ret i64 %6
 
 if.then.5:
 	br label %loop.header.4
 
 if.merge.5:
-	%5 = load i64, i64* %result
-	%6 = add i64 %5, %3
+	%7 = load i64, i64* %result
+	%8 = load i64, i64* %i
+	%9 = add i64 %7, %8
+	store i64 %9, i64* %result
 	br label %loop.header.4
 
 loop.continue.dead.6:

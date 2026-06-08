@@ -63,6 +63,23 @@ func (t *TypeRef) Check(scope *ast.Ast) bool {
 		return t.Size.Type.Check(scope)
 	}
 
+	// Function types: func(A, B): R
+	if t.FuncType != nil {
+		ok := true
+		for _, paramType := range t.FuncType.ParamTypes {
+			if paramType != nil && !paramType.Check(scope) {
+				ok = false
+			}
+		}
+		if t.FuncType.ReturnType != nil && !t.FuncType.ReturnType.Check(scope) {
+			ok = false
+		}
+		if t.FuncType.Throws != nil && !t.FuncType.Throws.Check(scope) {
+			ok = false
+		}
+		return ok
+	}
+
 	// Primitive types are always valid and don't need class resolution
 	if IsPrimitive(t.Type) {
 		return true

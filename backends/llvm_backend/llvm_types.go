@@ -43,6 +43,9 @@ type LLVMStructInfo struct {
 // LLVMStructMap maps class names to their struct info
 var LLVMStructMap = make(map[string]*LLVMStructInfo)
 
+// LLVMOpaqueTypeMap maps external opaque type names to LLVM identified opaque structs.
+var LLVMOpaqueTypeMap = make(map[string]*types.StructType)
+
 // LLVMEnumInfo stores lowered enum metadata for symbol/type resolution.
 type LLVMEnumInfo struct {
 	LLVMType *types.IntType

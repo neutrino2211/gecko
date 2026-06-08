@@ -66,16 +66,48 @@ func (impl *LLVMBackendImplementation) TypeRefGetLLIRType(t *tokens.TypeRef, sco
 			size = 0
 		}
 		baseType = types.NewArray(size, elemType)
+	} else if t.FuncType != nil {
+		paramTypes := make([]types.Type, 0, len(t.FuncType.ParamTypes))
+		for _, paramTypeRef := range t.FuncType.ParamTypes {
+			paramType := impl.TypeRefGetLLIRType(paramTypeRef, scope)
+			if paramType == nil {
+				paramType = types.I8Ptr
+			}
+			paramTypes = append(paramTypes, paramType)
+		}
+
+		returnType := VoidType.Type
+		if t.FuncType.ReturnType != nil {
+			if rt := impl.TypeRefGetLLIRType(t.FuncType.ReturnType, scope); rt != nil {
+				returnType = rt
+			} else {
+				returnType = types.I8Ptr
+			}
+		}
+
+		// Gecko `func(...)` types are first-class function pointer types.
+		baseType = types.NewPointer(types.NewFunc(returnType, paramTypes...))
 	} else {
+		// Generic type parameters are lowered as opaque pointers in LLVM for now.
+		if tokens.IsTypeParameter != nil && tokens.IsTypeParameter(t.Type) {
+			baseType = types.I8Ptr
+		}
+
 		// Try to find primitive type
 		prim := findPrimitive(t.Type)
-		if prim != nil {
+		if baseType == nil && prim != nil {
 			baseType = prim.Type
+			if t.Type == "void" && t.Pointer {
+				// LLVM IR does not permit `void*`; represent it as `i8*`.
+				baseType = types.I8
+			}
 		} else {
 			// Try to resolve user-defined types (structs/enums).
-			if classScope := impl.resolveClassFromTypeRef(scope, t); classScope != nil {
-				if enumInfo, ok := LLVMEnumMap[classScope.FullScopeName()]; ok && enumInfo != nil && enumInfo.LLVMType != nil {
-					baseType = enumInfo.LLVMType
+			if scope != nil {
+				if classScope := impl.resolveClassFromTypeRef(scope, t); classScope != nil {
+					if enumInfo, ok := LLVMEnumMap[classScope.FullScopeName()]; ok && enumInfo != nil && enumInfo.LLVMType != nil {
+						baseType = enumInfo.LLVMType
+					}
 				}
 			}
 
@@ -86,10 +118,23 @@ func (impl *LLVMBackendImplementation) TypeRefGetLLIRType(t *tokens.TypeRef, sco
 					baseType = structInfo.Type
 				}
 			}
+
+			if baseType == nil {
+				// Opaque external types are represented as identified opaque structs.
+				if opaque, ok := LLVMOpaqueTypeMap[t.Type]; ok && opaque != nil {
+					baseType = opaque
+				}
+			}
+
+			if baseType == nil && t.Type != "" {
+				// As a final fallback, keep lowering deterministic by materializing an
+				// opaque identified type instead of panicking/nil-dereferencing.
+				baseType = impl.registerOpaqueType(scope, t.Type)
+			}
 		}
 	}
 
-	// If the type is a pointer, wrap the base type in a PointerType
+	// If the type is a pointer, wrap the base type in a PointerType.
 	if t.Pointer && baseType != nil {
 		return &types.PointerType{
 			ElemType: baseType,
@@ -97,6 +142,116 @@ func (impl *LLVMBackendImplementation) TypeRefGetLLIRType(t *tokens.TypeRef, sco
 	}
 
 	return baseType
+}
+
+func (impl *LLVMBackendImplementation) registerOpaqueType(scope *ast.Ast, name string) types.Type {
+	if name == "" {
+		return nil
+	}
+
+	if existing, ok := LLVMOpaqueTypeMap[name]; ok && existing != nil {
+		return existing
+	}
+
+	opaque := types.NewStruct()
+	opaque.SetName(name)
+	opaque.Opaque = true
+	LLVMOpaqueTypeMap[name] = opaque
+
+	if scope != nil {
+		info := LLVMGetScopeInformation(scope)
+		if info != nil && info.ProgramContext != nil && info.ProgramContext.Module != nil {
+			exists := false
+			for _, typedef := range info.ProgramContext.Module.TypeDefs {
+				if typedef != nil && typedef.Name() == name {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				info.ProgramContext.Module.TypeDefs = append(info.ProgramContext.Module.TypeDefs, opaque)
+			}
+		}
+	}
+
+	return opaque
+}
+
+func (impl *LLVMBackendImplementation) TypeRefGetLLIRTypeOrFallback(t *tokens.TypeRef, scope *ast.Ast) types.Type {
+	llType := impl.TypeRefGetLLIRType(t, scope)
+	if llType != nil {
+		return llType
+	}
+	return types.I8Ptr
+}
+
+func (impl *LLVMBackendImplementation) TypeRefGetLLIRTypeWithMethodFallback(t *tokens.TypeRef, method *ast.Method) types.Type {
+	if method != nil {
+		if method.Scope != nil {
+			if ty := impl.TypeRefGetLLIRType(t, method.Scope); ty != nil {
+				return ty
+			}
+		}
+		if method.Parent != nil {
+			if ty := impl.TypeRefGetLLIRType(t, method.Parent); ty != nil {
+				return ty
+			}
+		}
+	}
+	return impl.TypeRefGetLLIRTypeOrFallback(t, nil)
+}
+
+func (impl *LLVMBackendImplementation) LLVMAssignArgumentsToMethodArguments(args []*tokens.Value, mth *ast.Method) {
+	for _, v := range args {
+		if v == nil {
+			continue
+		}
+		if v.Type == nil {
+			continue
+		}
+		var def value.Value = nil
+
+		if v.Default != nil && mth != nil && mth.Parent != nil {
+			def = impl.ExpressionToLLIRValue(v.Default, mth.Parent, v.Type)
+		}
+
+		if mth != nil && mth.Scope != nil {
+			v.Type.Check(mth.Scope)
+		} else if mth != nil && mth.Parent != nil {
+			v.Type.Check(mth.Parent)
+		}
+
+		vIrType := impl.TypeRefGetLLIRTypeWithMethodFallback(v.Type, mth)
+		if mth != nil && mth.Visibility == "external" && v.Out {
+			vIrType = types.NewPointer(vIrType)
+		}
+
+		parentScope := (*ast.Ast)(nil)
+		if mth != nil {
+			parentScope = mth.Scope
+			if parentScope == nil {
+				parentScope = mth.Parent
+			}
+		}
+
+		argVariable := ast.Variable{
+			Name:       v.Name,
+			IsPointer:  v.Type.Pointer,
+			IsVolatile: v.Type.Volatile,
+			Parent:     parentScope,
+		}
+
+		(*LLVMProgramValues)[argVariable.GetFullName()] = &LLVMValueInformation{
+			Type:       vIrType,
+			Value:      def,
+			GeckoType:  v.Type,
+			IsVolatile: v.Type.Volatile,
+		}
+
+		if mth != nil {
+			mth.Arguments = append(mth.Arguments, argVariable)
+		}
+	}
 }
 
 func (impl *LLVMBackendImplementation) LLVMResolveFuncContext(a *ast.Ast, funcName string) *option.Optional[*LocalContext] {
@@ -137,44 +292,6 @@ func (impl *LLVMBackendImplementation) LLVMResolveLLIRType(a *ast.Ast, typ strin
 	}
 
 	return option.Some(t)
-}
-
-func (impl *LLVMBackendImplementation) LLVMAssignArgumentsToMethodArguments(args []*tokens.Value, mth *ast.Method) {
-	for _, v := range args {
-		if v == nil {
-			continue
-		}
-		if v.Type == nil {
-			continue
-		}
-		var def value.Value = nil
-
-		if v.Default != nil {
-			def = impl.ExpressionToLLIRValue(v.Default, mth.Parent, v.Type)
-		}
-
-		if mth.Scope != nil {
-			v.Type.Check(mth.Scope)
-		}
-
-		vIrType := impl.TypeRefGetLLIRType(v.Type, mth.Scope)
-
-		argVariable := ast.Variable{
-			Name:       v.Name,
-			IsPointer:  v.Type.Pointer,
-			IsVolatile: v.Type.Volatile,
-			Parent:     mth.Scope,
-		}
-
-		(*LLVMProgramValues)[argVariable.GetFullName()] = &LLVMValueInformation{
-			Type:       vIrType,
-			Value:      def,
-			GeckoType:  v.Type,
-			IsVolatile: v.Type.Volatile,
-		}
-
-		mth.Arguments = append(mth.Arguments, argVariable)
-	}
 }
 
 func (impl *LLVMBackendImplementation) LLVMImplementationToMethodTokens(scope *ast.Ast, i *tokens.Implementation) []*tokens.Method {
@@ -286,36 +403,37 @@ func (impl *LLVMBackendImplementation) LLVMImplementationForClass(scope *ast.Ast
 	}
 
 	var mthdList []*ast.Method
-
-	if i.Default {
-		mthdList = *traitMthds
-	} else {
-		for _, m := range impl.LLVMImplementationToMethodTokens(class, i) {
-			mangledName := class.Scope + "__" + i.GetName()
-			if len(i.GetTypeArgs()) > 0 {
-				for _, typeArg := range i.GetTypeArgs() {
-					mangledName += "__" + typeRefToMangledName(typeArg)
+	withTypeParameters(i.GetTypeParams(), func() {
+		if i.Default {
+			mthdList = *traitMthds
+		} else {
+			for _, m := range impl.LLVMImplementationToMethodTokens(class, i) {
+				mangledName := class.Scope + "__" + i.GetName()
+				if len(i.GetTypeArgs()) > 0 {
+					for _, typeArg := range i.GetTypeArgs() {
+						mangledName += "__" + typeRefToMangledName(typeArg)
+					}
 				}
+				mangledName += "__" + m.Name
+
+				lowered := *m
+				lowered.Name = mangledName
+
+				impl.NewMethod(class, &lowered)
+
+				traitMethod, ok := class.Methods[mangledName]
+				if !ok || traitMethod == nil {
+					scope.ErrorScope.NewCompileTimeError(
+						"Implementation Error",
+						"unable to register trait method '"+m.Name+"' for trait '"+i.GetName()+"' on type '"+class.Scope+"'",
+						i.Pos,
+					)
+					continue
+				}
+				mthdList = append(mthdList, traitMethod)
 			}
-			mangledName += "__" + m.Name
-
-			lowered := *m
-			lowered.Name = mangledName
-
-			impl.NewMethod(class, &lowered)
-
-			traitMethod, ok := class.Methods[mangledName]
-			if !ok || traitMethod == nil {
-				scope.ErrorScope.NewCompileTimeError(
-					"Implementation Error",
-					"unable to register trait method '"+m.Name+"' for trait '"+i.GetName()+"' on type '"+class.Scope+"'",
-					i.Pos,
-				)
-				continue
-			}
-			mthdList = append(mthdList, traitMethod)
 		}
-	}
+	})
 
 	// Build mangled trait name with type arguments for generic traits
 	// This matches the C backend behavior to avoid collisions when implementing
@@ -336,18 +454,20 @@ func (impl *LLVMBackendImplementation) LLVMInherentImplementation(scope *ast.Ast
 		return
 	}
 
-	for _, f := range i.GetFields() {
-		m := f.ToMethodToken()
-		if _, exists := class.Methods[m.Name]; exists {
-			scope.ErrorScope.NewCompileTimeError(
-				"Duplicate Method",
-				"Method '"+m.Name+"' already exists on class '"+className+"'. Extensions can only add new methods, not override existing ones.",
-				m.Pos,
-			)
-			continue
+	withTypeParameters(i.GetTypeParams(), func() {
+		for _, f := range i.GetFields() {
+			m := f.ToMethodToken()
+			if _, exists := class.Methods[m.Name]; exists {
+				scope.ErrorScope.NewCompileTimeError(
+					"Duplicate Method",
+					"Method '"+m.Name+"' already exists on class '"+className+"'. Extensions can only add new methods, not override existing ones.",
+					m.Pos,
+				)
+				continue
+			}
+			impl.NewMethod(class, m)
 		}
-		impl.NewMethod(class, m)
-	}
+	})
 }
 
 // typeRefToMangledName converts a TypeRef to a mangled string for trait keys.

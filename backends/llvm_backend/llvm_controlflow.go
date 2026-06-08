@@ -9,7 +9,9 @@ import (
 	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/llir/llvm/ir"
 	"github.com/llir/llvm/ir/constant"
+	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/types"
+	"github.com/llir/llvm/ir/value"
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/tokens"
 )
@@ -19,6 +21,25 @@ var blockCounter uint64
 
 func getUniqueBlockID() uint64 {
 	return atomic.AddUint64(&blockCounter, 1)
+}
+
+func (impl *LLVMBackendImplementation) ensureConditionValue(scope *ast.Ast, cond value.Value, pos lexer.Position) value.Value {
+	if cond == nil {
+		return nil
+	}
+	if intType, ok := cond.Type().(*types.IntType); ok {
+		if intType.BitSize == 1 {
+			return cond
+		}
+		info := LLVMGetScopeInformation(scope)
+		return info.LocalContext.MainBlock.NewICmp(enum.IPredNE, cond, constant.NewInt(intType, 0))
+	}
+	if ptrType, ok := cond.Type().(*types.PointerType); ok {
+		info := LLVMGetScopeInformation(scope)
+		return info.LocalContext.MainBlock.NewICmp(enum.IPredNE, cond, constant.NewNull(ptrType))
+	}
+	scope.ErrorScope.NewCompileTimeError("Control Flow Error", "condition expression must evaluate to bool/integer/pointer", pos)
+	return nil
 }
 
 // NewIf generates LLVM IR for if/else-if/else statements
@@ -31,7 +52,8 @@ func (impl *LLVMBackendImplementation) NewIf(scope *ast.Ast, ifStmt *tokens.If) 
 	}
 
 	// Generate the condition value
-	condValue := impl.ExpressionToLLIRValue(ifStmt.Expression, scope, &tokens.TypeRef{Type: "bool"})
+	condValue := impl.ExpressionToLLIRValue(ifStmt.Expression, scope, &tokens.TypeRef{})
+	condValue = impl.ensureConditionValue(scope, condValue, ifStmt.Pos)
 	if condValue == nil {
 		scope.ErrorScope.NewCompileTimeError("Control Flow Error", "unable to evaluate if condition", ifStmt.Pos)
 		return
@@ -88,7 +110,8 @@ func (impl *LLVMBackendImplementation) processElseIf(scope *ast.Ast, elseIf *tok
 	fn := info.LocalContext.Func
 
 	// Generate the condition value for else-if
-	condValue := impl.ExpressionToLLIRValue(elseIf.Expression, scope, &tokens.TypeRef{Type: "bool"})
+	condValue := impl.ExpressionToLLIRValue(elseIf.Expression, scope, &tokens.TypeRef{})
+	condValue = impl.ensureConditionValue(scope, condValue, elseIf.Pos)
 	if condValue == nil {
 		scope.ErrorScope.NewCompileTimeError("Control Flow Error", "unable to evaluate else-if condition", elseIf.Pos)
 		return
@@ -170,7 +193,8 @@ func (impl *LLVMBackendImplementation) processWhileLoop(scope *ast.Ast, loop *to
 
 	// Generate the condition in the header block
 	info.LocalContext.MainBlock = headerBlock
-	condValue := impl.ExpressionToLLIRValue(loop.ForExpression, scope, &tokens.TypeRef{Type: "bool"})
+	condValue := impl.ExpressionToLLIRValue(loop.ForExpression, scope, &tokens.TypeRef{})
+	condValue = impl.ensureConditionValue(scope, condValue, loop.Pos)
 	if condValue == nil {
 		scope.ErrorScope.NewCompileTimeError("Control Flow Error", "unable to evaluate loop condition", loop.Pos)
 		return
@@ -363,6 +387,39 @@ func (impl *LLVMBackendImplementation) NewAssignment(scope *ast.Ast, assignment 
 
 	varInfo := LLVMGetValueInformation(variable.Unwrap())
 
+	// Handle field assignment (e.g., obj.field = value)
+	if assignment.Field != "" {
+		chain := &tokens.ChainAccess{Name: assignment.Field}
+		chain.Pos = assignment.Pos
+		fieldPtr := impl.ResolveSymbolChainValue(scope, assignment.Name, []*tokens.ChainAccess{chain}, assignment.Pos, true)
+		if fieldPtr == nil {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to resolve field assignment target '"+assignment.Name+"."+assignment.Field+"'", assignment.Pos)
+			return
+		}
+
+		ptrType, isPtr := fieldPtr.Type().(*types.PointerType)
+		if !isPtr || ptrType.ElemType == nil {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "field assignment target is not addressable", assignment.Pos)
+			return
+		}
+
+		newValue := impl.ExpressionToLLIRValue(assignment.Value, scope, &tokens.TypeRef{})
+		if newValue == nil {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to evaluate assignment value", assignment.Pos)
+			return
+		}
+		newValue = impl.coerceValueToType(newValue, ptrType.ElemType, scope, assignment.Pos)
+		if newValue == nil {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "field assignment has incompatible value type", assignment.Pos)
+			return
+		}
+
+		if impl.NewVolatileStore(info.LocalContext.MainBlock, newValue, fieldPtr, false) == nil {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to store field assignment value", assignment.Pos)
+		}
+		return
+	}
+
 	// Handle indexed assignment (e.g., arr[0] = value)
 	if assignment.Index != nil {
 		// Get the pointer value of the variable
@@ -427,7 +484,27 @@ func (impl *LLVMBackendImplementation) NewAssignment(scope *ast.Ast, assignment 
 		return
 	}
 
-	// Update the value in the values map
+	if varInfo.Value == nil {
+		scope.ErrorScope.NewCompileTimeError("Assignment Error", "variable '"+assignment.Name+"' has no storage for assignment", assignment.Pos)
+		return
+	}
+
+	// Normal variable assignment stores into the variable's backing storage.
+	// For locals/globals this is typically an alloca/global pointer.
+	if dstPtr, isPtr := varInfo.Value.Type().(*types.PointerType); isPtr && dstPtr.ElemType != nil {
+		newValue = impl.coerceValueToType(newValue, dstPtr.ElemType, scope, assignment.Pos)
+		if newValue == nil {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "assignment has incompatible value type", assignment.Pos)
+			return
+		}
+		isVolatile := varInfo.IsVolatile || (varInfo.GeckoType != nil && varInfo.GeckoType.IsVolatile())
+		if impl.NewVolatileStore(info.LocalContext.MainBlock, newValue, varInfo.Value, isVolatile) == nil {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to store assignment value", assignment.Pos)
+		}
+		return
+	}
+
+	// Fallback for non-addressable values.
 	varInfo.Value = newValue
 }
 
@@ -483,5 +560,5 @@ func (impl *LLVMBackendImplementation) NewCImport(scope *ast.Ast, cimport *token
 
 // IntrinsicStatement handles intrinsic calls as statements
 func (impl *LLVMBackendImplementation) IntrinsicStatement(scope *ast.Ast, i *tokens.Intrinsic) {
-	// TODO: Implement LLVM intrinsics
+	impl.IntrinsicToLLIRValue(scope, i, &tokens.TypeRef{})
 }

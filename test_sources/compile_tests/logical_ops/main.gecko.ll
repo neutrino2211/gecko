@@ -1,4 +1,5 @@
-@.str.52246212764113045802577653871870 = private global [24 x i8] c"Logical operators work!\00"
+@.str.08244872145408843438183043438726 = private global [24 x i8] c"Logical operators work!\00"
+@llvm.used = appending global [2 x i8*] [i8* bitcast (i32 (i8*)* @puts to i8*), i8* bitcast (i32 ()* @main to i8*)], section "llvm.metadata"
 
 declare ccc i32 @puts(i8* %s)
 
@@ -48,8 +49,9 @@ if.then.4:
 	br label %if.merge.4
 
 if.merge.4:
-	%14 = getelementptr [24 x i8], [24 x i8]* @.str.52246212764113045802577653871870, i8 0
-	%15 = call i32 @puts([24 x i8]* %14)
+	%14 = getelementptr [24 x i8], [24 x i8]* @.str.08244872145408843438183043438726, i8 0
+	%15 = bitcast [24 x i8]* %14 to i8*
+	%16 = call i32 @puts(i8* %15)
 	ret i32 0
 
 if.else.4:

@@ -105,27 +105,6 @@ func TestLLVMLiteUnsupportedFeatures(t *testing.T) {
 		want backends.Feature
 	}{
 		{
-			name: "impl_blocks",
-			code: `package main
-class Point { let x: int32 }
-impl Point {
-    func val(self): int32 { return self.x }
-}`,
-			want: backends.FeatureImpl,
-		},
-		{
-			name: "trait_definitions",
-			code: `package main
-trait Printable { func print(self): void }`,
-			want: backends.FeatureTraits,
-		},
-		{
-			name: "generics",
-			code: `package main
-func id<T>(x: T): T { return x }`,
-			want: backends.FeatureGenerics,
-		},
-		{
 			name: "volatile_pointers",
 			code: `package main
 func main(): int32 {

@@ -62,6 +62,7 @@ func (b *LLVMBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	}
 
 	info := llvmbackend.LLVMGetScopeInformation(file)
+	info.ProgramContext.EmitExternalRootAnchors()
 
 	llir := info.ProgramContext.Module.String()
 
@@ -84,6 +85,10 @@ func (b *LLVMBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 
 	objOut := strings.TrimSuffix(c.OutName, filepath.Ext(c.OutName)) + ".o"
 	llcArgs := []string{"-filetype=obj"}
+	if file.Config != nil && file.Config.Treeshake {
+		// Emit per-symbol sections so linker GC can drop unreachable code/data.
+		llcArgs = append(llcArgs, "-function-sections", "-data-sections")
+	}
 
 	if file.Config.Arch == "arm64" && file.Config.Platform == "darwin" {
 		llcArgs = append(llcArgs, "--mtriple", "arm64-apple-darwin21.4.0")

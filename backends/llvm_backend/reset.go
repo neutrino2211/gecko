@@ -2,6 +2,7 @@ package llvmbackend
 
 import (
 	"github.com/llir/llvm/ir"
+	"github.com/llir/llvm/ir/types"
 	"github.com/neutrino2211/gecko/ast"
 )
 
@@ -15,6 +16,7 @@ func ResetState() {
 	LLVMScopeDataMap = &LLVMScopeData{}
 	LLVMProgramValues = &LLVMValuesMap{}
 	LLVMStructMap = make(map[string]*LLVMStructInfo)
+	LLVMOpaqueTypeMap = make(map[string]*types.StructType)
 	LLVMEnumMap = make(map[string]*LLVMEnumInfo)
 	TraitDefinitionOrigins = make(map[string]string)
 	TraitParents = make(map[string]string)

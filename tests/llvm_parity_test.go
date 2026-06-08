@@ -109,6 +109,9 @@ func TestLLVMParityPanicSafety(t *testing.T) {
 		{name: "llvm_parity_inherent_impl_chain", file: "test_sources/compile_tests/llvm_parity/inherent_impl_chain/main.gecko"},
 		{name: "llvm_parity_trait_impl_call", file: "test_sources/compile_tests/llvm_parity/trait_impl_call/main.gecko"},
 		{name: "llvm_parity_trait_inheritance_override", file: "test_sources/compile_tests/llvm_parity/trait_inheritance_override/main.gecko"},
+		{name: "llvm_parity_opaque_external_decl", file: "test_sources/compile_tests/llvm_parity/opaque_external_decl/main.gecko"},
+		{name: "llvm_parity_intrinsic_is_null", file: "test_sources/compile_tests/llvm_parity/intrinsic_is_null/main.gecko"},
+		{name: "llvm_parity_generic_option_try", file: "test_sources/compile_tests/error_handling_try_invalid/main.gecko"},
 		{name: "llvm_parity_unresolved_trait_method", file: "test_sources/compile_tests/llvm_parity/unresolved_trait_method/main.gecko"},
 		{name: "llvm_parity_visibility_denied_method", file: "test_sources/compile_tests/llvm_parity/visibility_denied_method/main.gecko"},
 		{name: "llvm_parity_unresolved_foreign_module_method", file: "test_sources/compile_tests/llvm_parity/unresolved_foreign_module_method/main.gecko"},
@@ -202,6 +205,32 @@ func TestLLVMParityTraitImplLoweringSlices(t *testing.T) {
 	}
 }
 
+func TestLLVMParityGNotePrereqSlices(t *testing.T) {
+	geckoPath := buildGecko(t)
+
+	tests := []llvmParityCase{
+		{name: "opaque_external_decl", file: "test_sources/compile_tests/llvm_parity/opaque_external_decl/main.gecko"},
+		{name: "intrinsic_is_null", file: "test_sources/compile_tests/llvm_parity/intrinsic_is_null/main.gecko"},
+		{name: "generic_option_try", file: "test_sources/compile_tests/error_handling_try_invalid/main.gecko"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			output, _ := runLLVMIROnlyCompile(t, geckoPath, tc.file)
+
+			if strings.Contains(output, "panic:") {
+				t.Fatalf("LLVM GNote-prereq fixture must not panic for %s\nOutput:\n%s", tc.file, outputExcerpt(output))
+			}
+			if strings.Contains(output, "Unsupported Feature") {
+				t.Fatalf("LLVM GNote-prereq fixture must not hit unsupported feature gate for %s\nOutput:\n%s", tc.file, outputExcerpt(output))
+			}
+			if outputHasErrorSummary(output) {
+				t.Fatalf("LLVM GNote-prereq fixture must compile without reported errors for %s\nOutput:\n%s", tc.file, outputExcerpt(output))
+			}
+		})
+	}
+}
+
 func TestBackendParityFirstSliceCompileBehavior(t *testing.T) {
 	geckoPath := buildGecko(t)
 
@@ -209,6 +238,39 @@ func TestBackendParityFirstSliceCompileBehavior(t *testing.T) {
 		{name: "imports", file: "test_sources/compile_tests/imports/main.gecko"},
 		{name: "type_inference", file: "test_sources/compile_tests/llvm_parity/type_inference_slice.gecko"},
 		{name: "loops_break_continue", file: "test_sources/compile_tests/loops/break_continue.gecko"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cOutput, _ := runIROnlyCompileForBackend(t, geckoPath, "c", tc.file)
+			llvmOutput, _ := runIROnlyCompileForBackend(t, geckoPath, "llvm", tc.file)
+
+			if strings.Contains(cOutput, "panic:") {
+				t.Fatalf("C backend must not panic for %s\nOutput:\n%s", tc.file, outputExcerpt(cOutput))
+			}
+			if strings.Contains(llvmOutput, "panic:") {
+				t.Fatalf("LLVM backend must not panic for %s\nOutput:\n%s", tc.file, outputExcerpt(llvmOutput))
+			}
+
+			cHasErrors := outputHasErrorSummary(cOutput)
+			llvmHasErrors := outputHasErrorSummary(llvmOutput)
+			if cHasErrors != llvmHasErrors {
+				t.Fatalf(
+					"Compile behavior mismatch for %s: C errors=%v, LLVM errors=%v\nC output:\n%s\nLLVM output:\n%s",
+					tc.file, cHasErrors, llvmHasErrors, outputExcerpt(cOutput), outputExcerpt(llvmOutput),
+				)
+			}
+		})
+	}
+}
+
+func TestBackendParityGNotePrereqCompileBehavior(t *testing.T) {
+	geckoPath := buildGecko(t)
+
+	tests := []parityExpectation{
+		{name: "opaque_external_decl", file: "test_sources/compile_tests/llvm_parity/opaque_external_decl/main.gecko"},
+		{name: "intrinsic_is_null", file: "test_sources/compile_tests/llvm_parity/intrinsic_is_null/main.gecko"},
+		{name: "generic_option_try", file: "test_sources/compile_tests/error_handling_try_invalid/main.gecko"},
 	}
 
 	for _, tc := range tests {
@@ -389,10 +451,9 @@ func TestLLVMParityUnsupportedFeatures(t *testing.T) {
 			requireErrorSum: true,
 		},
 		{
-			name:            "error_handling_try_invalid",
-			file:            "test_sources/compile_tests/error_handling_try_invalid/main.gecko",
-			mustContain:     []string{"Unsupported Feature"},
-			mustContainAny:  []string{"Feature 'impl' is not supported by the 'llvm' backend", "Feature 'generics' is not supported by the 'llvm' backend"},
+			name:            "import_closure_unsupported_volatile",
+			file:            "test_sources/compile_tests/llvm_parity/import_closure_unsupported/main.gecko",
+			mustContain:     []string{"Unsupported Feature", "Feature 'volatile' is not supported by the 'llvm' backend", "used in:"},
 			requireErrorSum: true,
 		},
 	}

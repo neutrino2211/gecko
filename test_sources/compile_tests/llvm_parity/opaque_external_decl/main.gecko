@@ -1,0 +1,18 @@
+package main
+
+declare external type sqlite3
+declare external func sqlite3_open(filename: string, ppDb: out sqlite3*): int32
+declare external func sqlite3_close(db: sqlite3*): int32
+
+func ping(path: string): int32 {
+    let db: sqlite3* = 0 as sqlite3*
+    let rc: int32 = sqlite3_open(path, out db)
+    if (@is_null(db as void*)) {
+        return rc
+    }
+    return sqlite3_close(db)
+}
+
+external func main(): int32 {
+    return ping("example.db")
+}

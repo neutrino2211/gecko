@@ -148,7 +148,7 @@ func (impl *LLVMBackendImplementation) resolveEnumCaseConstant(scope *ast.Ast, e
 	return constant.NewInt(enumInfo.LLVMType, caseValue), true
 }
 
-func (impl *LLVMBackendImplementation) resolveModuleChain(scope *ast.Ast, moduleScope *ast.Ast, moduleName string, chain []*tokens.ChainAccess, pos lexer.Position) value.Value {
+func (impl *LLVMBackendImplementation) resolveModuleChain(scope *ast.Ast, moduleScope *ast.Ast, moduleName string, chain []*tokens.ChainAccess, pos lexer.Position, wantsAddress bool) value.Value {
 	if len(chain) == 0 {
 		scope.ErrorScope.NewCompileTimeError("Variable Resolution Error", "Unable to resolve the variable '"+moduleName+"'", pos)
 		return nil
@@ -184,7 +184,18 @@ func (impl *LLVMBackendImplementation) resolveModuleChain(scope *ast.Ast, module
 			)
 			return nil
 		}
-		base = LLVMGetValueInformation(moduleVariable.Unwrap()).Value
+
+		moduleVar := moduleVariable.Unwrap()
+		moduleVarInfo := LLVMGetValueInformation(moduleVar)
+		base = impl.readSymbolValue(scope, moduleVar, moduleVarInfo, wantsAddress)
+		if base == nil {
+			scope.ErrorScope.NewCompileTimeError(
+				"Variable Resolution Error",
+				"Unable to lower module symbol '"+moduleName+"."+first.Name+"'",
+				pos,
+			)
+			return nil
+		}
 	}
 
 	if len(chain) > 1 {
@@ -203,11 +214,11 @@ func findIRFuncByName(module *ir.Module, names ...string) *ir.Func {
 		return nil
 	}
 
-	for _, fn := range module.Funcs {
-		for _, name := range names {
-			if name == "" {
-				continue
-			}
+	for _, name := range names {
+		if name == "" {
+			continue
+		}
+		for _, fn := range module.Funcs {
 			if fn.Name() == name {
 				return fn
 			}
@@ -242,12 +253,12 @@ func (impl *LLVMBackendImplementation) resolveMethodIRFunction(scope *ast.Ast, m
 	module := info.ProgramContext.Module
 
 	candidates := make([]string, 0, len(fallbackNames)+2)
+	for _, name := range fallbackNames {
+		candidates = appendUniqueNonEmpty(candidates, name)
+	}
 	if method != nil {
 		candidates = appendUniqueNonEmpty(candidates, method.Name)
 		candidates = appendUniqueNonEmpty(candidates, method.GetFullName())
-	}
-	for _, name := range fallbackNames {
-		candidates = appendUniqueNonEmpty(candidates, name)
 	}
 
 	if method != nil {
@@ -347,7 +358,7 @@ func (impl *LLVMBackendImplementation) ensureStructPointer(scope *ast.Ast, recei
 	return nil
 }
 
-func (impl *LLVMBackendImplementation) lowerFieldAccess(scope *ast.Ast, state llvmChainState, chain *tokens.ChainAccess, terminal bool) (llvmChainState, bool) {
+func (impl *LLVMBackendImplementation) lowerFieldAccess(scope *ast.Ast, state llvmChainState, chain *tokens.ChainAccess, terminal bool, wantsAddress bool) (llvmChainState, bool) {
 	classScope := impl.resolveClassFromTypeRef(scope, state.GeckoType)
 	if classScope == nil {
 		scope.ErrorScope.NewCompileTimeError(
@@ -422,6 +433,16 @@ func (impl *LLVMBackendImplementation) lowerFieldAccess(scope *ast.Ast, state ll
 
 	isVolatile := fieldType != nil && fieldType.IsVolatile()
 	if terminal {
+		if wantsAddress {
+			nextType := cloneTypeRef(fieldType)
+			if nextType != nil {
+				nextType.Pointer = true
+			}
+			return llvmChainState{
+				Value:     fieldPtr,
+				GeckoType: nextType,
+			}, true
+		}
 		loaded := impl.NewVolatileLoad(block, fieldIRType, fieldPtr, isVolatile)
 		return llvmChainState{
 			Value:     loaded,
@@ -687,14 +708,73 @@ func (impl *LLVMBackendImplementation) lowerMethodCall(scope *ast.Ast, state llv
 		scope.ErrorScope.NewCompileTimeError("Call Error", "unable to materialize receiver for method call", chain.Pos)
 		return nil
 	}
+	if len(resolution.Method.Arguments) > 0 {
+		selfVar := resolution.Method.Arguments[0]
+		selfInfo := LLVMGetValueInformation(&selfVar)
+		if selfInfo != nil && selfInfo.Type != nil {
+			selfArg = impl.coerceValueToType(selfArg, selfInfo.Type, scope, chain.Pos)
+			if selfArg == nil {
+				scope.ErrorScope.NewCompileTimeError("Call Error", "unable to coerce receiver to expected method self parameter type", chain.Pos)
+				return nil
+			}
+		}
+	}
 
 	args := make([]value.Value, 0, len(chain.GetArgs())+1)
 	args = append(args, selfArg)
-	for _, arg := range chain.GetArgs() {
-		argValue := impl.ExpressionToLLIRValue(arg.Value, scope, &tokens.TypeRef{})
+	for idx, arg := range chain.GetArgs() {
+		tr := &tokens.TypeRef{}
+		var expectedArgType types.Type
+		methodArgIdx := idx + 1 // skip self
+		if methodArgIdx < len(resolution.Method.Arguments) {
+			argVar := resolution.Method.Arguments[methodArgIdx]
+			argInfo := LLVMGetValueInformation(&argVar)
+			if argInfo != nil {
+				if argInfo.GeckoType != nil {
+					tr = argInfo.GeckoType
+				}
+				if argInfo.Type != nil {
+					expectedArgType = argInfo.Type
+					if tr.Type == "" {
+						if inferred := llirTypeToGeckoTypeRef(argInfo.Type); inferred != nil {
+							tr = inferred
+						}
+					}
+				}
+			}
+		}
+		if methodArgIdx < len(fn.Params) && fn.Params[methodArgIdx] != nil {
+			expectedArgType = fn.Params[methodArgIdx].Type()
+		}
+
+		if arg.Out {
+			argValue := impl.resolveOutArgumentPointer(scope, arg.Value, chain.Pos)
+			if argValue == nil {
+				scope.ErrorScope.NewCompileTimeError("Call Error", "unable to resolve out argument pointer for method call", chain.Pos)
+				return nil
+			}
+			if expectedArgType != nil {
+				argValue = impl.coerceValueToType(argValue, expectedArgType, scope, chain.Pos)
+				if argValue == nil {
+					scope.ErrorScope.NewCompileTimeError("Call Error", "unable to coerce out method-call argument to expected LLVM parameter type", chain.Pos)
+					return nil
+				}
+			}
+			args = append(args, argValue)
+			continue
+		}
+
+		argValue := impl.ExpressionToLLIRValue(arg.Value, scope, tr)
 		if argValue == nil {
 			scope.ErrorScope.NewCompileTimeError("Call Error", "unable to evaluate method call argument", chain.Pos)
 			return nil
+		}
+		if expectedArgType != nil {
+			argValue = impl.coerceValueToType(argValue, expectedArgType, scope, chain.Pos)
+			if argValue == nil {
+				scope.ErrorScope.NewCompileTimeError("Call Error", "unable to coerce method call argument to expected LLVM parameter type", chain.Pos)
+				return nil
+			}
 		}
 		args = append(args, argValue)
 	}
@@ -702,7 +782,7 @@ func (impl *LLVMBackendImplementation) lowerMethodCall(scope *ast.Ast, state llv
 	return info.LocalContext.MainBlock.NewCall(fn, args...)
 }
 
-func (impl *LLVMBackendImplementation) lowerValueChain(scope *ast.Ast, state llvmChainState, chain []*tokens.ChainAccess, pos lexer.Position) value.Value {
+func (impl *LLVMBackendImplementation) lowerValueChain(scope *ast.Ast, state llvmChainState, chain []*tokens.ChainAccess, pos lexer.Position, wantsAddress bool) value.Value {
 	if len(chain) == 0 {
 		return state.Value
 	}
@@ -722,7 +802,7 @@ func (impl *LLVMBackendImplementation) lowerValueChain(scope *ast.Ast, state llv
 			return impl.lowerMethodCall(scope, state, link)
 		}
 
-		nextState, ok := impl.lowerFieldAccess(scope, state, link, isTerminal)
+		nextState, ok := impl.lowerFieldAccess(scope, state, link, isTerminal, wantsAddress)
 		if !ok {
 			return nil
 		}
@@ -775,7 +855,7 @@ func (impl *LLVMBackendImplementation) ResolveSymbolChainValue(scope *ast.Ast, s
 		if state.GeckoType == nil && variable.IsPointer {
 			state.GeckoType = &tokens.TypeRef{Pointer: true}
 		}
-		return impl.lowerValueChain(scope, state, chain, pos)
+		return impl.lowerValueChain(scope, state, chain, pos, wantsAddress)
 	}
 
 	if enumValue, handled := impl.resolveEnumCaseConstant(scope, symbolName, chain, pos); handled {
@@ -785,7 +865,15 @@ func (impl *LLVMBackendImplementation) ResolveSymbolChainValue(scope *ast.Ast, s
 	if len(chain) > 0 {
 		rootScope := scope.GetRoot()
 		if importedModule, ok := rootScope.Children[symbolName]; ok {
-			return impl.resolveModuleChain(scope, importedModule, symbolName, chain, pos)
+			return impl.resolveModuleChain(scope, importedModule, symbolName, chain, pos, wantsAddress)
+		}
+	}
+
+	if len(chain) == 0 {
+		methodOpt := scope.ResolveMethod(symbolName)
+		if !methodOpt.IsNil() {
+			method := methodOpt.Unwrap()
+			return impl.resolveMethodIRFunction(scope, method, symbolName, method.GetFullName())
 		}
 	}
 

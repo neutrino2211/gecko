@@ -1,0 +1,7 @@
+package main
+
+import provider
+
+external func main(): int32 {
+    return 0
+}

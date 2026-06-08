@@ -1,3 +1,5 @@
+@llvm.used = appending global [1 x i8*] [i8* bitcast (i32 ()* @main to i8*)], section "llvm.metadata"
+
 define ccc i32 @color_code(i32 %c) {
 color_code$main:
 	ret i32 %c

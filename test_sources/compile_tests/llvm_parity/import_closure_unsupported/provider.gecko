@@ -1,0 +1,9 @@
+package provider
+
+public func requires_volatile(): int32 {
+    let p: int32 volatile* = 0 as int32 volatile*
+    if (@is_null(p as void*)) {
+        return 0
+    }
+    return 1
+}

@@ -1,0 +1,15 @@
+package main
+
+func maybe(ptr: void*): int32 {
+    if (@is_null(ptr)) {
+        return 0
+    }
+    if (@is_not_null(ptr)) {
+        return 1
+    }
+    return 2
+}
+
+external func main(): int32 {
+    return maybe(0 as void*)
+}

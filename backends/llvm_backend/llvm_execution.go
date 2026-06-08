@@ -4,6 +4,8 @@ package llvmbackend
 
 import (
 	"github.com/llir/llvm/ir"
+	"github.com/llir/llvm/ir/constant"
+	"github.com/llir/llvm/ir/enum"
 	"github.com/llir/llvm/ir/types"
 	"github.com/neutrino2211/go-option"
 )
@@ -12,6 +14,7 @@ type ModuleContext struct {
 	Module            *ir.Module
 	GlobalDefinitions map[string]*ir.Global
 	Methods           map[string]*ir.Func
+	ExternalRootFuncs []*ir.Func
 }
 
 type LocalContext struct {
@@ -33,6 +36,7 @@ func (m *ModuleContext) Init() {
 	m.Module = ir.NewModule()
 	m.GlobalDefinitions = make(map[string]*ir.Global)
 	m.Methods = make(map[string]*ir.Func)
+	m.ExternalRootFuncs = make([]*ir.Func, 0)
 }
 
 func (l *LocalContext) Init(fn *ir.Func) {
@@ -79,6 +83,39 @@ func NewLocalContext(fn *ir.Func) *LocalContext {
 	ctx := &LocalContext{}
 	ctx.Init(fn)
 	return ctx
+}
+
+func (m *ModuleContext) RegisterExternalRoot(fn *ir.Func) {
+	if fn == nil {
+		return
+	}
+	for _, existing := range m.ExternalRootFuncs {
+		if existing == fn || existing.Name() == fn.Name() {
+			return
+		}
+	}
+	m.ExternalRootFuncs = append(m.ExternalRootFuncs, fn)
+}
+
+func (m *ModuleContext) EmitExternalRootAnchors() {
+	if m == nil || m.Module == nil || len(m.ExternalRootFuncs) == 0 {
+		return
+	}
+
+	for _, g := range m.Module.Globals {
+		if g.Name() == "llvm.used" {
+			return
+		}
+	}
+
+	elems := make([]constant.Constant, 0, len(m.ExternalRootFuncs))
+	for _, fn := range m.ExternalRootFuncs {
+		elems = append(elems, constant.NewBitCast(fn, types.I8Ptr))
+	}
+	arrType := types.NewArray(uint64(len(elems)), types.I8Ptr)
+	anchor := m.Module.NewGlobalDef("llvm.used", constant.NewArray(arrType, elems...))
+	anchor.Linkage = enum.LinkageAppending
+	anchor.Section = "llvm.metadata"
 }
 
 func (l *LocalContext) PushLoopTargets(breakTarget *ir.Block, continueTarget *ir.Block) {

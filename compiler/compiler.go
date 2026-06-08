@@ -636,13 +636,64 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	// Validate that the file only uses features supported by the backend
 	compilationBackend.Init()
-	usedFeatures := backends.DetectFeatures(sourceFile)
 	featureSet := compilationBackend.Features()
 	unsupportedSet := make(map[backends.Feature]struct{})
+	featureSources := make(map[backends.Feature][]string)
 
-	for _, feature := range usedFeatures {
-		if !featureSet.SupportsString(string(feature)) {
-			unsupportedSet[feature] = struct{}{}
+	fileDisplayName := func(file *tokens.File) string {
+		if file == nil {
+			return "<unknown>"
+		}
+		if file.Path != "" {
+			return file.Path
+		}
+		if file.Name != "" {
+			return file.Name
+		}
+		return "<anonymous>"
+	}
+
+	appendUniqueString := func(values []string, candidate string) []string {
+		for _, v := range values {
+			if v == candidate {
+				return values
+			}
+		}
+		return append(values, candidate)
+	}
+
+	visitedFiles := make(map[string]bool)
+	filesInClosure := make([]*tokens.File, 0)
+	var walkImportClosure func(file *tokens.File)
+	walkImportClosure = func(file *tokens.File) {
+		if file == nil {
+			return
+		}
+		key := file.Path
+		if key == "" {
+			key = file.Name
+		}
+		if key == "" {
+			key = fmt.Sprintf("%p", file)
+		}
+		if visitedFiles[key] {
+			return
+		}
+		visitedFiles[key] = true
+		filesInClosure = append(filesInClosure, file)
+		for _, imported := range file.Imports {
+			walkImportClosure(imported)
+		}
+	}
+	walkImportClosure(sourceFile)
+
+	for _, fileInClosure := range filesInClosure {
+		usedFeatures := backends.DetectFeatures(fileInClosure)
+		for _, feature := range usedFeatures {
+			if !featureSet.SupportsString(string(feature)) {
+				unsupportedSet[feature] = struct{}{}
+				featureSources[feature] = appendUniqueString(featureSources[feature], fileDisplayName(fileInClosure))
+			}
 		}
 	}
 
@@ -662,9 +713,9 @@ func Compile(file string, config *config.CompileCfg) string {
 			for _, feature := range unsupportedFeatures {
 				featureNames = append(featureNames, string(feature))
 			}
-			println(color.YellowString("  Unsupported in this file: " + strings.Join(featureNames, ", ") + "."))
+			println(color.YellowString("  Unsupported in effective import closure: " + strings.Join(featureNames, ", ") + "."))
 		} else {
-			println(color.YellowString("  No unsupported features were detected in this file by feature gating."))
+			println(color.YellowString("  No unsupported features were detected in the effective import closure by feature gating."))
 		}
 		println(color.YellowString("  For production use, prefer the C backend (--backend c)."))
 		println()
@@ -672,6 +723,9 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	for _, feature := range unsupportedFeatures {
 		msg := "Feature '" + string(feature) + "' is not supported by the '" + backend + "' backend"
+		if origins, ok := featureSources[feature]; ok && len(origins) > 0 {
+			msg += " (used in: " + strings.Join(origins, ", ") + ")"
+		}
 		if backend == "llvm" {
 			msg += " (prefer '--backend c' for this file)"
 		}

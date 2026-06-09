@@ -196,6 +196,127 @@ cimport "swiftlib.h" withobject "build/swiftlib.o" withlibrary "swiftlib"`,
 	}
 }
 
+func TestForeignClausesParsing(t *testing.T) {
+	tests := []struct {
+		name            string
+		code            string
+		expectedHeaders []string
+		expectedLibs    []string
+		expectedObjs    []string
+	}{
+		{
+			name: "header only",
+			code: `package main
+foreign "c" stdio withheader "<stdio.h>" {
+    func printf(fmt: string, ...): int32 as "printf"
+}`,
+			expectedHeaders: []string{"<stdio.h>"},
+		},
+		{
+			name: "all clauses mixed order",
+			code: `package main
+foreign "c" sqlite withobject "build/sqlite3.o" withheader "<sqlite3.h>" withlibrary "sqlite3" withheader "<stdint.h>" {
+    type sqlite3 opaque
+    func sqlite3_open(path: string, db: out sqlite3*): int32
+}`,
+			expectedHeaders: []string{"<sqlite3.h>", "<stdint.h>"},
+			expectedLibs:    []string{"sqlite3"},
+			expectedObjs:    []string{"build/sqlite3.o"},
+		},
+		{
+			name: "repeated library and object clauses",
+			code: `package main
+foreign "c" native withlibrary "m" withobject "build/a.o" withlibrary "z" withobject "build/b.o" {
+    func puts(msg: string): int32
+}`,
+			expectedLibs: []string{"m", "z"},
+			expectedObjs: []string{"build/a.o", "build/b.o"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			file, err := parser.Parser.ParseString("test.gecko", tc.code)
+			if err != nil {
+				t.Fatalf("Parse error: %v", err)
+			}
+			if len(file.Entries) == 0 || file.Entries[0].Foreign == nil {
+				t.Fatal("First entry is not foreign")
+			}
+			foreign := file.Entries[0].Foreign
+
+			var headers []string
+			for _, h := range foreign.GetWithHeaders() {
+				headers = append(headers, stripQuotes(h))
+			}
+			var libs []string
+			for _, lib := range foreign.GetWithLibraries() {
+				libs = append(libs, stripQuotes(lib))
+			}
+			var objs []string
+			for _, obj := range foreign.GetWithObjects() {
+				objs = append(objs, stripQuotes(obj))
+			}
+
+			if len(headers) != len(tc.expectedHeaders) {
+				t.Fatalf("expected %d headers, got %d: %v", len(tc.expectedHeaders), len(headers), headers)
+			}
+			for i, h := range tc.expectedHeaders {
+				if headers[i] != h {
+					t.Fatalf("header %d mismatch: expected %q got %q", i, h, headers[i])
+				}
+			}
+			if len(libs) != len(tc.expectedLibs) {
+				t.Fatalf("expected %d libs, got %d: %v", len(tc.expectedLibs), len(libs), libs)
+			}
+			for i, lib := range tc.expectedLibs {
+				if libs[i] != lib {
+					t.Fatalf("library %d mismatch: expected %q got %q", i, lib, libs[i])
+				}
+			}
+			if len(objs) != len(tc.expectedObjs) {
+				t.Fatalf("expected %d objects, got %d: %v", len(tc.expectedObjs), len(objs), objs)
+			}
+			for i, obj := range tc.expectedObjs {
+				if objs[i] != obj {
+					t.Fatalf("object %d mismatch: expected %q got %q", i, obj, objs[i])
+				}
+			}
+		})
+	}
+}
+
+func TestVariadicSyntaxParsing(t *testing.T) {
+	valid := `package main
+func printf(fmt: string, ...): int32 {}`
+	file, err := parser.Parser.ParseString("test.gecko", valid)
+	if err != nil {
+		t.Fatalf("unexpected parse error for valid variadic syntax: %v", err)
+	}
+	if len(file.Entries) == 0 || file.Entries[0].Method == nil {
+		t.Fatal("expected top-level method")
+	}
+	if !file.Entries[0].Method.IsVariadic() {
+		t.Fatal("expected method to be variadic")
+	}
+
+	legacy := `package main
+variardic func puts(fmt: string): int32 {}`
+	file, err = parser.Parser.ParseString("legacy.gecko", legacy)
+	if err != nil {
+		t.Fatalf("unexpected parse error for legacy variardic syntax: %v", err)
+	}
+	if len(file.Entries) == 0 || file.Entries[0].Method == nil || !file.Entries[0].Method.Variardic {
+		t.Fatal("expected legacy variardic method to parse")
+	}
+
+	invalid := `package main
+func bad(..., x: int32): void {}`
+	if _, err := parser.Parser.ParseString("invalid.gecko", invalid); err == nil {
+		t.Fatal("expected parse failure for malformed variadic placement")
+	}
+}
+
 func TestHookAttributes(t *testing.T) {
 	tests := []struct {
 		name            string

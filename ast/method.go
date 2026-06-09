@@ -7,13 +7,14 @@ import (
 )
 
 type Method struct {
-	Name       string
-	Arguments  []Variable
-	Scope      *Ast
-	Visibility string
-	Parent     *Ast
-	Type       string
-	Throws     string // Error type this method can throw (empty if none)
+	Name           string
+	Arguments      []Variable
+	Scope          *Ast
+	Visibility     string
+	Parent         *Ast
+	Type           string
+	ExternalSymbol string
+	Throws         string // Error type this method can throw (empty if none)
 }
 
 func (m *Method) GetFullName() string {
@@ -26,6 +27,16 @@ func (m *Method) GetFullName() string {
 	}
 
 	return cString
+}
+
+func (m *Method) CIdentifier() string {
+	if m == nil {
+		return ""
+	}
+	if m.ExternalSymbol != "" {
+		return m.ExternalSymbol
+	}
+	return m.GetFullName()
 }
 
 func (m *Method) ToCString() string {

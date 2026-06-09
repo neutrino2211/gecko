@@ -95,6 +95,49 @@ type CImportClause struct {
 	WithLibrary string `parser:"| 'withlibrary' @String"`
 }
 
+type Foreign struct {
+	baseToken
+	Backend string           `parser:"'foreign' @String"`
+	Module  string           `parser:"@Ident"`
+	Clauses []*ForeignClause `parser:"{ @@ }"`
+	Members []*ForeignMember `parser:"'{' { @@ } '}'"`
+}
+
+type ForeignClause struct {
+	baseToken
+	WithHeader  string `parser:"'withheader' @String"`
+	WithLibrary string `parser:"| 'withlibrary' @String"`
+	WithObject  string `parser:"| 'withobject' @String"`
+}
+
+type ForeignMember struct {
+	baseToken
+	Type   *ForeignType   `parser:"@@"`
+	Method *ForeignMethod `parser:"| @@"`
+}
+
+type ForeignType struct {
+	baseToken
+	Name string `parser:"'type' @Ident 'opaque'"`
+}
+
+type ForeignMethod struct {
+	baseToken
+	Name      string   `parser:"'func' @Ident"`
+	Arguments []*Value `parser:"'(' [ @@ { ',' @@ } ]"`
+	Variadic  bool     `parser:"[ ',' @'...' | @'...' ] ')'"`
+	Type      *TypeRef `parser:"[ ':' @@ ]"`
+	Throws    *TypeRef `parser:"[ 'throws' @@ ]"`
+	As        string   `parser:"[ 'as' @String ]"`
+}
+
+func (m *ForeignMethod) IsVariadic() bool {
+	if m == nil {
+		return false
+	}
+	return m.Variadic
+}
+
 // GetWithObjects returns all withobject values in declaration order.
 func (c *CImport) GetWithObjects() []string {
 	var objects []string
@@ -115,6 +158,36 @@ func (c *CImport) GetWithLibraries() []string {
 		}
 	}
 	return libs
+}
+
+func (f *Foreign) GetWithHeaders() []string {
+	var headers []string
+	for _, clause := range f.Clauses {
+		if clause.WithHeader != "" {
+			headers = append(headers, clause.WithHeader)
+		}
+	}
+	return headers
+}
+
+func (f *Foreign) GetWithLibraries() []string {
+	var libs []string
+	for _, clause := range f.Clauses {
+		if clause.WithLibrary != "" {
+			libs = append(libs, clause.WithLibrary)
+		}
+	}
+	return libs
+}
+
+func (f *Foreign) GetWithObjects() []string {
+	var objects []string
+	for _, clause := range f.Clauses {
+		if clause.WithObject != "" {
+			objects = append(objects, clause.WithObject)
+		}
+	}
+	return objects
 }
 
 type Import struct {
@@ -162,6 +235,7 @@ type Entry struct {
 	Method      *Method      `parser:"| @@"`
 	Field       *Field       `parser:"| @@"`
 	Declaration *Declaration `parser:"| @@"`
+	Foreign     *Foreign     `parser:"| @@"`
 	Enum        *Enum        `parser:"| @@"`
 	// Intrinsic, MethodCall, and FuncCall must come after declarations
 	// MethodCall handles chained calls like self.field.method()
@@ -497,10 +571,19 @@ type Method struct {
 	Variardic  bool         `parser:"[ @'variardic' ]"`
 	Name       string       `parser:"'func' @Ident"`
 	TypeParams []*TypeParam `parser:"[ '<' @@ { ',' @@ } '>' ]"`
-	Arguments  []*Value     `parser:"'(' [ @@ { ',' @@ } ] ')'"`
+	Arguments  []*Value     `parser:"'(' [ @@ { ',' @@ } ]"`
+	Variadic   bool         `parser:"[ ',' @'...' | @'...' ] ')'"`
 	Type       *TypeRef     `parser:"[ ':' @@ ]"`
 	Throws     *TypeRef     `parser:"[ 'throws' @@ ]"`
-	Value      []*Entry     `parser:"[ '{' @@* '}' ]"`
+	LinkName   string
+	Value      []*Entry `parser:"[ '{' @@* '}' ]"`
+}
+
+func (m *Method) IsVariadic() bool {
+	if m == nil {
+		return false
+	}
+	return m.Variadic || m.Variardic
 }
 
 type Value struct {

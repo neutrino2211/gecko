@@ -14,6 +14,7 @@ var geckoLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "Comment", Pattern: `//[^\n]*`},
 
 	// Multi-character operators (must come before single-char Punct)
+	{Name: "Ellipsis", Pattern: `\.\.\.`},
 	{Name: "DoubleColon", Pattern: `::`},
 	{Name: "LogicalAnd", Pattern: `&&`},
 	{Name: "LogicalOr", Pattern: `\|\|`},

@@ -89,4 +89,7 @@ type BackendCodegenImplementations interface {
 
 	// C imports
 	NewCImport(*ast.Ast, *tokens.CImport)
+
+	// Foreign interop blocks
+	NewForeign(*ast.Ast, *tokens.Foreign)
 }

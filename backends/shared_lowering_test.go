@@ -66,6 +66,7 @@ func (f *fakeBackendImpl) IntrinsicStatement(*ast.Ast, *tokens.Intrinsic) {
 	f.calls = append(f.calls, "intrinsic")
 }
 func (f *fakeBackendImpl) NewCImport(*ast.Ast, *tokens.CImport) { f.calls = append(f.calls, "cimport") }
+func (f *fakeBackendImpl) NewForeign(*ast.Ast, *tokens.Foreign) { f.calls = append(f.calls, "foreign") }
 
 type fakeBackend struct {
 	impl *fakeBackendImpl
@@ -91,6 +92,7 @@ func TestBackendProcessEntriesUsesSharedLoweringOrder(t *testing.T) {
 	entries := []*tokens.Entry{
 		{Field: &tokens.Field{Name: "x", Type: &tokens.TypeRef{Type: "int32"}}},
 		{Method: &tokens.Method{Name: "run"}},
+		{Foreign: &tokens.Foreign{Backend: "\"c\"", Module: "stdio"}},
 		{If: &tokens.If{}},
 		{Break: boolPtr(true)},
 		{Continue: boolPtr(true)},
@@ -99,7 +101,7 @@ func TestBackendProcessEntriesUsesSharedLoweringOrder(t *testing.T) {
 
 	b.ProcessEntries(entries, scope)
 
-	want := []string{"field", "method", "if", "break", "continue", "return"}
+	want := []string{"field", "method", "foreign", "if", "break", "continue", "return"}
 	if len(b.impl.calls) != len(want) {
 		t.Fatalf("unexpected call count: got %d want %d (%v)", len(b.impl.calls), len(want), b.impl.calls)
 	}

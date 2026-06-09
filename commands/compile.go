@@ -175,8 +175,6 @@ func defaultLLVMExecutableLinkFlags(platform string, isStatic bool) []string {
 	return flags
 }
 
-
-
 func resolveEffectiveBackend(source string, requestedBackend string) string {
 	sourceContents, err := os.ReadFile(source)
 	if err != nil {
@@ -195,12 +193,12 @@ func resolveEffectiveBackend(source string, requestedBackend string) string {
 	return requestedBackend
 }
 
-func collectCImportPkgCFlags() []string {
-	if len(cbackend.LastCImportLibraries) == 0 {
+func collectNativePkgCFlags() []string {
+	if len(compiler.LastNativeLibraries) == 0 {
 		return nil
 	}
 	var flags []string
-	for _, lib := range utils.DedupeStrings(cbackend.LastCImportLibraries) {
+	for _, lib := range utils.DedupeStrings(compiler.LastNativeLibraries) {
 		if pkgCFlags, err := runPkgConfig("--cflags", []string{lib}); err == nil {
 			flags = append(flags, pkgCFlags...)
 		}
@@ -208,8 +206,8 @@ func collectCImportPkgCFlags() []string {
 	return flags
 }
 
-func collectCImportPkgLibFlags(staticLink bool) []string {
-	if len(cbackend.LastCImportLibraries) == 0 {
+func collectNativePkgLibFlags(staticLink bool) []string {
+	if len(compiler.LastNativeLibraries) == 0 {
 		return nil
 	}
 	pkgFlag := "--libs"
@@ -218,7 +216,7 @@ func collectCImportPkgLibFlags(staticLink bool) []string {
 	}
 
 	var flags []string
-	for _, lib := range utils.DedupeStrings(cbackend.LastCImportLibraries) {
+	for _, lib := range utils.DedupeStrings(compiler.LastNativeLibraries) {
 		if pkgLibs, err := runPkgConfigWithFlags(pkgFlag, []string{lib}); err == nil {
 			flags = append(flags, pkgLibs...)
 		}
@@ -231,7 +229,7 @@ func collectObjectInputs(projectCfg *config.ProjectConfig, targetKey string) []s
 	if projectCfg != nil {
 		objects = append(objects, projectCfg.GetNativeObjectsForTarget(targetKey)...)
 	}
-	objects = append(objects, cbackend.LastCImportObjects...)
+	objects = append(objects, compiler.LastNativeObjects...)
 	return utils.DedupeStrings(objects)
 }
 
@@ -704,7 +702,7 @@ var BuildCommand = &cli.Command{
 				ldflags = append(ldflags, projLdFlags...)
 			}
 		}
-		ldflags = append(ldflags, collectCImportPkgLibFlags(isStatic)...)
+		ldflags = append(ldflags, collectNativePkgLibFlags(isStatic)...)
 
 		if backend == "llvm" {
 			if _, err := exec.LookPath("clang"); err != nil {
@@ -777,7 +775,7 @@ var BuildCommand = &cli.Command{
 				cflags = append(cflags, projCFlags...)
 			}
 		}
-		cflags = append(cflags, collectCImportPkgCFlags()...)
+		cflags = append(cflags, collectNativePkgCFlags()...)
 		cflags = addTreeshakeCompileFlags(cflags, treeshakeEnabled)
 		gccArgs = append(gccArgs, cflags...)
 
@@ -894,7 +892,7 @@ var RunCommand = &cli.Command{
 				ldflags = append(ldflags, projLdFlags...)
 			}
 		}
-		ldflags = append(ldflags, collectCImportPkgLibFlags(false)...)
+		ldflags = append(ldflags, collectNativePkgLibFlags(false)...)
 
 		if backend == "llvm" {
 			if _, err := exec.LookPath("clang"); err != nil {
@@ -942,7 +940,7 @@ var RunCommand = &cli.Command{
 					cflags = append(cflags, projCFlags...)
 				}
 			}
-			cflags = append(cflags, collectCImportPkgCFlags()...)
+			cflags = append(cflags, collectNativePkgCFlags()...)
 			cflags = addTreeshakeCompileFlags(cflags, treeshakeEnabled)
 			gccArgs = append(gccArgs, cflags...)
 

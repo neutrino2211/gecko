@@ -205,6 +205,7 @@ var compileOnlyTests = []compileOnlyTest{
 	{"strings_greeting", "test_sources/compile_tests/strings/greeting.gecko"},
 	{"volatile_pointer", "test_sources/compile_tests/volatile/volatile_pointer.gecko"},
 	{"error_handling_try_invalid", "test_sources/compile_tests/error_handling_try_invalid/main.gecko"},
+	{"foreign_nullability", "test_sources/compile_tests/foreign_nullability/main.gecko"},
 }
 
 var errorsGeneratedPattern = regexp.MustCompile(`\b([0-9]+) errors generated\b`)
@@ -278,7 +279,7 @@ func TestTryDiagnosticsUsesGeckoExpression(t *testing.T) {
 	sourcePath := filepath.Join(projectRoot, "test_sources/compile_tests/error_handling_try_diagnostics/main.gecko")
 	for _, backend := range allTestBackends {
 		t.Run(backend, func(t *testing.T) {
-			cmd := exec.Command(geckoPath, "compile", "--backend", backend, "--ir-only", "--print-ir", sourcePath)
+			cmd := exec.Command(geckoPath, "compile", "--backend", backend, "--ir-only", "--print-ir", "--no-treeshake", sourcePath)
 			cmd.Dir = projectRoot
 			cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
 
@@ -485,6 +486,67 @@ func TestTraitConstraintError(t *testing.T) {
 				t.Errorf("Error message should mention NotAddable and Addable trait:\n%s", outputStr)
 			}
 		})
+	}
+}
+
+func TestLegacyInteropSyntaxEmitsDeprecationWarnings(t *testing.T) {
+	geckoPath := buildGecko(t)
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	projectRoot := filepath.Dir(wd)
+	if filepath.Base(wd) != "tests" {
+		projectRoot = wd
+	}
+
+	sourcePath := filepath.Join(projectRoot, "test_sources/compile_tests/cimport/main.gecko")
+	for _, backend := range allTestBackends {
+		t.Run(backend, func(t *testing.T) {
+			cmd := exec.Command(geckoPath, "compile", "--backend", backend, "--ir-only", sourcePath)
+			cmd.Dir = projectRoot
+			cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("legacy syntax should still compile during deprecation window: %v\n%s", err, output)
+			}
+
+			outStr := string(output)
+			if !strings.Contains(outStr, "Deprecated Syntax") {
+				t.Fatalf("expected deprecation warning for legacy interop syntax, got:\n%s", outStr)
+			}
+		})
+	}
+}
+
+func TestForeignWithHeaderSuppressesDuplicateExternDeclarations(t *testing.T) {
+	geckoPath := buildGecko(t)
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	projectRoot := filepath.Dir(wd)
+	if filepath.Base(wd) != "tests" {
+		projectRoot = wd
+	}
+
+	sourcePath := filepath.Join(projectRoot, "examples/c_interop/main.gecko")
+	cmd := exec.Command(geckoPath, "compile", "--backend", "c", "--ir-only", "--print-ir", sourcePath)
+	cmd.Dir = projectRoot
+	cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("foreign c_interop example failed to compile: %v\n%s", err, output)
+	}
+
+	outStr := string(output)
+	if !strings.Contains(outStr, "#include <stdio.h>") {
+		t.Fatalf("expected generated C to include stdio header, got:\n%s", outStr)
+	}
+	if strings.Contains(outStr, "extern int32_t printf(") || strings.Contains(outStr, "extern int printf(") {
+		t.Fatalf("expected no duplicate printf extern declaration when withheader is present, got:\n%s", outStr)
 	}
 }
 

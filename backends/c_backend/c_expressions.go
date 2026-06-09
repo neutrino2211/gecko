@@ -1019,7 +1019,7 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 					symbolMethod := scope.ResolveMethod(symbolName)
 					if !symbolMethod.IsNil() {
 						method := symbolMethod.Unwrap()
-						base = method.GetFullName()
+						base = method.CIdentifier()
 					} else {
 						// Could be an unknown symbol, use as-is
 						base = symbolName
@@ -1139,6 +1139,7 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 	var isPointer bool
 	var isModule bool     // Track if base is a module, not a variable
 	var moduleName string // The module name for module.constant/function patterns
+	var moduleScope *ast.Ast
 	var baseVarFullName string
 
 	// Check if the base symbol is a module or enum (not a variable)
@@ -1158,9 +1159,10 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 			// Search up the scope hierarchy for imported modules
 			checkScope := scope
 			for checkScope != nil {
-				if _, ok := checkScope.Children[symbolName]; ok {
+				if childScope, ok := checkScope.Children[symbolName]; ok {
 					isModule = true
 					moduleName = symbolName
+					moduleScope = childScope
 					break
 				}
 				checkScope = checkScope.Parent
@@ -1181,8 +1183,14 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 					}
 					args += impl.ExpressionToCString(arg.Value, scope)
 				}
-				// Generate: module__func(args)
+				// Generate: module__func(args), unless a foreign/imported module
+				// resolves to an external/link alias.
 				funcName := moduleName + "__" + chain.Name
+				if moduleScope != nil {
+					if method := moduleScope.ResolveMethod(chain.Name); !method.IsNil() {
+						funcName = method.Unwrap().CIdentifier()
+					}
+				}
 				if args != "" {
 					result = funcName + "(" + args + ")"
 				} else {
@@ -1610,7 +1618,7 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 			if importedModule, ok := rootScope.Children[f.Module]; ok {
 				mth := importedModule.ResolveMethod(f.Function)
 				if !mth.IsNil() {
-					baseFuncName = mth.Unwrap().GetFullName()
+					baseFuncName = mth.Unwrap().CIdentifier()
 				} else {
 					baseFuncName = f.Module + "__" + f.Function
 				}
@@ -1622,7 +1630,7 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 		// Local function call
 		mth := scope.ResolveMethod(f.Function)
 		if !mth.IsNil() {
-			baseFuncName = mth.Unwrap().GetFullName()
+			baseFuncName = mth.Unwrap().CIdentifier()
 		} else {
 			baseFuncName = f.Function
 		}

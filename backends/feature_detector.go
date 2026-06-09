@@ -92,6 +92,9 @@ func (d *featureDetector) analyzeEntry(entry *tokens.Entry) {
 		d.mark(FeatureExternDecl)
 		d.analyzeDeclaration(entry.Declaration)
 	}
+	if entry.Foreign != nil {
+		d.mark(FeatureExternDecl)
+	}
 
 	// Inline assembly
 	if entry.Asm != nil {

@@ -56,6 +56,30 @@ external func main(): int32 {
 	return sourcePath
 }
 
+func writeBackendFixtureForeignMetadata(t *testing.T) string {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "foreign_meta.gecko")
+	source := `package main
+
+foreign "c" demo withlibrary "zlib" withobject "native/libdemo.o" {
+    func puts(s: string): int32
+}
+
+external func main(): int32 {
+    return 0
+}
+`
+	if err := os.MkdirAll(filepath.Join(tmpDir, "native"), 0o755); err != nil {
+		t.Fatalf("failed creating fixture native directory: %v", err)
+	}
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+		t.Fatalf("failed writing foreign metadata fixture: %v", err)
+	}
+	return sourcePath
+}
+
 func writeBackendFixtureGlobalAssignment(t *testing.T, assignedValue int32) string {
 	t.Helper()
 
@@ -168,6 +192,52 @@ func TestBackendCompileCommandProducesObjectArtifact(t *testing.T) {
 				t.Fatalf("expected object artifact at %s: %v", objectPath, err)
 			}
 		})
+	}
+}
+
+func TestForeignMetadataCollectedForLLVMCompile(t *testing.T) {
+	sourcePath := writeBackendFixtureForeignMetadata(t)
+
+	compiler.ResetCompilationState()
+	cfg := config.CompileCfg{
+		Arch:      runtime.GOARCH,
+		Platform:  runtime.GOOS,
+		Vendor:    "",
+		TargetKey: "",
+		Treeshake: false,
+		CFlags:    []string{},
+		CLFlags:   []string{},
+		CObjects:  []string{},
+		Project:   nil,
+		Ctx:       newCompilerContext(t, "llvm", true),
+	}
+
+	artifact := compiler.Compile(sourcePath, &cfg)
+	if artifact == "" {
+		t.Fatalf("expected llvm ir-only compile artifact, got empty path\nDiagnostics:\n%s", diagnosticsString(compiler.GetAllErrors()))
+	}
+
+	foundLib := false
+	for _, lib := range compiler.LastNativeLibraries {
+		if lib == "zlib" {
+			foundLib = true
+			break
+		}
+	}
+	if !foundLib {
+		t.Fatalf("expected compiler.LastNativeLibraries to include zlib, got: %v", compiler.LastNativeLibraries)
+	}
+
+	expectedObj := filepath.Join(filepath.Dir(sourcePath), "native", "libdemo.o")
+	foundObj := false
+	for _, obj := range compiler.LastNativeObjects {
+		if obj == expectedObj {
+			foundObj = true
+			break
+		}
+	}
+	if !foundObj {
+		t.Fatalf("expected compiler.LastNativeObjects to include %s, got: %v", expectedObj, compiler.LastNativeObjects)
 	}
 }
 

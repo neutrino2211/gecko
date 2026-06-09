@@ -677,7 +677,7 @@ func (impls *LLVMBackendImplementation) FuncCall(scope *ast.Ast, f *tokens.FuncC
 		if retType == nil {
 			retType = VoidType.Type
 		}
-		symbolName := mthUnwrapped.GetFullName()
+		symbolName := mthUnwrapped.CIdentifier()
 		if symbolName == "" {
 			symbolName = f.Function
 			if f.Module != "" {
@@ -1005,6 +1005,9 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 		}
 
 		symbolName := impl.llvmMethodSymbolName(scope, m.Name)
+		if m.Visibility == "external" && strings.TrimSpace(m.LinkName) != "" {
+			symbolName = strings.TrimSpace(unquoteIfQuoted(m.LinkName))
+		}
 		irFunc := findIRFuncByName(info.ProgramContext.Module, symbolName)
 		if irFunc != nil {
 			// Remove the old declaration so we can replace it with a proper definition
@@ -1017,7 +1020,7 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 		}
 		irFunc = ir.NewFunc(symbolName, irType, fnParams...)
 		irFunc.CallingConv = CallingConventions[scope.Config.Arch][scope.Config.Platform]
-		if m.Variardic {
+		if m.IsVariadic() {
 			irFunc.Sig.Variadic = true
 		}
 
@@ -1048,12 +1051,13 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 		}
 
 		astMth := &ast.Method{
-			Name:       m.Name,
-			Scope:      map[bool]*ast.Ast{true: nil, false: &methodScope}[len(m.Value) == 0],
-			Arguments:  make([]ast.Variable, 0),
-			Visibility: m.Visibility,
-			Parent:     scope,
-			Type:       returnType,
+			Name:           m.Name,
+			Scope:          map[bool]*ast.Ast{true: nil, false: &methodScope}[len(m.Value) == 0],
+			Arguments:      make([]ast.Variable, 0),
+			Visibility:     m.Visibility,
+			Parent:         scope,
+			Type:           returnType,
+			ExternalSymbol: map[bool]string{true: symbolName, false: ""}[m.Visibility == "external" && symbolName != m.Name],
 		}
 		scope.Methods[m.Name] = astMth
 

@@ -2,9 +2,9 @@
 
 package c_interop
 
-cimport "<stdio.h>"
-
-declare external variardic func printf(format: string): int32
+foreign "c" stdio withheader "<stdio.h>" {
+    func printf(format: string, ...): int32 as "printf"
+}
 
 class Point {
     let x: int32
@@ -23,7 +23,7 @@ func squared_distance(p1: Point*, p2: Point*): int32 {
 }
 
 func print_point(name: string, p: Point*): void {
-    printf("  %s: (%d, %d)\n", name, p.x, p.y)
+    stdio.printf("  %s: (%d, %d)\n", name, p.x, p.y)
 }
 
 func area(r: Rectangle*): int32 {
@@ -35,11 +35,11 @@ func perimeter(r: Rectangle*): int32 {
 }
 
 external func main(): int32 {
-    printf("=== Gecko C Interop Demo ===\n\n")
-    printf("This example demonstrates cimport for C headers.\n")
-    printf("The stdio.h header provides printf.\n\n")
+    stdio.printf("=== Gecko C Interop Demo ===\n\n")
+    stdio.printf("This example demonstrates foreign C interop headers.\n")
+    stdio.printf("The stdio.h header provides printf.\n\n")
 
-    printf("1. Point operations:\n")
+    stdio.printf("1. Point operations:\n")
     let p1: Point
     p1.x = 0
     p1.y = 0
@@ -52,20 +52,20 @@ external func main(): int32 {
     print_point("Target", &p2)
 
     let dist_sq: int32 = squared_distance(&p1, &p2)
-    printf("  Squared distance: %d (3^2 + 4^2 = 25)\n\n", dist_sq)
+    stdio.printf("  Squared distance: %d (3^2 + 4^2 = 25)\n\n", dist_sq)
 
-    printf("2. Rectangle operations:\n")
+    stdio.printf("2. Rectangle operations:\n")
     let rect: Rectangle
     rect.width = 10
     rect.height = 5
-    printf("  Rectangle: %d x %d\n", rect.width, rect.height)
-    printf("  Area: %d\n", area(&rect))
-    printf("  Perimeter: %d\n\n", perimeter(&rect))
+    stdio.printf("  Rectangle: %d x %d\n", rect.width, rect.height)
+    stdio.printf("  Area: %d\n", area(&rect))
+    stdio.printf("  Perimeter: %d\n\n", perimeter(&rect))
 
-    printf("3. Return value for test validation:\n")
+    stdio.printf("3. Return value for test validation:\n")
     let result: int32 = dist_sq + area(&rect) + perimeter(&rect)
-    printf("  25 + 50 + 30 = %d\n\n", result)
+    stdio.printf("  25 + 50 + 30 = %d\n\n", result)
 
-    printf("=== Demo Complete ===\n")
+    stdio.printf("=== Demo Complete ===\n")
     return result
 }

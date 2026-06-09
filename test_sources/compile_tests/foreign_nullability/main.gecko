@@ -1,0 +1,12 @@
+package main
+
+foreign "c" sqlite {
+    type sqlite3 opaque
+    func sqlite3_open(filename: string, db: out sqlite3*): int32
+}
+
+external func main(): int32 {
+    let db: sqlite3* = null
+    let rc: int32 = sqlite.sqlite3_open(":memory:", out db)
+    return rc
+}

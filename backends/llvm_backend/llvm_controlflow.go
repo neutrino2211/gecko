@@ -4,6 +4,7 @@ package llvmbackend
 
 import (
 	"fmt"
+	"strings"
 	"sync/atomic"
 
 	"github.com/alecthomas/participle/v2/lexer"
@@ -607,6 +608,88 @@ func (impl *LLVMBackendImplementation) NewContinue(scope *ast.Ast) {
 func (impl *LLVMBackendImplementation) NewCImport(scope *ast.Ast, cimport *tokens.CImport) {
 	// LLVM backend handles C interop through extern declarations, not includes
 	// The WithObject/WithLibrary info can be used by the linker stage
+}
+
+func ensureLLVMForeignModuleScope(root *ast.Ast, moduleName string) *ast.Ast {
+	if root == nil || moduleName == "" {
+		return nil
+	}
+	if existing, ok := root.Children[moduleName]; ok && existing != nil {
+		return existing
+	}
+	moduleScope := &ast.Ast{
+		Scope:            moduleName,
+		Parent:           nil,
+		IsImportedModule: true,
+		OriginModule:     root.GetRoot().Scope,
+		SourceFile:       root.GetSourceFile(),
+	}
+	moduleScope.Init(root.ErrorScope)
+	moduleScope.Config = root.Config
+	root.Children[moduleName] = moduleScope
+	return moduleScope
+}
+
+func unquoteIfQuoted(raw string) string {
+	if len(raw) >= 2 && raw[0] == '"' && raw[len(raw)-1] == '"' {
+		return raw[1 : len(raw)-1]
+	}
+	return raw
+}
+
+func (impl *LLVMBackendImplementation) NewForeign(scope *ast.Ast, foreign *tokens.Foreign) {
+	if scope == nil || foreign == nil {
+		return
+	}
+	backendName := strings.TrimSpace(unquoteIfQuoted(foreign.Backend))
+	if backendName == "" {
+		backendName = "c"
+	}
+	if backendName != "c" {
+		scope.ErrorScope.NewCompileTimeError(
+			"Foreign Backend Error",
+			fmt.Sprintf("unsupported foreign backend '%s' for LLVM backend (expected \"c\")", backendName),
+			foreign.Pos,
+		)
+		return
+	}
+
+	rootScope := scope.GetRoot()
+	moduleScope := ensureLLVMForeignModuleScope(rootScope, foreign.Module)
+	if moduleScope == nil {
+		scope.ErrorScope.NewCompileTimeError(
+			"Foreign Module Error",
+			"unable to initialize foreign module scope",
+			foreign.Pos,
+		)
+		return
+	}
+
+	for _, member := range foreign.Members {
+		if member == nil || member.Type == nil {
+			continue
+		}
+		impl.NewExternalType(rootScope, &tokens.ExternalType{Name: member.Type.Name})
+		if classOpt := rootScope.ResolveClass(member.Type.Name); !classOpt.IsNil() {
+			moduleScope.Classes[member.Type.Name] = classOpt.Unwrap()
+		}
+	}
+
+	for _, member := range foreign.Members {
+		if member == nil || member.Method == nil || member.Method.Name == "" {
+			continue
+		}
+		method := &tokens.Method{
+			Visibility: "external",
+			Name:       member.Method.Name,
+			Arguments:  member.Method.Arguments,
+			Variadic:   member.Method.IsVariadic(),
+			Type:       member.Method.Type,
+			Throws:     member.Method.Throws,
+			LinkName:   member.Method.As,
+		}
+		impl.NewMethod(moduleScope, method)
+	}
 }
 
 // IntrinsicStatement handles intrinsic calls as statements

@@ -51,7 +51,7 @@ func RegisterMethodSignature(fullName string, m *tokens.Method) {
 		Throws:     m.Throws,
 		IsGeneric:  len(m.TypeParams) > 0,
 		TypeParams: m.TypeParams,
-		Variadic:   m.Variardic,
+		Variadic:   m.IsVariadic(),
 	}
 
 	for _, arg := range m.Arguments {

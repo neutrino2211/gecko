@@ -32,6 +32,7 @@ const (
 	LoweredOpBreak          LoweredOperationKind = "break"
 	LoweredOpContinue       LoweredOperationKind = "continue"
 	LoweredOpCImport        LoweredOperationKind = "cimport"
+	LoweredOpForeign        LoweredOperationKind = "foreign"
 )
 
 // LoweredOperation is the shared lowering payload that backend emitters consume.
@@ -53,6 +54,7 @@ type LoweredOperation struct {
 	Assignment     *tokens.Assignment
 	Asm            *tokens.Asm
 	CImport        *tokens.CImport
+	Foreign        *tokens.Foreign
 }
 
 func lowerEntry(entry *tokens.Entry) (LoweredOperation, bool) {
@@ -99,6 +101,8 @@ func lowerEntry(entry *tokens.Entry) (LoweredOperation, bool) {
 		return LoweredOperation{Kind: LoweredOpContinue}, true
 	case entry.CImport != nil:
 		return LoweredOperation{Kind: LoweredOpCImport, CImport: entry.CImport}, true
+	case entry.Foreign != nil:
+		return LoweredOperation{Kind: LoweredOpForeign, Foreign: entry.Foreign}, true
 	default:
 		return LoweredOperation{}, false
 	}
@@ -168,6 +172,8 @@ func (e *compatibilityEmitter) EmitLoweredOperation(scope *ast.Ast, op LoweredOp
 		e.impl.NewContinue(scope)
 	case LoweredOpCImport:
 		e.impl.NewCImport(scope, op.CImport)
+	case LoweredOpForeign:
+		e.impl.NewForeign(scope, op.Foreign)
 	}
 }
 

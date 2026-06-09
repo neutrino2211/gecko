@@ -333,23 +333,31 @@ func (impls *CBackendImplementation) NewExternalVariable(scope *ast.Ast, f *toke
 	scope.Variables[f.Name] = fieldVariable
 }
 
-// buildExternalFuncDecl renders external function declarations in a macro-safe,
-// ABI-tolerant form. We intentionally emit a non-prototype declaration (`()`)
-// to avoid platform typedef clashes (e.g., size_t aliases) while Gecko keeps
-// strict argument type checks internally.
-func buildExternalFuncDecl(returnType string, name string) string {
-	return fmt.Sprintf("extern %s (%s)();", returnType, name)
+func buildExternalFuncDecl(returnType string, name string, params string) string {
+	return fmt.Sprintf("extern %s %s(%s);", returnType, name, params)
 }
 
-// NewExternalMethod handles external method declarations (e.g., printf)
-func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens.Method) {
-	info := CGetScopeInformation(scope)
+func unquoteIfQuoted(raw string) string {
+	if len(raw) >= 2 && raw[0] == '"' && raw[len(raw)-1] == '"' {
+		return raw[1 : len(raw)-1]
+	}
+	return raw
+}
+
+func (impls *CBackendImplementation) registerExternalMethod(symbolScope *ast.Ast, declScope *ast.Ast, m *tokens.Method, emitDecl bool) {
+	if symbolScope == nil || m == nil {
+		return
+	}
+	if declScope == nil {
+		declScope = symbolScope
+	}
+	info := CGetScopeInformation(declScope)
 
 	// Determine return type
 	returnType := "void"
 	if m.Type != nil {
-		m.Type.Check(scope)
-		returnType = TypeRefToCType(m.Type, scope)
+		m.Type.Check(symbolScope)
+		returnType = TypeRefToCType(m.Type, symbolScope)
 	}
 
 	// Build parameter list
@@ -357,12 +365,12 @@ func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens
 	for _, arg := range m.Arguments {
 		// Validate parameter type
 		if arg.Type != nil {
-			arg.Type.Check(scope)
+			arg.Type.Check(symbolScope)
 		}
-		paramType := TypeRefToCType(arg.Type, scope)
+		paramType := TypeRefToCType(arg.Type, symbolScope)
 		if arg.Out {
 			if arg.Type != nil && arg.Type.FuncType != nil {
-				scope.ErrorScope.NewCompileTimeError(
+				symbolScope.ErrorScope.NewCompileTimeError(
 					"Unsupported Out Parameter",
 					fmt.Sprintf("external out parameter '%s' cannot be a function type yet", arg.Name),
 					m.Pos,
@@ -380,7 +388,7 @@ func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens
 	paramStr := strings.Join(params, ", ")
 
 	// Handle variadic functions
-	if m.Variardic {
+	if m.IsVariadic() {
 		if len(params) > 0 {
 			paramStr += ", ..."
 		} else {
@@ -388,27 +396,33 @@ func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens
 		}
 	}
 
-	// Generate extern declaration (macro-safe + ABI-tolerant).
-	externDecl := buildExternalFuncDecl(returnType, m.Name)
-	if strings.Contains(returnType, "__FUNCPTR__") {
-		// Preserve original form for uncommon function-pointer return declarations.
-		externDecl = fmt.Sprintf("extern %s %s(%s);", returnType, m.Name, paramStr)
+	symbolName := m.Name
+	if strings.TrimSpace(m.LinkName) != "" {
+		symbolName = unquoteIfQuoted(strings.TrimSpace(m.LinkName))
 	}
-	info.Declarations = append(info.Declarations, externDecl)
 
-	// Register the method in AST
-	// Store Gecko type for type checking
+	if emitDecl {
+		externDecl := buildExternalFuncDecl(returnType, symbolName, paramStr)
+		if strings.Contains(returnType, "__FUNCPTR__") {
+			// Preserve original form for uncommon function-pointer return declarations.
+			externDecl = fmt.Sprintf("extern %s %s(%s);", returnType, symbolName, paramStr)
+		}
+		info.Declarations = append(info.Declarations, externDecl)
+	}
+
+	// Register the method in AST.
 	geckoReturnType := "void"
 	if m.Type != nil {
 		geckoReturnType = m.Type.Type
 	}
 	astMth := &ast.Method{
-		Name:       m.Name,
-		Scope:      nil, // External, no scope
-		Arguments:  make([]ast.Variable, 0),
-		Visibility: "external",
-		Parent:     scope,
-		Type:       geckoReturnType,
+		Name:           m.Name,
+		Scope:          nil, // External, no scope
+		Arguments:      make([]ast.Variable, 0),
+		Visibility:     "external",
+		Parent:         symbolScope,
+		Type:           geckoReturnType,
+		ExternalSymbol: map[bool]string{true: symbolName, false: ""}[symbolName != m.Name],
 	}
 
 	for _, arg := range m.Arguments {
@@ -419,18 +433,31 @@ func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens
 		})
 	}
 
-	scope.Methods[m.Name] = astMth
-	Methods[scope.FullScopeName()+"#"+m.Name] = astMth
+	symbolScope.Methods[m.Name] = astMth
+	Methods[symbolScope.FullScopeName()+"#"+m.Name] = astMth
 	RegisterMethodSignature(m.Name, m)
-	RegisterMethodSignature(scope.GetFullName()+"__"+m.Name, m)
+	RegisterMethodSignature(symbolScope.GetFullName()+"__"+m.Name, m)
+	if symbolName != m.Name {
+		RegisterMethodSignature(symbolName, m)
+		RegisterMethodSignature(symbolScope.GetFullName()+"__"+symbolName, m)
+	}
 
 	// Track full return type for generic type support
 	if m.Type != nil {
-		MethodReturnTypes[scope.FullScopeName()+"#"+m.Name] = m.Type
+		MethodReturnTypes[symbolScope.FullScopeName()+"#"+m.Name] = m.Type
 		funcAlias := astMth.GetFullName()
 		MethodReturnTypes[funcAlias] = m.Type
-		MethodReturnTypes[scope.FullScopeName()+"#"+funcAlias] = m.Type
+		MethodReturnTypes[symbolScope.FullScopeName()+"#"+funcAlias] = m.Type
+		if symbolName != m.Name {
+			MethodReturnTypes[symbolName] = m.Type
+			MethodReturnTypes[symbolScope.FullScopeName()+"#"+symbolName] = m.Type
+		}
 	}
+}
+
+// NewExternalMethod handles external method declarations (e.g., printf)
+func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens.Method) {
+	impls.registerExternalMethod(scope, scope, m, true)
 }
 
 func reportOutParamsOnlyForExternal(scope *ast.Ast, m *tokens.Method) bool {
@@ -1483,7 +1510,7 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 	}
 
 	paramStr := strings.Join(params, ", ")
-	if m.Variardic {
+	if m.IsVariadic() {
 		if len(params) > 0 {
 			paramStr += ", ..."
 		} else {
@@ -2603,13 +2630,14 @@ func (impl *CBackendImplementation) generateForInLoop(scope *ast.Ast, l *tokens.
 	loopScope.Config = scope.Config
 
 	// Register the loop variable in the loop scope
-	loopScope.Variables[varName] = ast.Variable{
+	loopVar := ast.Variable{
 		Name:   varName,
 		Parent: loopScope,
 	}
+	loopScope.Variables[varName] = loopVar
 
 	// Store element type info in CProgramValues
-	(*CProgramValues)[varName] = &CValueInformation{
+	(*CProgramValues)[loopVar.GetFullName()] = &CValueInformation{
 		CType:     elemCType,
 		GeckoType: &tokens.TypeRef{Type: elementType},
 	}
@@ -2715,17 +2743,125 @@ func (impl *CBackendImplementation) NewContinue(scope *ast.Ast) {
 	info.Code += "    continue;\n"
 }
 
+func ensureForeignModuleScope(root *ast.Ast, moduleName string) *ast.Ast {
+	if root == nil || moduleName == "" {
+		return nil
+	}
+	if existing, ok := root.Children[moduleName]; ok && existing != nil {
+		return existing
+	}
+
+	moduleScope := &ast.Ast{
+		Scope:            moduleName,
+		Parent:           nil,
+		IsImportedModule: true,
+		OriginModule:     root.GetRoot().Scope,
+		SourceFile:       root.GetSourceFile(),
+	}
+	moduleScope.Init(root.ErrorScope)
+	moduleScope.Config = root.Config
+	root.Children[moduleName] = moduleScope
+	return moduleScope
+}
+
+// NewForeign handles a foreign interop block.
+func (impl *CBackendImplementation) NewForeign(scope *ast.Ast, foreign *tokens.Foreign) {
+	if scope == nil || foreign == nil {
+		return
+	}
+	rootScope := scope.GetRoot()
+	info := CGetScopeInformation(rootScope)
+
+	backendName := strings.TrimSpace(unquoteIfQuoted(foreign.Backend))
+	if backendName == "" {
+		backendName = "c"
+	}
+	if backendName != "c" {
+		scope.ErrorScope.NewCompileTimeError(
+			"Foreign Backend Error",
+			fmt.Sprintf("unsupported foreign backend '%s' for C backend (expected \"c\")", backendName),
+			foreign.Pos,
+		)
+		return
+	}
+
+	moduleScope := ensureForeignModuleScope(rootScope, foreign.Module)
+	if moduleScope == nil {
+		scope.ErrorScope.NewCompileTimeError(
+			"Foreign Module Error",
+			"unable to initialize foreign module scope",
+			foreign.Pos,
+		)
+		return
+	}
+
+	headers := foreign.GetWithHeaders()
+	for _, headerRaw := range headers {
+		header := strings.TrimSpace(unquoteIfQuoted(headerRaw))
+		if header == "" {
+			continue
+		}
+		if strings.HasPrefix(header, "<") {
+			info.Includes = append(info.Includes, "#include "+header)
+		} else {
+			info.Includes = append(info.Includes, "#include \""+header+"\"")
+		}
+	}
+
+	for _, libRaw := range foreign.GetWithLibraries() {
+		lib := strings.TrimSpace(unquoteIfQuoted(libRaw))
+		if lib != "" {
+			info.CImportLibraries = append(info.CImportLibraries, lib)
+		}
+	}
+
+	for _, objRaw := range foreign.GetWithObjects() {
+		obj := strings.TrimSpace(unquoteIfQuoted(objRaw))
+		if obj == "" {
+			continue
+		}
+		if !filepath.IsAbs(obj) && scope.SourceFile != "" {
+			obj = filepath.Join(filepath.Dir(scope.SourceFile), obj)
+		}
+		info.CImportObjects = append(info.CImportObjects, obj)
+	}
+
+	hasHeaders := len(headers) > 0
+
+	for _, member := range foreign.Members {
+		if member == nil || member.Type == nil {
+			continue
+		}
+		ext := &tokens.ExternalType{Name: member.Type.Name}
+		impl.NewExternalType(rootScope, ext)
+		if classOpt := rootScope.ResolveClass(member.Type.Name); !classOpt.IsNil() {
+			moduleScope.Classes[member.Type.Name] = classOpt.Unwrap()
+		}
+	}
+
+	for _, member := range foreign.Members {
+		if member == nil || member.Method == nil || member.Method.Name == "" {
+			continue
+		}
+		method := &tokens.Method{
+			Visibility: "external",
+			Name:       member.Method.Name,
+			Arguments:  member.Method.Arguments,
+			Variadic:   member.Method.IsVariadic(),
+			Type:       member.Method.Type,
+			Throws:     member.Method.Throws,
+			LinkName:   member.Method.As,
+		}
+		impl.registerExternalMethod(moduleScope, rootScope, method, !hasHeaders)
+	}
+}
+
 // NewCImport handles a C import statement, adding #include directive
 func (impl *CBackendImplementation) NewCImport(scope *ast.Ast, cimport *tokens.CImport) {
 	info := CGetScopeInformation(scope)
 
 	// Add the include directive
-	header := cimport.Header
-
-	// Strip outer quotes from the parser (String token includes quotes)
-	if len(header) >= 2 && header[0] == '"' && header[len(header)-1] == '"' {
-		header = header[1 : len(header)-1]
-	}
+	header := unquoteIfQuoted(cimport.Header)
 
 	// Check if it's a system header (angle brackets) or local header
 	if len(header) > 0 && header[0] == '<' {
@@ -2738,20 +2874,14 @@ func (impl *CBackendImplementation) NewCImport(scope *ast.Ast, cimport *tokens.C
 
 	// Track libraries/objects for compile/link stages.
 	for _, lib := range cimport.GetWithLibraries() {
-		// Strip quotes if present
-		if len(lib) >= 2 && lib[0] == '"' && lib[len(lib)-1] == '"' {
-			lib = lib[1 : len(lib)-1]
-		}
+		lib = unquoteIfQuoted(lib)
 		if lib != "" {
 			info.CImportLibraries = append(info.CImportLibraries, lib)
 		}
 	}
 
 	for _, obj := range cimport.GetWithObjects() {
-		// Strip quotes if present
-		if len(obj) >= 2 && obj[0] == '"' && obj[len(obj)-1] == '"' {
-			obj = obj[1 : len(obj)-1]
-		}
+		obj = unquoteIfQuoted(obj)
 		if obj == "" {
 			continue
 		}

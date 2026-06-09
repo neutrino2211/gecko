@@ -8,7 +8,7 @@ foreign "c" cstdlib {
     func free(ptr: void*): void as "free"
 }
 
-foreign "c" cstring {
+foreign "c" cstring withheader "<string.h>" {
     func memcpy(dest: void*, src: void*, n: uint64): void* as "memcpy"
     func strlen(s: string): uint64 as "strlen"
 }

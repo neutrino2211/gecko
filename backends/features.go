@@ -260,6 +260,7 @@ func NewLLVMFeatureSet() *FeatureSet {
 		FeatureIntrinsics,
 		FeatureExternDecl,
 		FeatureCasts,
+		FeatureVolatile,
 		FeatureAddressOf,
 		FeatureImports,
 		FeatureTypeInfer,

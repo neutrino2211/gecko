@@ -1,0 +1,25 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/stdlib.md, spec/pointers.md
+
+package stdlib_vec_struct
+
+import std.collections.vec use { Vec }
+
+class Pair {
+    let a: int32
+    let b: int32
+}
+
+external func main(): int32 {
+    let v: Vec<Pair> = Vec<Pair>::new()
+    let p: Pair = v.pop()
+    v.drop()
+
+    if (p.a != 0) {
+        return 1
+    }
+    if (p.b != 0) {
+        return 2
+    }
+
+    return 42
+}

@@ -1,0 +1,20 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/control-flow.md, spec/memory.md, spec/c-interop.md, spec/attributes.md
+
+package io
+
+// Global variables for inline asm communication
+external let io_port: uint16 = 0
+external let io_byte: uint8 = 0
+
+public func outb(port: uint16, value: uint8): void {
+    io_port = port
+    io_byte = value
+    asm { "movw io_port, %dx; movb io_byte, %al; outb %al, %dx" }
+}
+
+public func inb(port: uint16): uint8 {
+    io_port = port
+    asm { "movw io_port, %dx; inb %dx, %al; movb %al, io_byte" }
+    return io_byte
+}
+

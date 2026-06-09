@@ -271,6 +271,11 @@ func (impl *CBackendImplementation) getBaseLiteralType(l *tokens.Literal, scope 
 		return &tokens.TypeRef{Type: "string"}
 	}
 
+	// Null pointer literals (nil/null) are compatible with any pointer type.
+	if (l.Symbol == "nil" || l.Symbol == "null") && l.SymbolModule == "" && len(l.Chain) == 0 {
+		return &tokens.TypeRef{Type: "void", Pointer: true}
+	}
+
 	// Handle chain access FIRST (e.g., sq.area(), rect.width)
 	// This must come before simple symbol lookup to handle method calls
 	if len(l.Chain) > 0 {

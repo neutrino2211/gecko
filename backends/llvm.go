@@ -75,6 +75,12 @@ func (b *LLVMBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	info := llvmbackend.LLVMGetScopeInformation(file)
 	info.ProgramContext.EmitExternalRootAnchors()
 
+	// Set the target triple on the LLVM IR module
+	if file.Config != nil {
+		triple := buildTargetTriple(file.Config.Arch, file.Config.Vendor, file.Config.Platform)
+		info.ProgramContext.Module.TargetTriple = triple
+	}
+
 	llir := info.ProgramContext.Module.String()
 
 	if c.Ctx.Bool("print-ir") {
@@ -101,10 +107,9 @@ func (b *LLVMBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 		llcArgs = append(llcArgs, "-function-sections", "-data-sections")
 	}
 
-	if file.Config.Arch == "arm64" && file.Config.Platform == "darwin" {
-		llcArgs = append(llcArgs, "--mtriple", "arm64-apple-darwin21.4.0")
-	} else if file.Config.Vendor != "" {
-		llcArgs = append(llcArgs, "--mtriple", file.Config.Arch+"-"+file.Config.Vendor+"-"+file.Config.Platform)
+	if file.Config != nil {
+		triple := buildTargetTriple(file.Config.Arch, file.Config.Vendor, file.Config.Platform)
+		llcArgs = append(llcArgs, "--mtriple", triple)
 	}
 
 	if c.Ctx != nil {
@@ -116,4 +121,44 @@ func (b *LLVMBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	cmd := exec.Command("llc", llcArgs...)
 
 	return cmd
+}
+
+// buildTargetTriple constructs an LLVM target triple from architecture, vendor, and platform.
+func buildTargetTriple(arch, vendor, platform string) string {
+	if platform == "" {
+		return ""
+	}
+
+	// Bare-metal / freestanding targets
+	if platform == "none" || platform == "elf" {
+		if vendor == "" {
+			vendor = "unknown"
+		}
+		switch arch {
+		case "i386", "i686":
+			return "i386-unknown-none-elf"
+		case "x86_64", "amd64":
+			return "x86_64-unknown-none-elf"
+		case "arm64", "aarch64":
+			return "aarch64-unknown-none-elf"
+		case "arm":
+			return "arm-unknown-none-elf"
+		case "riscv64":
+			return "riscv64-unknown-none-elf"
+		default:
+			return arch + "-" + vendor + "-none-elf"
+		}
+	}
+
+	// Standard OS targets
+	if vendor != "" {
+		if arch == "arm64" && platform == "darwin" {
+			return "arm64-apple-darwin21.4.0"
+		}
+		return arch + "-" + vendor + "-" + platform
+	}
+	if arch == "arm64" && platform == "darwin" {
+		return "arm64-apple-darwin21.4.0"
+	}
+	return arch + "-unknown-" + platform
 }

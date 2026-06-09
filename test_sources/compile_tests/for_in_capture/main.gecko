@@ -1,0 +1,43 @@
+// spec: spec/types.md, spec/functions.md, spec/traits.md, spec/modules.md, spec/control-flow.md
+
+package for_in_capture
+
+@iterator_hook(.next, .has_next)
+trait Iterator<T> {
+    func next(self): T
+    func has_next(self): bool
+}
+
+class Range {
+    let current: int32
+    let end: int32
+}
+
+impl Range {
+    func new(start: int32, end: int32): Range {
+        return Range { current: start, end: end }
+    }
+}
+
+impl Iterator<int32> for Range {
+    func next(self): int32 {
+        let val: int32 = self.current
+        self.current = self.current + 1
+        return val
+    }
+
+    func has_next(self): bool {
+        return self.current < self.end
+    }
+}
+
+external func main(): int32 {
+    let i: uint = 0
+    let r: Range = Range::new(0, 3)
+
+    for let x in r {
+        i = i + x as uint
+    }
+
+    return i as int32
+}

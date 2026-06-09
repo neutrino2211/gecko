@@ -1,0 +1,20 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/control-flow.md, spec/memory.md, spec/c-interop.md, spec/attributes.md
+
+package kernel
+
+import console
+import shell
+import cpu
+
+external func kmain(): void {
+    cpu.disable_interrupts()
+
+    let con: console.Console = console.Console::new()
+    con.set_color(console.LIGHT_GRAY, console.BLACK)
+    con.clear()
+
+    let sh: shell.Shell = shell.Shell::new(con)
+    sh.run()
+
+    cpu.hang()
+}

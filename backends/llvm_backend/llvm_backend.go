@@ -1004,7 +1004,18 @@ func (impl *LLVMBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Metho
 			irType = impl.TypeRefGetLLIRType(m.Type, scope)
 		}
 
-		irFunc := ir.NewFunc(impl.llvmMethodSymbolName(scope, m.Name), irType, fnParams...)
+		symbolName := impl.llvmMethodSymbolName(scope, m.Name)
+		irFunc := findIRFuncByName(info.ProgramContext.Module, symbolName)
+		if irFunc != nil {
+			// Remove the old declaration so we can replace it with a proper definition
+			for i, f := range info.ProgramContext.Module.Funcs {
+				if f == irFunc {
+					info.ProgramContext.Module.Funcs = append(info.ProgramContext.Module.Funcs[:i], info.ProgramContext.Module.Funcs[i+1:]...)
+					break
+				}
+			}
+		}
+		irFunc = ir.NewFunc(symbolName, irType, fnParams...)
 		irFunc.CallingConv = CallingConventions[scope.Config.Arch][scope.Config.Platform]
 		if m.Variardic {
 			irFunc.Sig.Variadic = true

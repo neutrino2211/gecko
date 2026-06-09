@@ -32,6 +32,13 @@ var comparisonOps map[string]enum.IPred = map[string]enum.IPred{
 	"<=": enum.IPredSLE, // signed less than or equal
 }
 
+var unsignedComparisonOps map[string]enum.IPred = map[string]enum.IPred{
+	">":  enum.IPredUGT, // unsigned greater than
+	">=": enum.IPredUGE, // unsigned greater than or equal
+	"<":  enum.IPredULT, // unsigned less than
+	"<=": enum.IPredULE, // unsigned less than or equal
+}
+
 func (impl *LLVMBackendImplementation) requireBinaryOperands(scope *ast.Ast, op string, left value.Value, right value.Value, pos lexer.Position) bool {
 	if left == nil || right == nil {
 		scope.ErrorScope.NewCompileTimeError("Expression Error", "unable to evaluate operands for operator '"+op+"'", pos)
@@ -70,6 +77,51 @@ func supportsICmpEqualityOperandType(t types.Type) bool {
 func supportsOrderedComparisonOperandType(t types.Type) bool {
 	_, ok := t.(*types.IntType)
 	return ok
+}
+
+func geckoTypeIsUnsignedInteger(t *tokens.TypeRef) bool {
+	if t == nil {
+		return false
+	}
+
+	switch t.Type {
+	case "uint", "uint8", "uint16", "uint32", "uint64":
+		return true
+	default:
+		return false
+	}
+}
+
+func (impl *LLVMBackendImplementation) inferTypeForAddition(scope *ast.Ast, add *tokens.Addition) *tokens.TypeRef {
+	if add == nil {
+		return nil
+	}
+
+	resolveSymbol := func(name string) *tokens.TypeRef {
+		opt := scope.ResolveSymbolAsVariable(name)
+		if opt.IsNil() {
+			return nil
+		}
+		v := opt.Unwrap()
+		info := LLVMGetValueInformation(v)
+		return info.GeckoType
+	}
+
+	expr := &tokens.Expression{
+		OrExpr: &tokens.OrExpression{
+			LogicalOr: &tokens.LogicalOr{
+				LogicalAnd: &tokens.LogicalAnd{
+					Equality: &tokens.Equality{
+						Comparison: &tokens.Comparison{
+							Addition: add,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return tokens.InferType(expr, resolveSymbol)
 }
 
 func (impl *LLVMBackendImplementation) ExpressionToLLIRValue(e *tokens.Expression, scope *ast.Ast, expressionType *tokens.TypeRef) value.Value {
@@ -201,8 +253,16 @@ func (impl *LLVMBackendImplementation) ComparisonToLLIRValue(c *tokens.Compariso
 			return nil
 		}
 		info := LLVMGetScopeInformation(scope)
+		predicate := comparisonOps[c.Op]
+		leftGeckoType := impl.inferTypeForAddition(scope, c.Addition)
+		rightGeckoType := impl.inferTypeForAddition(scope, c.Next.Addition)
+		if geckoTypeIsUnsignedInteger(leftGeckoType) || geckoTypeIsUnsignedInteger(rightGeckoType) {
+			if unsignedPredicate, ok := unsignedComparisonOps[c.Op]; ok {
+				predicate = unsignedPredicate
+			}
+		}
 
-		base = info.LocalContext.MainBlock.NewICmp(comparisonOps[c.Op], left, v)
+		base = info.LocalContext.MainBlock.NewICmp(predicate, left, v)
 	} else {
 		base = impl.AdditionToLLIRValue(c.Addition, scope, expressionType)
 	}
@@ -422,7 +482,8 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 				intType = types.I64 // default to i64
 			}
 			if iType, ok := intType.(*types.IntType); ok {
-				if iType.BitSize == 1 && conv != 0 && conv != 1 {
+				if iType.BitSize == 1 {
+					// Don't use i1 for integer literals (1 != true in bitwise contexts)
 					base = constant.NewInt(types.I64, conv)
 				} else {
 					base = constant.NewInt(iType, conv)
@@ -487,15 +548,21 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 		base = mem
 	} else if p.Literal.ArrayIndex != nil {
 		indexExpr := p.Literal.ArrayIndex
-		p.Literal.ArrayIndex = nil
-		val := impl.PrimaryToLLIRValue(p, scope, expressionType)
+
+		var val value.Value
+		if p.Literal.Symbol != "" {
+			// Resolve symbol chain as a pointer (don't load final value)
+			val = impl.ResolveSymbolChainValue(scope, p.Literal.Symbol, p.Literal.Chain, p.Pos, true)
+		} else {
+			p.Literal.ArrayIndex = nil
+			val = impl.PrimaryToLLIRValue(p, scope, expressionType)
+		}
 
 		arrayIndex := impl.ExpressionToLLIRValue(indexExpr, scope, &tokens.TypeRef{Type: "uint64"})
 
 		if val == nil {
 			scope.ErrorScope.NewCompileTimeError("Parse Error", "unable to parse the expression", p.Literal.Pos)
 		} else {
-			// Get the element type from the pointer type
 			ptrType, isPtr := val.Type().(*types.PointerType)
 			if !isPtr {
 				scope.ErrorScope.NewCompileTimeError("Index Error", "cannot index a non-pointer type", p.Literal.Pos)
@@ -504,12 +571,31 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 
 			elemType := ptrType.ElemType
 
-			// Use getelementptr to get the address of the indexed element
-			elemPtr := info.LocalContext.MainBlock.NewGetElementPtr(elemType, val, arrayIndex)
+			var elemPtr value.Value
+			var loadedType types.Type
+			// If the element type is an array (fixed-size array field),
+			// GEP needs two indices: 0 + arrayIndex
+			if innerPtrType, isPtrType := elemType.(*types.PointerType); isPtrType {
+				// The base stores a pointer (e.g., T**, or a field containing T*).
+				// Load the actual pointer value first, then GEP on the loaded pointer.
+				isVolatile := expressionType != nil && expressionType.IsVolatile()
+				loadedPtr := impl.NewVolatileLoad(info.LocalContext.MainBlock, elemType, val, isVolatile)
+				if loadedPtr != nil {
+					elemPtr = info.LocalContext.MainBlock.NewGetElementPtr(innerPtrType.ElemType, loadedPtr, arrayIndex)
+					loadedType = innerPtrType.ElemType
+				}
+			} else if arrType, isArray := elemType.(*types.ArrayType); isArray {
+				zero := constant.NewInt(types.I64, 0)
+				elemPtr = info.LocalContext.MainBlock.NewGetElementPtr(elemType, val, zero, arrayIndex)
+				loadedType = arrType.ElemType
+			} else {
+				elemPtr = info.LocalContext.MainBlock.NewGetElementPtr(elemType, val, arrayIndex)
+				loadedType = elemType
+			}
 
 			// Use volatile load if the expression type is volatile (for MMIO)
 			isVolatile := expressionType != nil && expressionType.IsVolatile()
-			base = impl.NewVolatileLoad(info.LocalContext.MainBlock, elemType, elemPtr, isVolatile)
+			base = impl.NewVolatileLoad(info.LocalContext.MainBlock, loadedType, elemPtr, isVolatile)
 		}
 
 	} else if p.Literal.Symbol != "" {

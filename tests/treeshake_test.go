@@ -155,3 +155,33 @@ func TestTreeshakeDynamicCallFallback(t *testing.T) {
 		})
 	}
 }
+
+func TestTreeshakeIROnlyPrunesUnreachableFunctions(t *testing.T) {
+	geckoPath := buildGecko(t)
+	projectRoot := getProjectRoot(t)
+	sourcePath := filepath.Join(projectRoot, "test_sources/compile_tests/treeshake/reachability/main.gecko")
+
+	compile := func(args ...string) string {
+		cmd := exec.Command(geckoPath, args...)
+		cmd.Dir = projectRoot
+		cmd.Env = append(os.Environ(), "GECKO_HOME="+projectRoot)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("compile failed: %v\n%s", err, out)
+		}
+		return string(out)
+	}
+
+	treeshakenOutput := compile("compile", "--backend", "c", "--ir-only", "--print-ir", "--treeshake", sourcePath)
+	if !strings.Contains(treeshakenOutput, "symbols__ts_live") {
+		t.Fatalf("expected live symbol in ir-only output:\n%s", treeshakenOutput)
+	}
+	if strings.Contains(treeshakenOutput, "symbols__ts_dead") {
+		t.Fatalf("expected dead symbol to be pruned in ir-only treeshaken output:\n%s", treeshakenOutput)
+	}
+
+	unshakenOutput := compile("compile", "--backend", "c", "--ir-only", "--print-ir", "--no-treeshake", sourcePath)
+	if !strings.Contains(unshakenOutput, "symbols__ts_dead") {
+		t.Fatalf("expected dead symbol to remain when treeshake is disabled:\n%s", unshakenOutput)
+	}
+}

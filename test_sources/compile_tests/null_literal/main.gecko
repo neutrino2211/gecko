@@ -1,0 +1,14 @@
+// spec: spec/types.md, spec/functions.md, spec/pointers.md, spec/control-flow.md
+
+package null_literal
+
+func takes_ptr(ptr: void*): int32 {
+    if (@is_null(ptr)) {
+        return 42
+    }
+    return 0
+}
+
+external func main(): int32 {
+    return takes_ptr(null)
+}

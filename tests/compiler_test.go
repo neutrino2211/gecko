@@ -69,7 +69,9 @@ var compileTests = []compileTest{
 	// Stdlib types
 	{"stdlib_string", "test_sources/compile_tests/stdlib_string/main.gecko", 0, false},
 	{"stdlib_vec", "test_sources/compile_tests/stdlib_vec/main.gecko", 0, false},
+	{"stdlib_vec_struct", "test_sources/compile_tests/stdlib_vec_struct/main.gecko", 42, false},
 	{"stdlib_option", "test_sources/compile_tests/stdlib_option/main.gecko", 0, false},
+	{"null_literal", "test_sources/compile_tests/null_literal/main.gecko", 42, false},
 
 	// Operator overloading
 	{"operator_overload", "test_sources/compile_tests/operator_overload/main.gecko", 0, false},
@@ -114,6 +116,7 @@ var compileTests = []compileTest{
 
 	// Iterator / for-in loop tests
 	{"for_in_loop", "test_sources/compile_tests/for_in_loop/main.gecko", 0, false},
+	{"for_in_capture", "test_sources/compile_tests/for_in_capture/main.gecko", 3, false},
 
 	// Lazy resolution tests
 	{"lazy_method_resolution", "test_sources/compile_tests/lazy_method_resolution/main.gecko", 0, false},
@@ -197,6 +200,7 @@ var compileOnlyTests = []compileOnlyTest{
 	{"imports", "test_sources/compile_tests/imports/main.gecko"},
 	{"loops_break_continue", "test_sources/compile_tests/loops/break_continue.gecko"},
 	{"out_params", "test_sources/compile_tests/out_params/main.gecko"},
+	{"cimport_stdlib_redecl", "test_sources/compile_tests/cimport/stdlib_redecl.gecko"},
 	{"strings_args", "test_sources/compile_tests/strings/args.gecko"},
 	{"strings_greeting", "test_sources/compile_tests/strings/greeting.gecko"},
 	{"volatile_pointer", "test_sources/compile_tests/volatile/volatile_pointer.gecko"},

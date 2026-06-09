@@ -443,20 +443,7 @@ func TestBackendParityTraitImplDiagnosticsCompileBehavior(t *testing.T) {
 func TestLLVMParityUnsupportedFeatures(t *testing.T) {
 	geckoPath := buildGecko(t)
 
-	tests := []llvmUnsupportedCase{
-		{
-			name:            "volatile",
-			file:            "test_sources/compile_tests/volatile/volatile_pointer.gecko",
-			mustContain:     []string{"Unsupported Feature", "Feature 'volatile' is not supported by the 'llvm' backend"},
-			requireErrorSum: true,
-		},
-		{
-			name:            "import_closure_unsupported_volatile",
-			file:            "test_sources/compile_tests/llvm_parity/import_closure_unsupported/main.gecko",
-			mustContain:     []string{"Unsupported Feature", "Feature 'volatile' is not supported by the 'llvm' backend", "used in:"},
-			requireErrorSum: true,
-		},
-	}
+	tests := []llvmUnsupportedCase{}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

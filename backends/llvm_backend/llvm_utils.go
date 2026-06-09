@@ -455,7 +455,11 @@ func (impl *LLVMBackendImplementation) LLVMInherentImplementation(scope *ast.Ast
 	}
 
 	withTypeParameters(i.GetTypeParams(), func() {
-		for _, f := range i.GetFields() {
+		fields := i.GetFields()
+		methodTokens := make([]*tokens.Method, 0, len(fields))
+
+		// First pass: register all methods as AST entries so forward references work
+		for _, f := range fields {
 			m := f.ToMethodToken()
 			if _, exists := class.Methods[m.Name]; exists {
 				scope.ErrorScope.NewCompileTimeError(
@@ -465,6 +469,22 @@ func (impl *LLVMBackendImplementation) LLVMInherentImplementation(scope *ast.Ast
 				)
 				continue
 			}
+			returnType := "void"
+			if m.Type != nil {
+				returnType = m.Type.ToCString(scope)
+			}
+			class.Methods[m.Name] = &ast.Method{
+				Name:       m.Name,
+				Arguments:  make([]ast.Variable, 0),
+				Visibility: m.Visibility,
+				Parent:     class,
+				Type:       returnType,
+			}
+			methodTokens = append(methodTokens, m)
+		}
+
+		// Second pass: process each method body (LLVM IR generation)
+		for _, m := range methodTokens {
 			impl.NewMethod(class, m)
 		}
 	})

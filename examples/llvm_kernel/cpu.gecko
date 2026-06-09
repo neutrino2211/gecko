@@ -1,0 +1,23 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/control-flow.md, spec/memory.md, spec/c-interop.md, spec/attributes.md
+
+package cpu
+
+func halt(): void {
+    asm { "hlt" }
+}
+
+func disable_interrupts(): void {
+    asm { "cli" }
+}
+
+func enable_interrupts(): void {
+    asm { "sti" }
+}
+
+@noreturn
+func hang(): void {
+    disable_interrupts()
+    while true {
+        halt()
+    }
+}

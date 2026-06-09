@@ -167,8 +167,8 @@ func (impl *LLVMBackendImplementation) NewLoop(scope *ast.Ast, loop *tokens.Loop
 	blockID := getUniqueBlockID()
 
 	// Handle different loop types
-	if loop.ForExpression != nil {
-		// Simple while-style loop: for (condition) { body }
+	if loop.ForExpression != nil || loop.WhileExpr != nil {
+		// Simple while-style loop: for (condition) { body } or while condition { body }
 		impl.processWhileLoop(scope, loop, fn, blockID)
 	} else if loop.ForOf != nil {
 		// For-of loop: for (let x of array) { body }
@@ -193,7 +193,11 @@ func (impl *LLVMBackendImplementation) processWhileLoop(scope *ast.Ast, loop *to
 
 	// Generate the condition in the header block
 	info.LocalContext.MainBlock = headerBlock
-	condValue := impl.ExpressionToLLIRValue(loop.ForExpression, scope, &tokens.TypeRef{})
+	condExpr := loop.ForExpression
+	if condExpr == nil {
+		condExpr = loop.WhileExpr
+	}
+	condValue := impl.ExpressionToLLIRValue(condExpr, scope, &tokens.TypeRef{})
 	condValue = impl.ensureConditionValue(scope, condValue, loop.Pos)
 	if condValue == nil {
 		scope.ErrorScope.NewCompileTimeError("Control Flow Error", "unable to evaluate loop condition", loop.Pos)
@@ -387,7 +391,76 @@ func (impl *LLVMBackendImplementation) NewAssignment(scope *ast.Ast, assignment 
 
 	varInfo := LLVMGetValueInformation(variable.Unwrap())
 
-	// Handle field assignment (e.g., obj.field = value)
+	// Helper: given a base pointer, index expression, and volatility, compute the element
+	// pointer via GEP and store the assigned value.
+	// Handles all three cases:
+	//   1. Pointer-typed variable (buffer: T*)       → load actual T*, GEP on loaded pointer
+	//   2. Fixed-size array variable (buffer: [N]T)  → GEP(arr, base, 0, index)
+	//   3. Non-pointer variable (buffer: T)           → GEP(T, base, index)
+	assignToIndex := func(basePtr value.Value, indexExpr *tokens.Expression, isVolatile bool, geckoTypeOverride *tokens.TypeRef) {
+		ptrType, isPtr := basePtr.Type().(*types.PointerType)
+		if !isPtr || ptrType.ElemType == nil {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "indexed assignment target is not addressable", assignment.Pos)
+			return
+		}
+
+		elemType := ptrType.ElemType
+
+		indexValue := impl.ExpressionToLLIRValue(indexExpr, scope, &tokens.TypeRef{Type: "uint64"})
+		if indexValue == nil {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to evaluate index expression", assignment.Pos)
+			return
+		}
+
+		// Determine the element type ref for the value to assign
+		elemTypeRef := &tokens.TypeRef{}
+		if geckoTypeOverride != nil {
+			elemTypeRef = geckoTypeOverride
+		} else if varInfo.GeckoType != nil && varInfo.GeckoType.Array != nil {
+			elemTypeRef = varInfo.GeckoType.Array
+		} else if varInfo.GeckoType != nil && varInfo.GeckoType.Pointer {
+			elemTypeRef = &tokens.TypeRef{
+				Type:     varInfo.GeckoType.Type,
+				Volatile: varInfo.GeckoType.Volatile,
+				Const:    varInfo.GeckoType.Const,
+			}
+		}
+
+		newValue := impl.ExpressionToLLIRValue(assignment.Value, scope, elemTypeRef)
+		if newValue == nil {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to evaluate assignment value", assignment.Pos)
+			return
+		}
+
+		var elemPtr value.Value
+		if innerPtrType, isPtrType := elemType.(*types.PointerType); isPtrType {
+			// The base stores a pointer (e.g., T**, or a field containing T*).
+			// Load the actual pointer value first, then GEP on the loaded pointer.
+			loadedPtr := impl.NewVolatileLoad(info.LocalContext.MainBlock, elemType, basePtr, isVolatile)
+			if loadedPtr != nil {
+				elemPtr = info.LocalContext.MainBlock.NewGetElementPtr(innerPtrType.ElemType, loadedPtr, indexValue)
+			}
+		} else if _, isArray := elemType.(*types.ArrayType); isArray {
+			// Fixed-size array: use two-index GEP (0, index)
+			zero := constant.NewInt(types.I64, 0)
+			elemPtr = info.LocalContext.MainBlock.NewGetElementPtr(elemType, basePtr, zero, indexValue)
+		} else {
+			// Scalar type: single-index GEP treats the base as array-of-T
+			elemPtr = info.LocalContext.MainBlock.NewGetElementPtr(elemType, basePtr, indexValue)
+		}
+
+		if elemPtr == nil {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to compute element address for indexed assignment", assignment.Pos)
+			return
+		}
+
+		store := impl.NewVolatileStore(info.LocalContext.MainBlock, newValue, elemPtr, isVolatile)
+		if store == nil {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "indexed assignment has incompatible value type", assignment.Pos)
+		}
+	}
+
+	// Handle field assignment (e.g., obj.field = value or obj.field[i] = value)
 	if assignment.Field != "" {
 		chain := &tokens.ChainAccess{Name: assignment.Field}
 		chain.Pos = assignment.Pos
@@ -400,6 +473,23 @@ func (impl *LLVMBackendImplementation) NewAssignment(scope *ast.Ast, assignment 
 		ptrType, isPtr := fieldPtr.Type().(*types.PointerType)
 		if !isPtr || ptrType.ElemType == nil {
 			scope.ErrorScope.NewCompileTimeError("Assignment Error", "field assignment target is not addressable", assignment.Pos)
+			return
+		}
+
+		if assignment.Index != nil {
+			// Field + index: self.buffer[i] = value
+			// Derive the element type ref from the field's LLVM type
+			fieldLLVMType := ptrType.ElemType
+			fieldElemTypeRef := &tokens.TypeRef{}
+			if innerPtr, isPtr := fieldLLVMType.(*types.PointerType); isPtr {
+				fieldElemTypeRef = llirTypeToGeckoTypeRef(innerPtr.ElemType)
+			} else if arrType, isArray := fieldLLVMType.(*types.ArrayType); isArray {
+				fieldElemTypeRef = llirTypeToGeckoTypeRef(arrType.ElemType)
+			} else {
+				fieldElemTypeRef = llirTypeToGeckoTypeRef(fieldLLVMType)
+			}
+			isVolatile := false
+			assignToIndex(fieldPtr, assignment.Index, isVolatile, fieldElemTypeRef)
 			return
 		}
 
@@ -422,58 +512,19 @@ func (impl *LLVMBackendImplementation) NewAssignment(scope *ast.Ast, assignment 
 
 	// Handle indexed assignment (e.g., arr[0] = value)
 	if assignment.Index != nil {
-		// Get the pointer value of the variable
 		ptrValue := varInfo.Value
 		if ptrValue == nil {
 			scope.ErrorScope.NewCompileTimeError("Assignment Error", "variable '"+assignment.Name+"' has no value", assignment.Pos)
 			return
 		}
 
-		// Get the pointer type
-		ptrType, isPtr := ptrValue.Type().(*types.PointerType)
-		if !isPtr {
+		if _, isPtr := ptrValue.Type().(*types.PointerType); !isPtr {
 			scope.ErrorScope.NewCompileTimeError("Assignment Error", "cannot index a non-pointer variable '"+assignment.Name+"'", assignment.Pos)
 			return
 		}
 
-		elemType := ptrType.ElemType
-
-		// Get the index value
-		indexValue := impl.ExpressionToLLIRValue(assignment.Index, scope, &tokens.TypeRef{Type: "uint64"})
-		if indexValue == nil {
-			scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to evaluate index expression", assignment.Pos)
-			return
-		}
-
-		// Get the element type for the value we're assigning
-		elemTypeRef := &tokens.TypeRef{}
-		if varInfo.GeckoType != nil && varInfo.GeckoType.Array != nil {
-			elemTypeRef = varInfo.GeckoType.Array
-		} else if varInfo.GeckoType != nil && varInfo.GeckoType.Pointer {
-			// For pointer types, create a copy without the pointer flag
-			elemTypeRef = &tokens.TypeRef{
-				Type:     varInfo.GeckoType.Type,
-				Volatile: varInfo.GeckoType.Volatile,
-				Const:    varInfo.GeckoType.Const,
-			}
-		}
-
-		// Generate the value to assign
-		newValue := impl.ExpressionToLLIRValue(assignment.Value, scope, elemTypeRef)
-		if newValue == nil {
-			scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to evaluate assignment value", assignment.Pos)
-			return
-		}
-
-		// Use getelementptr to get the address of the indexed element
-		elemPtr := info.LocalContext.MainBlock.NewGetElementPtr(elemType, ptrValue, indexValue)
-
-		// Use volatile store if the variable is volatile (for MMIO)
 		isVolatile := varInfo.IsVolatile || (varInfo.GeckoType != nil && varInfo.GeckoType.IsVolatile())
-		store := impl.NewVolatileStore(info.LocalContext.MainBlock, newValue, elemPtr, isVolatile)
-		if store == nil {
-			scope.ErrorScope.NewCompileTimeError("Assignment Error", "indexed assignment has incompatible value type", assignment.Pos)
-		}
+		assignToIndex(ptrValue, assignment.Index, isVolatile, nil)
 		return
 	}
 

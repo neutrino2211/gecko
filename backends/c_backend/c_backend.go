@@ -333,6 +333,14 @@ func (impls *CBackendImplementation) NewExternalVariable(scope *ast.Ast, f *toke
 	scope.Variables[f.Name] = fieldVariable
 }
 
+// buildExternalFuncDecl renders external function declarations in a macro-safe,
+// ABI-tolerant form. We intentionally emit a non-prototype declaration (`()`)
+// to avoid platform typedef clashes (e.g., size_t aliases) while Gecko keeps
+// strict argument type checks internally.
+func buildExternalFuncDecl(returnType string, name string) string {
+	return fmt.Sprintf("extern %s (%s)();", returnType, name)
+}
+
 // NewExternalMethod handles external method declarations (e.g., printf)
 func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens.Method) {
 	info := CGetScopeInformation(scope)
@@ -380,8 +388,12 @@ func (impls *CBackendImplementation) NewExternalMethod(scope *ast.Ast, m *tokens
 		}
 	}
 
-	// Generate extern declaration
-	externDecl := fmt.Sprintf("extern %s %s(%s);", returnType, m.Name, paramStr)
+	// Generate extern declaration (macro-safe + ABI-tolerant).
+	externDecl := buildExternalFuncDecl(returnType, m.Name)
+	if strings.Contains(returnType, "__FUNCPTR__") {
+		// Preserve original form for uncommon function-pointer return declarations.
+		externDecl = fmt.Sprintf("extern %s %s(%s);", returnType, m.Name, paramStr)
+	}
 	info.Declarations = append(info.Declarations, externDecl)
 
 	// Register the method in AST
@@ -2632,12 +2644,7 @@ func (impl *CBackendImplementation) NewAssignment(scope *ast.Ast, a *tokens.Assi
 	if !varOpt.IsNil() {
 		variable := varOpt.Unwrap()
 		isPointer = variable.IsPointer
-		// For local variables and arguments, use just the name (not the full qualified name)
-		if variable.IsArgument || variable.Parent == scope {
-			varName = variable.Name
-		} else {
-			varName = variable.GetFullName()
-		}
+		varName = CVariableIdentifier(variable)
 	}
 
 	value := impl.ExpressionToCString(a.Value, scope)

@@ -1,0 +1,12 @@
+package main
+
+external func kmain(): void {
+    asm { "movw $$0x0F48, 0xB8000" }
+    asm { "movw $$0x0F65, 0xB8002" }
+    asm { "movw $$0x0F6C, 0xB8004" }
+    asm { "movw $$0x0F6C, 0xB8006" }
+    asm { "movw $$0x0F6F, 0xB8008" }
+    while true {
+        asm { "hlt" }
+    }
+}

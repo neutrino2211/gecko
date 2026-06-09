@@ -105,15 +105,6 @@ func TestLLVMLiteUnsupportedFeatures(t *testing.T) {
 		want backends.Feature
 	}{
 		{
-			name: "volatile_pointers",
-			code: `package main
-func main(): int32 {
-    let p: int32 volatile* = 0 as int32 volatile*
-    return 0
-}`,
-			want: backends.FeatureVolatile,
-		},
-		{
 			name: "deref_intrinsic",
 			code: `package main
 func main(): int32 {

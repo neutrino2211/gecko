@@ -228,6 +228,25 @@ func findIRFuncByName(module *ir.Module, names ...string) *ir.Func {
 	return nil
 }
 
+// preferredMethodSymbolName picks the most qualified name from candidates.
+// Prefers names with module prefix (most __ separators) to ensure cross-module
+// call sites match the eventual function definition.
+func (impl *LLVMBackendImplementation) preferredMethodSymbolName(method *ast.Method, candidates []string) string {
+	best := method.Name
+	bestScore := 0
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		score := strings.Count(c, "__")
+		if score > bestScore {
+			best = c
+			bestScore = score
+		}
+	}
+	return best
+}
+
 func (impl *LLVMBackendImplementation) methodReturnTypeFromString(scope *ast.Ast, raw string) types.Type {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" || trimmed == "void" {
@@ -271,13 +290,11 @@ func (impl *LLVMBackendImplementation) resolveMethodIRFunction(scope *ast.Ast, m
 		}
 
 		retType := impl.methodReturnTypeFromString(scope, method.Type)
-		symbolName := method.Name
-		if len(candidates) > 0 {
-			symbolName = candidates[0]
-		}
+		symbolName := impl.preferredMethodSymbolName(method, candidates)
 		fn := ir.NewFunc(symbolName, retType)
 		fn.Linkage = enum.LinkageExternal
 		fn.CallingConv = CallingConventions[scope.Config.Arch][scope.Config.Platform]
+		module.Funcs = append(module.Funcs, fn)
 		return fn
 	}
 
@@ -293,6 +310,7 @@ func (impl *LLVMBackendImplementation) resolveMethodIRFunction(scope *ast.Ast, m
 	fn := ir.NewFunc(symbolName, VoidType.Type)
 	fn.Linkage = enum.LinkageExternal
 	fn.CallingConv = CallingConventions[scope.Config.Arch][scope.Config.Platform]
+	module.Funcs = append(module.Funcs, fn)
 	return fn
 }
 
@@ -840,6 +858,10 @@ func (impl *LLVMBackendImplementation) readSymbolValue(scope *ast.Ast, variable 
 }
 
 func (impl *LLVMBackendImplementation) ResolveSymbolChainValue(scope *ast.Ast, symbolName string, chain []*tokens.ChainAccess, pos lexer.Position, wantsAddress bool) value.Value {
+	if len(chain) == 0 && (symbolName == "nil" || symbolName == "null") {
+		return constant.NewNull(types.I8Ptr)
+	}
+
 	symbolVariable := scope.ResolveSymbolAsVariable(symbolName)
 	if !symbolVariable.IsNil() {
 		variable := symbolVariable.Unwrap()

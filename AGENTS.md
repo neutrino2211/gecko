@@ -50,7 +50,6 @@ gecko build --cflags "-I/opt/include" --ldflags "-L/opt/lib -lmylib" main.gecko
 
 The `examples/` directory contains complete, buildable examples:
 
-- **`examples/hello_kernel/`** - A minimal x86 kernel (requires QEMU)
 - **`examples/traits/`** - Demonstrates traits, trait constraints, and generics
 - **`examples/string_builder/`** - StringBuilder from stdlib with project-based build
 
@@ -83,7 +82,7 @@ Source (.gecko) -> Lexer/Parser (Participle) -> tokens.File -> Backend -> C/LLVM
 - **`parser/`** - EBNF lexer definition and Participle parser configuration.
 - **`ast/`** - Semantic AST with scope hierarchy for symbol resolution.
 - **`backends/`** - Backend abstraction. `BackendProcessEntries()` dispatches token types to implementations.
-- **`backends/c_backend/`** - C code generation (recommended for kernel development).
+- **`backends/c_backend/`** - C code generation.
 - **`backends/llvm_backend/`** - LLVM IR generation using `github.com/llir/llvm`.
 - **`compiler/`** - Orchestrates parsing and backend invocation.
 - **`interfaces/`** - `BackendInterface` and `BackendCodegenImplementations` define the backend contract.

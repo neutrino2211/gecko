@@ -387,10 +387,46 @@ func (impl *CBackendImplementation) UnaryToCString(u *tokens.Unary, scope *ast.A
 			u.Cast.Type.Check(scope)
 		}
 		cType := TypeRefToCType(u.Cast.Type, scope)
-		base = "((" + cType + ")(" + base + "))"
+		// C does not allow scalar-style casts into aggregates (e.g., (Pair)(0)).
+		// Lower `0 as T` for aggregate T as a zero-initialized compound literal.
+		if isZeroLiteralUnary(u) && isNonScalarCastTarget(u.Cast.Type) {
+			base = "((" + cType + "){0})"
+		} else {
+			base = "((" + cType + ")(" + base + "))"
+		}
 	}
 
 	return base
+}
+
+func isZeroLiteralUnary(u *tokens.Unary) bool {
+	if u == nil || u.Primary == nil || u.Primary.Literal == nil {
+		return false
+	}
+	lit := u.Primary.Literal
+	return lit.Number == "0"
+}
+
+func isNonScalarCastTarget(t *tokens.TypeRef) bool {
+	if t == nil {
+		return false
+	}
+	if t.Pointer || t.Array != nil || t.Size != nil || t.FuncType != nil {
+		return false
+	}
+
+	normalized := normalizeTypeName(t.Type)
+	switch normalized {
+	case "void", "bool", "string",
+		"int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64",
+		"float32", "float64":
+		return false
+	}
+	if _, isEnum := EnumToCType[t.Type]; isEnum {
+		return false
+	}
+	return true
 }
 
 // tryTempCounter generates unique names for try temporaries
@@ -941,10 +977,7 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 			if !structVar.IsNil() {
 				variable := structVar.Unwrap()
 				reportUseAfterMoveIfNeeded(scope, variable.GetFullName(), l.SymbolModule, l.Pos)
-				varName := variable.Name
-				if !variable.IsArgument && variable.Parent != scope {
-					varName = variable.GetFullName()
-				}
+				varName := CVariableIdentifier(variable)
 				// Check if it's a pointer - use -> instead of .
 				if variable.IsPointer {
 					base = varName + "->" + symbolName
@@ -971,8 +1004,8 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 				}
 			}
 		} else {
-			// Handle nil literal
-			if symbolName == "nil" {
+			// Handle null pointer literals
+			if symbolName == "nil" || symbolName == "null" {
 				base = "NULL"
 			} else {
 				// Local symbol - try variable first, then function
@@ -980,12 +1013,7 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 				if !symbolVariable.IsNil() {
 					variable := symbolVariable.Unwrap()
 					reportUseAfterMoveIfNeeded(scope, variable.GetFullName(), symbolName, l.Pos)
-					// For local variables and arguments, use just the name (not the full qualified name)
-					if variable.IsArgument || variable.Parent == scope {
-						base = variable.Name
-					} else {
-						base = variable.GetFullName()
-					}
+					base = CVariableIdentifier(variable)
 				} else {
 					// Try to resolve as a function reference (for function pointers)
 					symbolMethod := scope.ResolveMethod(symbolName)
@@ -1520,10 +1548,7 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 			// It's a variable - check for trait method call
 			variable := varOpt.Unwrap()
 			reportUseAfterMoveIfNeeded(scope, variable.GetFullName(), f.Module, f.Pos)
-			varName := variable.Name
-			if !variable.IsArgument && variable.Parent != scope {
-				varName = variable.GetFullName()
-			}
+			varName := CVariableIdentifier(variable)
 
 			// Get the variable's type to find trait methods
 			fullVarName := variable.GetFullName()

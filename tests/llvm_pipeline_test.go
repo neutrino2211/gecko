@@ -76,6 +76,28 @@ external func main(): int32 {
 	return sourcePath
 }
 
+func writeBackendFixtureUnsignedComparison(t *testing.T) string {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "main.gecko")
+	source := `package main
+
+external func main(): int32 {
+    let scancode: uint8 = 0x1E
+    let keyReleased: uint8 = 0x80
+    if scancode >= keyReleased {
+        return 0
+    }
+    return 1
+}
+`
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+		t.Fatalf("failed writing fixture: %v", err)
+	}
+	return sourcePath
+}
+
 func runGeckoCommand(t *testing.T, geckoPath, projectRoot string, args ...string) (string, int) {
 	t.Helper()
 
@@ -301,6 +323,23 @@ func TestBackendRunCommandStoresGlobalAssignment(t *testing.T) {
 			output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "run", "--backend", backend, sourcePath)
 			if exitCode != 42 {
 				t.Fatalf("expected gecko run exit code 42 after global assignment, got %d\n%s", exitCode, output)
+			}
+		})
+	}
+}
+
+func TestBackendRunCommandHandlesUnsignedComparisonSemantics(t *testing.T) {
+	geckoPath := buildGecko(t)
+	projectRoot := projectRootForTests(t)
+	sourcePath := writeBackendFixtureUnsignedComparison(t)
+
+	for _, backend := range commandTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			requireBackendToolchain(t, backend)
+			output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "run", "--backend", backend, sourcePath)
+			if exitCode != 1 {
+				t.Fatalf("expected gecko run exit code 1 for uint8 comparison fixture, got %d\n%s", exitCode, output)
 			}
 		})
 	}

@@ -2664,15 +2664,22 @@ func (impl *CBackendImplementation) NewAssignment(scope *ast.Ast, a *tokens.Assi
 	impl.CheckAssignmentType(a, scope)
 
 	info := CGetScopeInformation(scope)
+	resolveScope := scope
+	if a.Global {
+		resolveScope = scope.GetRoot()
+	}
 
 	// Resolve the variable
-	varOpt := scope.ResolveSymbolAsVariable(a.Name)
+	varOpt := resolveScope.ResolveSymbolAsVariable(a.Name)
 	varName := a.Name
 	isPointer := false
 	if !varOpt.IsNil() {
 		variable := varOpt.Unwrap()
 		isPointer = variable.IsPointer
 		varName = CVariableIdentifier(variable)
+	} else if a.Global {
+		scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to resolve global variable '"+a.Name+"'", a.Pos)
+		return
 	}
 
 	value := impl.ExpressionToCString(a.Value, scope)
@@ -2683,7 +2690,7 @@ func (impl *CBackendImplementation) NewAssignment(scope *ast.Ast, a *tokens.Assi
 
 		// Direct variable assignment reinitializes the target binding.
 		if a.Field == "" && a.Index == nil && CurrentTypeState != nil {
-			if varOpt := scope.ResolveSymbolAsVariable(a.Name); !varOpt.IsNil() {
+			if varOpt := resolveScope.ResolveSymbolAsVariable(a.Name); !varOpt.IsNil() {
 				CurrentTypeState.ClearMoved(varOpt.Unwrap().GetFullName())
 			}
 		}

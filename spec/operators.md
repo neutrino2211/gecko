@@ -56,6 +56,13 @@ obj.field = value
 arr[i] = value
 ```
 
+Explicit global assignment (bypasses local shadowing):
+
+```gecko
+global counter = 42
+global state.buffer[i] = byte
+```
+
 **Gap**: No compound assignment (`+=`, `-=`, etc.).
 
 ## Address-Of

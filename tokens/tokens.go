@@ -533,10 +533,11 @@ type Field struct {
 
 type Assignment struct {
 	baseToken
-	Name  string      `parser:"@Ident"`
-	Field string      `parser:"[ '.' @Ident ]"`
-	Index *Expression `parser:"[ '[' @@ ']' ]"`
-	Value *Expression `parser:"'=' @@"`
+	Global bool        `parser:"[ @'global' ]"`
+	Name   string      `parser:"@Ident"`
+	Field  string      `parser:"[ '.' @Ident ]"`
+	Index  *Expression `parser:"[ '[' @@ ']' ]"`
+	Value  *Expression `parser:"'=' @@"`
 }
 
 type Declaration struct {

@@ -484,6 +484,38 @@ func TestBacktickStringLiteralParsing(t *testing.T) {
 	}
 }
 
+func TestGlobalAssignmentParsing(t *testing.T) {
+	code := `package main
+let counter: int32 = 0
+func main(): int32 {
+    let counter: int32 = 1
+    global counter = 2
+    return 0
+}`
+
+	file, err := parser.Parser.ParseString("global_assignment.gecko", code)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	if len(file.Entries) < 2 || file.Entries[1].Method == nil {
+		t.Fatalf("Expected second top-level entry to be method, got %d entries", len(file.Entries))
+	}
+
+	mainFn := file.Entries[1].Method
+	if len(mainFn.Value) < 2 || mainFn.Value[1].Assignment == nil {
+		t.Fatal("Expected second function statement to be assignment")
+	}
+
+	assign := mainFn.Value[1].Assignment
+	if !assign.Global {
+		t.Fatal("Expected assignment to be marked global")
+	}
+	if assign.Name != "counter" {
+		t.Fatalf("Expected assignment target 'counter', got %q", assign.Name)
+	}
+}
+
 func TestTraitInheritanceParsing(t *testing.T) {
 	code := `package main
 trait Parent {

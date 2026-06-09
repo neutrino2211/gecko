@@ -740,9 +740,21 @@ func (impl *CBackendImplementation) CheckAssignmentType(a *tokens.Assignment, sc
 		return
 	}
 
+	resolveScope := scope
+	if a.Global {
+		resolveScope = scope.GetRoot()
+	}
+
 	// Look up variable type
-	varOpt := scope.ResolveSymbolAsVariable(a.Name)
+	varOpt := resolveScope.ResolveSymbolAsVariable(a.Name)
 	if varOpt.IsNil() {
+		if a.Global {
+			scope.ErrorScope.NewCompileTimeError(
+				"Assignment Error",
+				"unable to resolve global variable '"+a.Name+"'",
+				a.Pos,
+			)
+		}
 		return
 	}
 

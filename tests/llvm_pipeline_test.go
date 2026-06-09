@@ -100,6 +100,32 @@ external func main(): int32 {
 	return sourcePath
 }
 
+func writeBackendFixtureExplicitGlobalAssignment(t *testing.T, assignedValue int32) string {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "main.gecko")
+	source := fmt.Sprintf(`package main
+
+let g_code: int32 = 0
+
+func read_code(): int32 {
+    return g_code
+}
+
+external func main(): int32 {
+    let g_code: int32 = 7
+    g_code = 3
+    global g_code = %d
+    return read_code()
+}
+`, assignedValue)
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+		t.Fatalf("failed writing fixture: %v", err)
+	}
+	return sourcePath
+}
+
 func writeBackendFixtureUnsignedComparison(t *testing.T) string {
 	t.Helper()
 
@@ -457,6 +483,23 @@ func TestBackendRunCommandStoresGlobalAssignment(t *testing.T) {
 			output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "run", "--backend", backend, sourcePath)
 			if exitCode != 42 {
 				t.Fatalf("expected gecko run exit code 42 after global assignment, got %d\n%s", exitCode, output)
+			}
+		})
+	}
+}
+
+func TestBackendRunCommandSupportsExplicitGlobalAssignment(t *testing.T) {
+	geckoPath := buildGecko(t)
+	projectRoot := projectRootForTests(t)
+	sourcePath := writeBackendFixtureExplicitGlobalAssignment(t, 42)
+
+	for _, backend := range commandTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			requireBackendToolchain(t, backend)
+			output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "run", "--backend", backend, sourcePath)
+			if exitCode != 42 {
+				t.Fatalf("expected gecko run exit code 42 after explicit global assignment, got %d\n%s", exitCode, output)
 			}
 		})
 	}

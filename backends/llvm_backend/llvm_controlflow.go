@@ -383,10 +383,19 @@ func (impl *LLVMBackendImplementation) NewAssignment(scope *ast.Ast, assignment 
 		return
 	}
 
+	resolveScope := scope
+	if assignment.Global {
+		resolveScope = scope.GetRoot()
+	}
+
 	// Resolve the variable being assigned to
-	variable := scope.ResolveSymbolAsVariable(assignment.Name)
+	variable := resolveScope.ResolveSymbolAsVariable(assignment.Name)
 	if variable.IsNil() {
-		scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to resolve variable '"+assignment.Name+"'", assignment.Pos)
+		if assignment.Global {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to resolve global variable '"+assignment.Name+"'", assignment.Pos)
+		} else {
+			scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to resolve variable '"+assignment.Name+"'", assignment.Pos)
+		}
 		return
 	}
 
@@ -465,7 +474,11 @@ func (impl *LLVMBackendImplementation) NewAssignment(scope *ast.Ast, assignment 
 	if assignment.Field != "" {
 		chain := &tokens.ChainAccess{Name: assignment.Field}
 		chain.Pos = assignment.Pos
-		fieldPtr := impl.ResolveSymbolChainValue(scope, assignment.Name, []*tokens.ChainAccess{chain}, assignment.Pos, true)
+		fieldResolveScope := scope
+		if assignment.Global {
+			fieldResolveScope = scope.GetRoot()
+		}
+		fieldPtr := impl.ResolveSymbolChainValue(fieldResolveScope, assignment.Name, []*tokens.ChainAccess{chain}, assignment.Pos, true)
 		if fieldPtr == nil {
 			scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to resolve field assignment target '"+assignment.Name+"."+assignment.Field+"'", assignment.Pos)
 			return

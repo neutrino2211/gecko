@@ -697,8 +697,8 @@ func geckoLiteralToString(l *tokens.Literal) string {
 	switch {
 	case l.Bool != "":
 		base = l.Bool
-	case l.String != "":
-		base = l.String
+	case l.HasStringLiteral():
+		base = l.StringLiteralToken()
 	case l.Symbol != "":
 		if l.SymbolModule != "" {
 			base = l.SymbolModule + "." + l.Symbol
@@ -964,10 +964,16 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 		} else {
 			base = "0"
 		}
-	} else if l.String != "" {
+	} else if l.HasStringLiteral() {
 		// String literal - the & in gecko means we want a pointer to the string
 		// In C, string literals are already const char*
-		base = l.String
+		cLiteral, err := l.CStringLiteral()
+		if err != nil {
+			scope.ErrorScope.NewCompileTimeError("String Escape", "unable to escape the string provided "+err.Error(), l.Pos)
+			base = "\"\""
+		} else {
+			base = cLiteral
+		}
 	} else if l.Symbol != "" {
 		symbolName := l.Symbol
 		if l.SymbolModule != "" {

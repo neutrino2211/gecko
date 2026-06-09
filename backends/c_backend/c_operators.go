@@ -267,7 +267,7 @@ func (impl *CBackendImplementation) getBaseLiteralType(l *tokens.Literal, scope 
 	}
 
 	// String literals
-	if l.String != "" {
+	if l.HasStringLiteral() {
 		return &tokens.TypeRef{Type: "string"}
 	}
 

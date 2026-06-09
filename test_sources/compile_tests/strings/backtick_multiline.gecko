@@ -1,0 +1,7 @@
+package main
+
+external func main(): int32 {
+    let message: string = `hello
+from gecko`
+    return 0
+}

@@ -157,7 +157,7 @@ func inferFromLiteral(lit *Literal, resolveSymbol func(string) *TypeRef) *TypeRe
 	}
 
 	// String literal
-	if lit.String != "" {
+	if lit.HasStringLiteral() {
 		return &TypeRef{Type: "string"}
 	}
 

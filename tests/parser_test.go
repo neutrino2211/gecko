@@ -450,6 +450,40 @@ func main(): int32 {
 	}
 }
 
+func TestBacktickStringLiteralParsing(t *testing.T) {
+	code := "package main\n\nexternal func main(): int32 {\n    let s = `hello\nworld`\n    return 0\n}"
+
+	file, err := parser.Parser.ParseString("backtick_string.gecko", code)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	if len(file.Entries) == 0 || file.Entries[0].Method == nil {
+		t.Fatal("Expected top-level method entry")
+	}
+
+	mainFn := file.Entries[0].Method
+	if len(mainFn.Value) == 0 || mainFn.Value[0].Field == nil {
+		t.Fatal("Expected first function statement to be a field declaration")
+	}
+
+	lit := mainFn.Value[0].Field.Value.OrExpr.LogicalOr.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary.Literal
+	if lit == nil {
+		t.Fatal("Expected string literal")
+	}
+	if lit.BacktickString == "" {
+		t.Fatalf("Expected BacktickString token, got String=%q BacktickString=%q", lit.String, lit.BacktickString)
+	}
+
+	value, err := lit.StringLiteralValue()
+	if err != nil {
+		t.Fatalf("Expected valid backtick string literal, got error: %v", err)
+	}
+	if value != "hello\nworld" {
+		t.Fatalf("Expected decoded value %q, got %q", "hello\nworld", value)
+	}
+}
+
 func TestTraitInheritanceParsing(t *testing.T) {
 	code := `package main
 trait Parent {

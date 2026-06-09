@@ -638,6 +638,7 @@ type Literal struct {
 	FuncCall       *FuncCall         `parser:" | @@"`
 	Bool           string            `parser:" | @( 'true' | 'false' )"`
 	String         string            `parser:" | @String"`
+	BacktickString string            `parser:" | @BacktickString"`
 	StructType     string            `parser:" | ( @Ident"`
 	StructTypeArgs []*TypeRef        `parser:"     [ '<' @@ { ',' @@ } '>' ]"`
 	StructFields   []*ObjectKeyValue `parser:"     '{' [ @@ { ',' @@ } ] '}' )"`

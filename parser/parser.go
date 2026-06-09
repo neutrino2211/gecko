@@ -20,6 +20,7 @@ var geckoLexer = lexer.MustSimple([]lexer.SimpleRule{
 	{Name: "LogicalOr", Pattern: `\|\|`},
 
 	// Strings (before Punct to capture quotes)
+	{Name: "BacktickString", Pattern: "`[^`]*`"},
 	{Name: "String", Pattern: `"(?:[^"\\]|\\.)*"`},
 
 	// Numbers (hex, then decimal with optional float)

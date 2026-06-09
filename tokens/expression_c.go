@@ -130,8 +130,11 @@ func (p *Primary) ToCString(scope *ast.Ast) string {
 		base = p.Literal.Bool
 	} else if p.Literal.Number != "" {
 		base = p.Literal.Number
-	} else if p.Literal.String != "" {
-		base = p.Literal.String
+	} else if p.Literal.HasStringLiteral() {
+		cLiteral, err := p.Literal.CStringLiteral()
+		if err == nil {
+			base = cLiteral
+		}
 	} else if p.Literal.Symbol != "" {
 		symbolVariable := scope.ResolveSymbolAsVariable(p.Literal.Symbol)
 

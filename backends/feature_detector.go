@@ -370,7 +370,7 @@ func (d *featureDetector) analyzeLiteral(lit *tokens.Literal) {
 	}
 
 	// String literals
-	if lit.String != "" {
+	if lit.HasStringLiteral() {
 		d.mark(FeatureStrings)
 	}
 

@@ -49,6 +49,7 @@ var compileTests = []compileTest{
 
 	// String module tests
 	{"string_builder", "test_sources/compile_tests/string_builder/main.gecko", 0, false},
+	{"backtick_multiline_string", "test_sources/compile_tests/strings/backtick_multiline.gecko", 0, false},
 
 	// Raw pointer tests
 	{"raw_pointer", "test_sources/compile_tests/raw_pointer/main.gecko", 0, false},

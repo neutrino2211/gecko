@@ -1490,8 +1490,8 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRConstant(p *tokens.Primary, 
 		return constant.NewInt(types.I1, i)
 	}
 
-	if l.String != "" {
-		actual, err := strconv.Unquote(l.String)
+	if l.HasStringLiteral() {
+		actual, err := l.StringLiteralValue()
 		if err != nil {
 			scope.ErrorScope.NewCompileTimeError("String Escape", "unable to escape the string provided "+err.Error(), l.Pos)
 			actual = ""

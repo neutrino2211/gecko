@@ -17,8 +17,11 @@ func (l *Literal) ToCString(scope *ast.Ast) string {
 
 	if l.Bool != "" {
 		base = l.Bool
-	} else if l.String != "" {
-		base = l.String
+	} else if l.HasStringLiteral() {
+		cLiteral, err := l.CStringLiteral()
+		if err == nil {
+			base = cLiteral
+		}
 	} else if l.Symbol != "" {
 		symbolVariable := scope.ResolveSymbolAsVariable(l.Symbol)
 
@@ -51,8 +54,12 @@ func (l *Literal) ToLLIRValue(scope *ast.Ast) value.Value {
 	if l.Bool != "" {
 		i := map[string]int64{"true": 1, "false": 0}[l.Bool]
 		val = constant.NewInt(types.I1, i)
-	} else if l.String != "" {
-		val = constant.NewCharArrayFromString(l.String)
+	} else if l.HasStringLiteral() {
+		actual, err := l.StringLiteralValue()
+		if err != nil {
+			actual = ""
+		}
+		val = constant.NewCharArrayFromString(actual)
 	} else if l.Number != "" {
 		conv := option.SomePair(strconv.Atoi(l.Number)).Unwrap()
 		val = constant.NewInt(types.I64, int64(conv))

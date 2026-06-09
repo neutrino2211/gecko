@@ -492,8 +492,8 @@ func (impl *LLVMBackendImplementation) PrimaryToLLIRValue(p *tokens.Primary, sco
 				base = constant.NewInt(types.I64, conv)
 			}
 		}
-	} else if p.Literal.String != "" {
-		actual, err := strconv.Unquote(p.Literal.String)
+	} else if p.Literal.HasStringLiteral() {
+		actual, err := p.Literal.StringLiteralValue()
 
 		if err != nil {
 			scope.ErrorScope.NewCompileTimeError("String Escape", "unable to escape the string provided "+err.Error(), p.Literal.Pos)

@@ -1,0 +1,42 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/c-interop.md, spec/stdlib.md
+
+package libc
+
+foreign "c" cstdlib {
+    func malloc(size: uint64): void* as "malloc"
+    func realloc(ptr: void*, size: uint64): void* as "realloc"
+    func free(ptr: void*): void as "free"
+}
+
+foreign "c" cstring {
+    func memcpy(dest: void*, src: void*, n: uint64): void* as "memcpy"
+    func strlen(s: string): uint64 as "strlen"
+}
+
+foreign "c" cposix {
+    func dprintf(fd: int32, format: string, ...): int32 as "dprintf"
+}
+
+public func malloc(size: uint64): void* {
+    return cstdlib.malloc(size)
+}
+
+public func realloc(ptr: void*, size: uint64): void* {
+    return cstdlib.realloc(ptr, size)
+}
+
+public func free(ptr: void*): void {
+    cstdlib.free(ptr)
+}
+
+public func memcpy(dest: void*, src: void*, n: uint64): void* {
+    return cstring.memcpy(dest, src, n)
+}
+
+public func strlen(s: string): uint64 {
+    return cstring.strlen(s)
+}
+
+public func dprintf_try_panic(fd: int32, file: string, line: int32, column: int32, function_name: string, expr: string): int32 {
+    return cposix.dprintf(fd, "Gecko try panic\n  location: %s:%d:%d\n  function: %s\n  expression: %s\n  hint: handle the failure with 'or', or return a compatible Option/Result.\n", file, line, column, function_name, expr)
+}

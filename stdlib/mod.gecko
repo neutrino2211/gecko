@@ -11,12 +11,14 @@ package std
 //   import std.collections use { Vec, Slice }
 //   import std.collections.string use { StringBuilder }
 //   import std.memory use { Box, Rc, Weak }
+//   import std.ffi.libc use { malloc, free }
 //   import std.option use { Option }
 //   import std.result use { Result }
 
 import core
 import collections
 import memory
+import ffi
 import option
 import result
 import errors

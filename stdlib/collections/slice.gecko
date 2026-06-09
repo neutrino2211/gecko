@@ -4,9 +4,6 @@ package slice
 
 import std.core.traits use { Clone, Index }
 
-declare external func malloc(size: uint64): void*
-declare external func free(ptr: void*): void
-
 public class Slice<T> {
     let data: T*
     let len: uint64

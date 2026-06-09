@@ -2,12 +2,12 @@
 
 package errors
 
-declare external variardic func dprintf(fd: int32, format: string): int32
+import std.ffi.libc use { dprintf_try_panic }
 
 // Signature expected by @set_try_error_handler:
 // func(file: string, line: int32, column: int32, function_name: string, expr: string): void
 func __gecko_default_try_error_handler(file: string, line: int32, column: int32, function_name: string, expr: string): void {
-    dprintf(2, "Gecko try panic\n  location: %s:%d:%d\n  function: %s\n  expression: %s\n  hint: handle the failure with 'or', or return a compatible Option/Result.\n", file, line, column, function_name, expr)
+    dprintf_try_panic(2, file, line, column, function_name, expr)
 }
 
 // Hidden stdlib hook invoked automatically by the compiler when std.errors is imported.

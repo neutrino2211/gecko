@@ -2,8 +2,7 @@
 
 package weak
 
-declare external func malloc(size: uint64): void*
-declare external func free(ptr: void*): void
+import std.ffi.libc use { free }
 
 /// Weak<T> - Non-owning reference to `Rc<T>` data.
 ///

@@ -1,0 +1,6 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/c-interop.md, spec/stdlib.md
+
+package ffi
+
+// FFI module - centralized native bindings consumed by stdlib components.
+import libc

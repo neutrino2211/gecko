@@ -3,12 +3,7 @@
 package string
 
 import std.core.traits use { Drop, Clone, Index, Iterator }
-
-declare external func malloc(size: uint64): void*
-declare external func realloc(ptr: void*, size: uint64): void*
-declare external func free(ptr: void*): void
-declare external func memcpy(dest: void*, src: void*, n: uint64): void*
-declare external func strlen(s: string): uint64
+import std.ffi.libc use { malloc, realloc, free, memcpy, strlen }
 
 /// Add<T> - Trait for the `+` operator.
 public trait Add<T> {

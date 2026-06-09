@@ -4,9 +4,7 @@ package rc
 
 import std.core.traits use { Drop, Clone }
 import std.option use { Option }
-
-declare external func malloc(size: uint64): void*
-declare external func free(ptr: void*): void
+import std.ffi.libc use { malloc, free }
 
 /// Internal structure holding reference counts and value.
 public class RcInner<T> {

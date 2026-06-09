@@ -4,9 +4,7 @@ package box
 
 import std.core.traits use { Drop }
 import std.option use { Option }
-
-declare external func malloc(size: uint64): void*
-declare external func free(ptr: void*): void
+import std.ffi.libc use { malloc, free }
 
 /// Box<T> - Unique ownership smart pointer.
 ///

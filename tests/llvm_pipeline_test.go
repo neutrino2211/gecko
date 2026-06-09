@@ -195,6 +195,28 @@ func TestBackendCompileCommandProducesObjectArtifact(t *testing.T) {
 	}
 }
 
+func TestBackendCompileCommandOutputFlagWritesObjectArtifact(t *testing.T) {
+	geckoPath := buildGecko(t)
+	projectRoot := projectRootForTests(t)
+	sourcePath := writeBackendFixtureMain(t, 17)
+
+	for _, backend := range commandTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			requireBackendToolchain(t, backend)
+			outputArtifact := filepath.Join(t.TempDir(), "backend_output_"+backend+".o")
+
+			output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "compile", "--backend", backend, "-o", outputArtifact, sourcePath)
+			if exitCode != 0 {
+				t.Fatalf("expected compile command with --output to exit with code 0, got %d\n%s", exitCode, output)
+			}
+			if _, err := os.Stat(outputArtifact); err != nil {
+				t.Fatalf("expected object artifact at explicit output path %s: %v", outputArtifact, err)
+			}
+		})
+	}
+}
+
 func TestForeignMetadataCollectedForLLVMCompile(t *testing.T) {
 	sourcePath := writeBackendFixtureForeignMetadata(t)
 
@@ -295,6 +317,48 @@ func TestBackendCompileCommandIROnlyProducesIRArtifact(t *testing.T) {
 				t.Fatalf("expected %s ir-only artifact at %s: %v", backend, irPath, err)
 			}
 		})
+	}
+}
+
+func TestBackendCompileCommandIROnlyOutputFlagWritesIRArtifact(t *testing.T) {
+	geckoPath := buildGecko(t)
+	projectRoot := projectRootForTests(t)
+	sourcePath := writeBackendFixtureMain(t, 17)
+
+	for _, backend := range commandTestBackends {
+		backend := backend
+		t.Run(backend, func(t *testing.T) {
+			requireBackendToolchain(t, backend)
+			ext := ".c"
+			if backend == "llvm" {
+				ext = ".ll"
+			}
+			outputArtifact := filepath.Join(t.TempDir(), "backend_ir_output_"+backend+ext)
+
+			output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "compile", "--backend", backend, "--ir-only", "-o", outputArtifact, sourcePath)
+			if exitCode != 0 {
+				t.Fatalf("expected ir-only compile command with --output to exit with code 0, got %d\n%s", exitCode, output)
+			}
+			if _, err := os.Stat(outputArtifact); err != nil {
+				t.Fatalf("expected ir-only artifact at explicit output path %s: %v", outputArtifact, err)
+			}
+		})
+	}
+}
+
+func TestCompileCommandOutputFlagRejectsMultipleSources(t *testing.T) {
+	geckoPath := buildGecko(t)
+	projectRoot := projectRootForTests(t)
+	sourceA := writeBackendFixtureMain(t, 17)
+	sourceB := writeBackendFixtureMain(t, 23)
+	outputArtifact := filepath.Join(t.TempDir(), "combined.o")
+
+	output, exitCode := runGeckoCommand(t, geckoPath, projectRoot, "compile", "-o", outputArtifact, sourceA, sourceB)
+	if exitCode == 0 {
+		t.Fatalf("expected compile command to fail when --output is used with multiple sources\n%s", output)
+	}
+	if !strings.Contains(output, "--output requires exactly one source file") {
+		t.Fatalf("expected explicit --output multi-source error, got:\n%s", output)
 	}
 }
 

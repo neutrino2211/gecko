@@ -236,7 +236,7 @@ func collectObjectInputs(projectCfg *config.ProjectConfig, targetKey string) []s
 var CompileCommand = &cli.Command{
 	Name:        "compile",
 	Aliases:     []string{"c"},
-	Usage:       "gecko compile [sources...] or gecko compile --entry <name>",
+	Usage:       "gecko compile [sources...] [-o output] or gecko compile --entry <name>",
 	Description: compileHelp,
 	Action: func(ctx *cli.Context) error {
 		setLogLevel(ctx)
@@ -280,6 +280,11 @@ var CompileCommand = &cli.Command{
 			return nil
 		}
 
+		outputPath := strings.TrimSpace(ctx.String("output"))
+		if outputPath != "" && len(sources) != 1 {
+			return fmt.Errorf("--output requires exactly one source file, got %d", len(sources))
+		}
+
 		for _, pos := range sources {
 			treeshakeEnabled := resolveTreeshakeEnabled(ctx, projectCfg)
 			outFile := compiler.Compile(pos, &config.CompileCfg{
@@ -304,6 +309,9 @@ var CompileCommand = &cli.Command{
 				if projectCfg != nil {
 					destObj = projectCfg.GetArtifactPath(pos, ext)
 				}
+				if outputPath != "" {
+					destObj = outputPath
+				}
 				if err := os.MkdirAll(filepath.Dir(destObj), 0o755); err != nil {
 					return fmt.Errorf("failed creating artifact directory for %s: %w", destObj, err)
 				}
@@ -325,6 +333,12 @@ var CompileCommand = &cli.Command{
 		return nil
 	},
 	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:    "output",
+			Aliases: []string{"o"},
+			Value:   "",
+			Usage:   "Output artifact path (single source only)",
+		},
 		&cli.StringFlag{
 			Name:  "output-dir",
 			Value: ".",

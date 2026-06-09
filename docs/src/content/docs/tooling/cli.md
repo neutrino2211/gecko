@@ -80,6 +80,7 @@ gecko compile --entry <name>
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--output, -o` | Output artifact path (single source only) | - |
 | `--output-dir` | Output directory | `.` |
 | `--entry, -e` | Entry point from gecko.toml | - |
 | `--type` | Output type: `executable` or `library` | `executable` |
@@ -103,8 +104,14 @@ gecko compile --entry <name>
 # Compile to C code
 gecko compile src/main.gecko
 
+# Write object output to a specific path
+gecko compile src/main.gecko -o build/main.o
+
 # View generated C code
 gecko compile --print-ir --ir-only src/main.gecko
+
+# Write IR output to a specific path
+gecko compile --ir-only src/main.gecko -o build/main.c
 
 # Compile with debug logging
 gecko compile --log-level debug src/main.gecko

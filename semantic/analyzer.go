@@ -1061,6 +1061,17 @@ func classTypeSubst(instanceType *tokens.TypeRef, params []*tokens.TypeParam) ma
 	return subst
 }
 
+func (a *analyzer) ownerTypeParams(ownerType string) []*tokens.TypeParam {
+	if ownerType == "" {
+		return nil
+	}
+	classInfo := a.program.classes[ownerType]
+	if classInfo == nil {
+		return nil
+	}
+	return classInfo.TypeParams
+}
+
 func (a *analyzer) inferMethodOnType(receiver *tokens.TypeRef, chain *tokens.ChainAccess, env *flowEnv) *tokens.TypeRef {
 	if receiver == nil || chain == nil {
 		return nil
@@ -1124,7 +1135,15 @@ func (a *analyzer) inferFuncCall(call *tokens.FuncCall, env *flowEnv, expected *
 		return nil
 	}
 
-	attempt := a.resolveCallCandidates(candidates, call.TypeArgs, call.Arguments, nil, expected, env, call.Pos)
+	var ownerReceiver *tokens.TypeRef
+	if call.StaticType != "" {
+		ownerReceiver = &tokens.TypeRef{
+			Type:     call.StaticType,
+			TypeArgs: cloneTypeRefSlice(call.StaticTypeArgs),
+		}
+	}
+
+	attempt := a.resolveCallCandidates(candidates, call.TypeArgs, call.Arguments, ownerReceiver, expected, env, call.Pos)
 	if attempt == nil {
 		return nil
 	}
@@ -1242,6 +1261,23 @@ func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs 
 			continue
 		}
 		typeParamsByName[tp.Name] = tp
+	}
+	ownerTypeParams := a.ownerTypeParams(sig.OwnerType)
+	for _, tp := range ownerTypeParams {
+		if tp == nil {
+			continue
+		}
+		if _, exists := typeParamsByName[tp.Name]; !exists {
+			typeParamsByName[tp.Name] = tp
+		}
+	}
+	if receiver != nil && sig.OwnerType != "" {
+		for name, typ := range classTypeSubst(receiver, ownerTypeParams) {
+			if typ == nil {
+				continue
+			}
+			subst[name] = CloneTypeRef(typ)
+		}
 	}
 
 	if len(explicitTypeArgs) > 0 {

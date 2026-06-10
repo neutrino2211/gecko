@@ -6,6 +6,7 @@ import (
 	"os/exec"
 
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/semantic"
 	"github.com/neutrino2211/gecko/tokens"
 	"github.com/urfave/cli/v2"
 )
@@ -51,6 +52,7 @@ type BackendConfig struct {
 	LazyMethodResolver     LazyMethodResolverFunc     // Resolves methods from directory imports
 	LazyModuleTypeResolver LazyModuleTypeResolverFunc // Resolves types from specific module
 	SuggestionProvider     TypeSuggestionFunc         // Returns import suggestions for unresolved types
+	SemanticInfo           *semantic.Program          // Frontend semantic typing graph for this compile
 }
 
 type BackendCodegenImplementations interface {

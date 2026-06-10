@@ -236,6 +236,11 @@ func (impl *CBackendImplementation) GetTypeOfLiteral(l *tokens.Literal, scope *a
 	if l == nil {
 		return nil
 	}
+	if CurrentSemanticProgram != nil {
+		if inferred := CurrentSemanticProgram.TypeOfLiteral(l); inferred != nil {
+			return inferred
+		}
+	}
 
 	// Handle address-of operator (&variable)
 	// Get the base type first, then wrap in pointer if needed
@@ -423,6 +428,11 @@ func (impl *CBackendImplementation) getBaseLiteralType(l *tokens.Literal, scope 
 func (impl *CBackendImplementation) GetTypeOfFuncCall(f *tokens.FuncCall, scope *ast.Ast) *tokens.TypeRef {
 	if f == nil {
 		return nil
+	}
+	if CurrentSemanticProgram != nil {
+		if res := CurrentSemanticProgram.FuncCallResolution(f); res != nil && res.ReturnType != nil {
+			return res.ReturnType
+		}
 	}
 
 	// Static method call: Type::method()
@@ -699,6 +709,11 @@ func (impl *CBackendImplementation) GetTypeOfLogicalOr(lo *tokens.LogicalOr, sco
 func (impl *CBackendImplementation) GetTypeOfExpression(e *tokens.Expression, scope *ast.Ast) *tokens.TypeRef {
 	if e == nil {
 		return nil
+	}
+	if CurrentSemanticProgram != nil {
+		if inferred := CurrentSemanticProgram.TypeOfExpression(e); inferred != nil {
+			return inferred
+		}
 	}
 	return impl.GetTypeOfOrExpression(e.OrExpr, scope)
 }

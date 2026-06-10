@@ -100,9 +100,33 @@ let s = "hello"         // infers string
 let r = Rect::new(1,2)  // infers Rect from static method return
 let a = obj.area()      // infers from method return type
 let p = &variable       // infers pointer type
+let x: int32 = make_zero() // expected type context participates in inference
 ```
 
-**Gap**: No inference for generic type arguments in all contexts.
+Inference is bidirectional for generics:
+- from call arguments
+- from expected type context (assignment targets and return context)
+
+If inference is ambiguous, compilation fails and requires explicit `<...>` type arguments.
+
+## Scope Narrowing
+
+Gecko performs path-sensitive narrowing for core nullability flows.
+
+```gecko
+func use(ptr: int32*): int32 {
+    if (ptr == nil) {
+        return 0
+    }
+    // ptr is narrowed to non-null on this path
+    return require_nonnull(ptr)
+}
+```
+
+Narrowing rules cover:
+- `if/else if/else` branches
+- short-circuit boolean guards (`&&` and `||`) conservatively
+- early exits (`return`, `break`, `continue`) at control-flow join points
 
 ## Type Casts
 

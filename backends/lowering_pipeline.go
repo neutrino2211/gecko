@@ -6,6 +6,7 @@ import (
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/errors"
 	"github.com/neutrino2211/gecko/interfaces"
+	"github.com/neutrino2211/gecko/semantic"
 	"github.com/neutrino2211/gecko/tokens"
 )
 
@@ -20,6 +21,7 @@ type SharedCompilePipelineOptions struct {
 type SharedCompilePipelineResult struct {
 	RootScope    *ast.Ast
 	ImportScopes []*ast.Ast
+	SemanticInfo *semantic.Program
 }
 
 func firstNonEmpty(values ...string) string {
@@ -77,6 +79,7 @@ func newImportedScope(importedFile *tokens.File, scopeName string, markImported 
 func PrepareSharedCompilePipeline(b interfaces.BackendInterface, c *interfaces.BackendConfig, options SharedCompilePipelineOptions) *SharedCompilePipelineResult {
 	result := &SharedCompilePipelineResult{
 		ImportScopes: make([]*ast.Ast, 0),
+		SemanticInfo: c.SemanticInfo,
 	}
 
 	rootScope := &ast.Ast{

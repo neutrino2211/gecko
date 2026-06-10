@@ -11,6 +11,7 @@ import (
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/hooks"
 	"github.com/neutrino2211/gecko/interfaces"
+	"github.com/neutrino2211/gecko/semantic"
 	"github.com/neutrino2211/gecko/tokens"
 )
 
@@ -1629,6 +1630,10 @@ func (impl *CBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field)
 	// Type inference: if no explicit type, try to infer from the value
 	if f.Type == nil {
 		if f.Value != nil {
+			if CurrentSemanticProgram != nil {
+				f.Type = CurrentSemanticProgram.TypeOfExpression(f.Value)
+			}
+
 			// Create a symbol resolver that looks up variables in scope
 			resolveSymbol := func(name string) *tokens.TypeRef {
 				opt := scope.ResolveSymbolAsVariable(name)
@@ -1642,7 +1647,9 @@ func (impl *CBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field)
 				return nil
 			}
 
-			f.Type = tokens.InferType(f.Value, resolveSymbol)
+			if f.Type == nil {
+				f.Type = tokens.InferType(f.Value, resolveSymbol)
+			}
 
 			// If tokens.InferType returns nil, try backend's type inference
 			// This handles function calls, method calls, etc.
@@ -2263,11 +2270,29 @@ func (impl *CBackendImplementation) NewIf(scope *ast.Ast, i *tokens.If) {
 	condition := impl.ExpressionToCString(i.Expression, scope)
 	info.Code += fmt.Sprintf("    if (%s) {\n", condition)
 
-	// Detect null check patterns for type narrowing
-	nullCheck := DetectNullCheck(i.Expression)
 	var savedTypeState *ast.TypeState
+	var semanticFactsThenApplied bool
+	var semanticAfterFacts *semantic.FlowFacts
 
-	if nullCheck != nil {
+	// Prefer frontend semantic facts when available.
+	if CurrentSemanticProgram != nil {
+		ifFacts := CurrentSemanticProgram.IfFlowFacts(i)
+		if ifFacts != nil {
+			savedTypeState = CurrentTypeState
+			if savedTypeState != nil {
+				CurrentTypeState = savedTypeState.Fork(1)
+			} else {
+				CurrentTypeState = ast.NewTypeState()
+			}
+			applySemanticFlowFacts(CurrentTypeState, ifFacts.Then)
+			semanticFactsThenApplied = true
+			semanticAfterFacts = ifFacts.After
+		}
+	}
+
+	// Fallback to legacy local null-check narrowing when semantic facts are unavailable.
+	nullCheck := DetectNullCheck(i.Expression)
+	if !semanticFactsThenApplied && nullCheck != nil {
 		checkType := "== nil"
 		if nullCheck.IsNotNull {
 			checkType = "!= nil"
@@ -2292,7 +2317,7 @@ func (impl *CBackendImplementation) NewIf(scope *ast.Ast, i *tokens.If) {
 	}
 
 	// Restore the original type state after processing the if-body
-	if nullCheck != nil {
+	if semanticFactsThenApplied || nullCheck != nil {
 		CurrentTypeState = savedTypeState
 	}
 
@@ -2306,6 +2331,14 @@ func (impl *CBackendImplementation) NewIf(scope *ast.Ast, i *tokens.If) {
 	// Handle else
 	if i.Else != nil {
 		impl.NewElse(scope, i.Else)
+	}
+
+	// Re-apply semantic post-dominator facts after completing the full if/else chain.
+	if semanticAfterFacts != nil {
+		if CurrentTypeState == nil {
+			CurrentTypeState = ast.NewTypeState()
+		}
+		applySemanticFlowFacts(CurrentTypeState, semanticAfterFacts)
 	}
 }
 

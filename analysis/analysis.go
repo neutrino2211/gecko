@@ -12,15 +12,17 @@ import (
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/errors"
 	"github.com/neutrino2211/gecko/parser"
+	"github.com/neutrino2211/gecko/semantic"
 	"github.com/neutrino2211/gecko/tokens"
 )
 
 // AnalysisContext holds parsed files and resolved symbols for analysis
 type AnalysisContext struct {
-	MainFile     *tokens.File
+	MainFile      *tokens.File
 	ImportedFiles map[string]*tokens.File
-	RootScope    *ast.Ast
-	FilePath     string
+	RootScope     *ast.Ast
+	FilePath      string
+	SemanticGraph *semantic.Program
 }
 
 // NewAnalysisContext creates an analysis context for a file
@@ -49,6 +51,9 @@ func NewAnalysisContext(filePath string, content string) (*AnalysisContext, erro
 
 	// Resolve imports
 	ctx.resolveImports()
+
+	// Build shared semantic graph used by compiler backends and LSP helpers.
+	ctx.SemanticGraph = semantic.Analyze(ctx.MainFile)
 
 	// Register symbols in scope
 	ctx.registerSymbols()
@@ -93,7 +98,9 @@ func (ctx *AnalysisContext) resolveImports() {
 						moduleFile.ComputeRanges()
 						moduleFile.Path = candidate
 						moduleFile.Content = string(moduleContent)
+						moduleFile.Name = moduleName
 						ctx.ImportedFiles[moduleName] = moduleFile
+						ctx.MainFile.Imports = append(ctx.MainFile.Imports, moduleFile)
 					}
 					break
 				}
@@ -376,6 +383,11 @@ func IsPublic(visibility string) bool {
 func InferExpressionType(expr *tokens.Expression, ctx *AnalysisContext) string {
 	if expr == nil {
 		return "unknown"
+	}
+	if ctx != nil && ctx.SemanticGraph != nil {
+		if t := ctx.SemanticGraph.TypeOfExpression(expr); t != nil {
+			return FormatTypeRef(t)
+		}
 	}
 
 	// Use the tokens package's inference first

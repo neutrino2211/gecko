@@ -28,8 +28,11 @@ let x: int = 1
 let y: int = 2
 let z = first(x, y)
 
+// Inference can also use expected type context:
+let q: int = first(1, 2)
+
 // Or explicit:
-let q = first<int>(x, y)
+let explicit = first<int>(x, y)
 ```
 
 ## Generic Classes
@@ -130,7 +133,7 @@ let nested: Option<Vec<int32>> = Option<Vec<int32>>::some(Vec<int32>::new())
 
 ## Gaps and Limitations
 
-- No type parameter inference in all contexts
+- Inference is bidirectional (arguments + expected type context), but not every advanced context is covered yet
 - No variance annotations (covariance/contravariance)
 - No `where` clauses
 - No const generics (`Array<T, N>` where N is a compile-time integer)
@@ -138,3 +141,22 @@ let nested: Option<Vec<int32>> = Option<Vec<int32>>::some(Vec<int32>::new())
 - Code bloat from monomorphization (each instantiation duplicates code)
 - No specialization (cannot provide optimized impl for specific types)
 - Generic types must be fully specified at use site (no partial application)
+
+## Inference Ambiguity
+
+When generic arguments are not uniquely inferable, compilation fails with an
+inference ambiguity diagnostic and a hint to provide explicit type arguments.
+
+```gecko
+func make_zero<T>(): T {
+    let x: T
+    return x
+}
+
+// Error: Type Inference Ambiguity (T cannot be inferred uniquely)
+let v = make_zero()
+
+// OK:
+let v2: int32 = make_zero()
+let v3 = make_zero<int32>()
+```

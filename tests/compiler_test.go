@@ -657,6 +657,12 @@ func TestTypeCheckingErrors(t *testing.T) {
 			expectedMsg:   "expects type 'int32', got 'string'",
 		},
 		{
+			name:          "generic_inference_ambiguity",
+			file:          "test_sources/compile_tests/type_checking/generic_inference_ambiguous.gecko",
+			expectedError: "Type Inference Ambiguity",
+			expectedMsg:   "Use explicit `<...>` type arguments",
+		},
+		{
 			name:          "return_type_mismatch",
 			file:          "test_sources/compile_tests/type_checking/return_mismatch.gecko",
 			expectedError: "Return Type Mismatch",

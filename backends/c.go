@@ -37,6 +37,7 @@ func (b *CBackend) Init() {
 	cbackend.Generics = cbackend.NewGenericRegistry()
 	cbackend.CurrentMonomorphContext = nil
 	cbackend.CurrentTypeState = nil
+	cbackend.SetSemanticProgram(nil)
 	cbackend.InitTypeParameterChecker()
 }
 
@@ -154,6 +155,9 @@ func (b *CBackend) Features() interfaces.FeatureChecker {
 }
 
 func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
+	cbackend.SetSemanticProgram(c.SemanticInfo)
+	defer cbackend.SetSemanticProgram(nil)
+
 	cbackend.ResetTreeshakeAnalysis()
 	sharedResult := PrepareSharedCompilePipeline(b, c, SharedCompilePipelineOptions{
 		ProcessImports:            true,

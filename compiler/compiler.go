@@ -22,6 +22,7 @@ import (
 	"github.com/neutrino2211/gecko/hooks"
 	"github.com/neutrino2211/gecko/interfaces"
 	"github.com/neutrino2211/gecko/parser"
+	"github.com/neutrino2211/gecko/semantic"
 	"github.com/neutrino2211/gecko/tokens"
 	"github.com/neutrino2211/gecko/utils"
 	"github.com/neutrino2211/go-option"
@@ -234,6 +235,97 @@ func collectNativeLinkMetadata(sourceFile *tokens.File) {
 	// Backward-compatibility for existing command helpers.
 	cbackend.LastCImportLibraries = LastNativeLibraries
 	cbackend.LastCImportObjects = LastNativeObjects
+}
+
+func buildFileContentMap(sourceFile *tokens.File) map[string]string {
+	out := make(map[string]string)
+	visited := make(map[string]bool)
+
+	var walk func(file *tokens.File)
+	walk = func(file *tokens.File) {
+		if file == nil {
+			return
+		}
+		key := file.Path
+		if key == "" {
+			key = file.Name
+		}
+		if key == "" {
+			key = fmt.Sprintf("%p", file)
+		}
+		if visited[key] {
+			return
+		}
+		visited[key] = true
+
+		if file.Path != "" && file.Content != "" {
+			out[file.Path] = file.Content
+		}
+
+		for _, imported := range file.Imports {
+			walk(imported)
+		}
+	}
+
+	walk(sourceFile)
+	return out
+}
+
+func emitSemanticDiagnostics(sourceFile *tokens.File, diags []semantic.Diagnostic) {
+	if len(diags) == 0 {
+		return
+	}
+
+	contentByFile := buildFileContentMap(sourceFile)
+	scopes := make(map[string]*errors.ErrorScope)
+	defaultPath := sourceFile.Path
+	defaultContent := sourceFile.Content
+
+	for _, diag := range diags {
+		path := diag.Pos.Filename
+		if path == "" {
+			path = defaultPath
+		}
+		content := defaultContent
+		if path != "" {
+			if c, ok := contentByFile[path]; ok {
+				content = c
+			}
+		}
+		if content == "" {
+			content = defaultContent
+		}
+
+		scopeKey := path
+		if scopeKey == "" {
+			scopeKey = "__semantic_default__"
+		}
+		scope, ok := scopes[scopeKey]
+		if !ok {
+			scopeName := path
+			if scopeName == "" {
+				scopeName = defaultPath
+			}
+			scope = errors.NewErrorScope("semantic", scopeName, content)
+			scopes[scopeKey] = scope
+		}
+
+		message := diag.Message
+		if diag.Help != "" {
+			message = message + "\nhelp: " + diag.Help
+		}
+
+		title := diag.Title
+		if title == "" {
+			title = "Semantic Error"
+		}
+
+		if diag.Severity == semantic.SeverityWarning {
+			scope.NewCompileTimeWarning(title, message, diag.Pos)
+		} else {
+			scope.NewCompileTimeError(title, message, diag.Pos)
+		}
+	}
 }
 
 func splitImportPath(importPath string) []string {
@@ -747,6 +839,13 @@ func Compile(file string, config *config.CompileCfg) string {
 		return ""
 	}
 
+	semanticInfo := semantic.Analyze(sourceFile)
+	emitSemanticDiagnostics(sourceFile, semanticInfo.Diagnostics())
+
+	if haveErrors() {
+		return ""
+	}
+
 	compilationBackend.Init()
 	unsupportedCount := validateFeatures(sourceFile, compilationBackend, backend, compileErrorScope, config)
 
@@ -804,6 +903,7 @@ func Compile(file string, config *config.CompileCfg) string {
 		LazyMethodResolver:     lazyMethodResolver,
 		LazyModuleTypeResolver: lazyModuleTypeResolver,
 		SuggestionProvider:     suggestionProvider,
+		SemanticInfo:           semanticInfo,
 	})
 
 	// Check for errors after codegen/type checking - bail early if any

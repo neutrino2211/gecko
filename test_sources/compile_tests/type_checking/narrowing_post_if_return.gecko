@@ -1,0 +1,19 @@
+// spec: spec/types.md, spec/functions.md, spec/control-flow.md, spec/pointers.md
+
+package main
+
+func require_nonnull(p: int32*!): int32 {
+    return p as int32
+}
+
+func takes(ptr: int32*): int32 {
+    if (ptr == nil) {
+        return 0
+    }
+    return require_nonnull(ptr)
+}
+
+external func main(): int32 {
+    let x: int32 = 42
+    return takes(&x)
+}

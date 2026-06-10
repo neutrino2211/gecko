@@ -37,6 +37,7 @@ func (b *LLVMBackend) Init() {
 	llvmbackend.LLVMEnumMap = make(map[string]*llvmbackend.LLVMEnumInfo)
 	llvmbackend.TraitDefinitionOrigins = make(map[string]string)
 	llvmbackend.TraitParents = make(map[string]string)
+	llvmbackend.SetSemanticProgram(nil)
 	cbackend.InitTypeParameterChecker()
 }
 
@@ -53,6 +54,9 @@ func (b *LLVMBackend) Features() interfaces.FeatureChecker {
 }
 
 func (b *LLVMBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
+	llvmbackend.SetSemanticProgram(c.SemanticInfo)
+	defer llvmbackend.SetSemanticProgram(nil)
+
 	sharedResult := PrepareSharedCompilePipeline(b, c, SharedCompilePipelineOptions{
 		ProcessImports:            true,
 		MarkImportedModules:       true,

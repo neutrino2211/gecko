@@ -544,6 +544,11 @@ func TypesCompatible(expected, actual *tokens.TypeRef) bool {
 		}
 	}
 
+	// C interop commonly uses both `string` and `string*!` at call boundaries.
+	if NormalizeTypeName(expected.Type) == "string" && NormalizeTypeName(actual.Type) == "string" {
+		return true
+	}
+
 	if NormalizeTypeName(expected.Type) == NormalizeTypeName(actual.Type) && expected.Pointer == actual.Pointer {
 		return true
 	}

@@ -56,6 +56,7 @@ var compileTests = []compileTest{
 
 	// Static method tests
 	{"static_methods", "test_sources/compile_tests/static_methods/main.gecko", 0, false},
+	{"external_static_method", "test_sources/compile_tests/external_static_method/main.gecko", 42, false},
 
 	// Memory types
 	{"box_type", "test_sources/compile_tests/box_type/main.gecko", 0, false},

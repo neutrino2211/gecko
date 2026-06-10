@@ -701,6 +701,28 @@ func resolveMethodFromDirectoryImports(sourceFile *tokens.File, methodName strin
 	return nil, false
 }
 
+// preloadDirectoryUseImports eagerly resolves explicit `import dir use { ... }` symbols
+// so semantic analysis can type-check those references without backend-only lazy hooks.
+func preloadDirectoryUseImports(sourceFile *tokens.File, state *compileState) {
+	if sourceFile == nil {
+		return
+	}
+	for _, dirImport := range sourceFile.DirectoryImports {
+		if dirImport == nil || len(dirImport.UseObjects) == 0 {
+			continue
+		}
+		for _, obj := range dirImport.UseObjects {
+			if strings.TrimSpace(obj) == "" {
+				continue
+			}
+			if _, ok := resolveMethodFromDirectoryImports(sourceFile, obj, state); ok {
+				continue
+			}
+			_, _ = resolveTypeFromDirectoryImports(sourceFile, obj, state)
+		}
+	}
+}
+
 // resolveImports finds and parses imported modules
 // Resolution order: relative to importer, project root, deps, vendor, and stdlib for `std.*`.
 func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.CompileCfg, importErrorScope *errors.ErrorScope, state *compileState) {
@@ -810,6 +832,7 @@ func Compile(file string, config *config.CompileCfg) string {
 		baseDir = "."
 	}
 	resolveImports(sourceFile, baseDir, config, compileErrorScope, state)
+	preloadDirectoryUseImports(sourceFile, state)
 	emitLegacyInteropDeprecationWarnings(sourceFile)
 	collectNativeLinkMetadata(sourceFile)
 

@@ -509,8 +509,35 @@ func resolveFunctionCallSignature(f *tokens.FuncCall, scope *ast.Ast) (*MethodSi
 
 	if f.StaticType != "" {
 		// Static method call: Type::method()
-		funcKey = scope.GetRoot().GetFullName() + "__" + f.StaticType + "__" + f.Function
-		sig, ok = MethodSignatures[funcKey]
+		rootScope := scope.GetRoot()
+		classOpt := rootScope.ResolveClass(f.StaticType)
+		if classOpt.IsNil() {
+			for _, child := range rootScope.Children {
+				classOpt = child.ResolveClass(f.StaticType)
+				if !classOpt.IsNil() {
+					break
+				}
+			}
+		}
+		if !classOpt.IsNil() {
+			class := classOpt.Unwrap()
+			if method, hasMethod := class.Methods[f.Function]; hasMethod {
+				funcKey = method.CIdentifier()
+				sig, ok = MethodSignatures[funcKey]
+			}
+		}
+		if !ok {
+			funcKey = scope.GetRoot().GetFullName() + "__" + f.StaticType + "__" + f.Function
+			sig, ok = MethodSignatures[funcKey]
+		}
+		if !ok {
+			funcKey = f.StaticType + "__" + f.Function
+			sig, ok = MethodSignatures[funcKey]
+		}
+		if !ok {
+			// External static methods may be registered by short symbol name.
+			sig, ok = MethodSignatures[f.Function]
+		}
 	} else if f.Module != "" {
 		// module.function() call
 		funcKey = f.Module + "__" + f.Function

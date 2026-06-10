@@ -1513,7 +1513,7 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 								f.Pos,
 							)
 						}
-						baseFuncName = fullTypeName + "__" + f.Function
+						baseFuncName = method.CIdentifier()
 					} else {
 						// Not a direct method - search trait implementations for static methods
 						found := false

@@ -99,7 +99,7 @@ func (r *MethodResolver) ResolveMethod(
 	// First check for direct class methods
 	if method, ok := class.Methods[methodName]; ok {
 		return MethodResolution{
-			MethodName:   class.GetFullName() + "__" + methodName,
+			MethodName:   method.CIdentifier(),
 			Found:        true,
 			Method:       method,
 			OriginModule: originModule,

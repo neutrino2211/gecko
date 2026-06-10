@@ -176,13 +176,17 @@ func (a *analyzer) indexFileEntries(file *tokens.File, module string) {
 			if impl.GetFor() != "" && impl.GetName() != "" {
 				a.addTraitImpl(impl.GetFor(), impl.GetName())
 			}
-			if impl.GetFor() != "" {
+			ownerType := impl.GetFor()
+			if ownerType == "" {
+				ownerType = impl.GetName()
+			}
+			if ownerType != "" {
 				for _, field := range impl.GetFields() {
 					if field == nil {
 						continue
 					}
 					m := field.ToMethodToken()
-					a.registerFunctionSignature(module, impl.GetFor(), m.Name, m.Type, m.Arguments, m.TypeParams, m.IsVariadic(), m.Pos)
+					a.registerFunctionSignature(module, ownerType, m.Name, m.Type, m.Arguments, m.TypeParams, m.IsVariadic(), m.Pos)
 				}
 			}
 		}
@@ -231,13 +235,20 @@ func (a *analyzer) analyzeFileEntries(file *tokens.File, module string) {
 				}
 			}
 		}
-		if entry.Implementation != nil && entry.Implementation.GetFor() != "" {
+		if entry.Implementation != nil {
+			ownerType := entry.Implementation.GetFor()
+			if ownerType == "" {
+				ownerType = entry.Implementation.GetName()
+			}
+			if ownerType == "" {
+				continue
+			}
 			for _, field := range entry.Implementation.GetFields() {
 				if field == nil {
 					continue
 				}
 				m := field.ToMethodToken()
-				a.analyzeMethod(module, entry.Implementation.GetFor(), m)
+				a.analyzeMethod(module, ownerType, m)
 			}
 		}
 	}
@@ -982,6 +993,8 @@ func (a *analyzer) inferSymbolLiteral(l *tokens.Literal, env *flowEnv) *tokens.T
 			current = CloneTypeRef(current.Array)
 		} else if current.Size != nil {
 			current = CloneTypeRef(current.Size.Type)
+		} else if indexed := a.inferIndexAccessType(current, l.ArrayIndex, env); indexed != nil {
+			current = indexed
 		}
 	}
 
@@ -1010,6 +1023,28 @@ func (a *analyzer) inferSymbolLiteral(l *tokens.Literal, env *flowEnv) *tokens.T
 	}
 
 	return current
+}
+
+func (a *analyzer) inferIndexAccessType(receiver *tokens.TypeRef, indexExpr *tokens.Expression, env *flowEnv) *tokens.TypeRef {
+	if receiver == nil || receiver.Type == "" {
+		return nil
+	}
+	arg := &tokens.Argument{Value: indexExpr}
+
+	// Prefer conventional index hook method names.
+	for _, methodName := range []string{"index", "get"} {
+		candidates := a.program.staticMethods[receiver.Type][methodName]
+		if len(candidates) == 0 {
+			continue
+		}
+		attempt := a.resolveCallCandidates(candidates, nil, []*tokens.Argument{arg}, receiver, nil, env, lexer.Position{})
+		if attempt == nil {
+			continue
+		}
+		return CloneTypeRef(attempt.returnTyp)
+	}
+
+	return nil
 }
 
 func classTypeSubst(instanceType *tokens.TypeRef, params []*tokens.TypeParam) map[string]*tokens.TypeRef {
@@ -1063,6 +1098,28 @@ func (a *analyzer) inferFuncCall(call *tokens.FuncCall, env *flowEnv, expected *
 		return nil
 	}
 	candidates := a.lookupCallCandidates(call)
+	if len(candidates) == 0 && call.Module != "" {
+		receiver := a.lookupReceiverType(call.Module, env)
+		if receiver != nil {
+			candidates = a.program.staticMethods[receiver.Type][call.Function]
+			if len(candidates) > 0 {
+				attempt := a.resolveCallCandidates(candidates, call.TypeArgs, call.Arguments, receiver, expected, env, call.Pos)
+				if attempt != nil {
+					res := &CallResolution{
+						CalleeID:         attempt.signature.SymbolID,
+						ReturnType:       CloneTypeRef(attempt.returnTyp),
+						InferredTypeArgs: make(map[string]*tokens.TypeRef),
+						UsedExplicitArgs: len(call.TypeArgs) > 0,
+					}
+					for name, typ := range attempt.subst {
+						res.InferredTypeArgs[name] = CloneTypeRef(typ)
+					}
+					a.program.funcCalls[call] = res
+					return CloneTypeRef(attempt.returnTyp)
+				}
+			}
+		}
+	}
 	if len(candidates) == 0 {
 		return nil
 	}
@@ -1083,6 +1140,31 @@ func (a *analyzer) inferFuncCall(call *tokens.FuncCall, env *flowEnv, expected *
 	}
 	a.program.funcCalls[call] = res
 	return CloneTypeRef(attempt.returnTyp)
+}
+
+func (a *analyzer) lookupReceiverType(name string, env *flowEnv) *tokens.TypeRef {
+	if name == "" {
+		return nil
+	}
+	if env != nil {
+		if v := env.lookup(name); v != nil {
+			current := CloneTypeRef(v.Type)
+			if current != nil && current.Pointer && env.nonNull[v.SymbolID] {
+				current.NonNull = true
+			}
+			return current
+		}
+	}
+	if gt, ok := a.program.globalsByName[name]; ok {
+		current := CloneTypeRef(gt)
+		if current != nil && current.Pointer {
+			if sid, exists := a.program.globalSymbolIDs[name]; exists && env != nil && env.nonNull[sid] {
+				current.NonNull = true
+			}
+		}
+		return current
+	}
+	return nil
 }
 
 func (a *analyzer) lookupCallCandidates(call *tokens.FuncCall) []*FunctionSignature {
@@ -1220,8 +1302,11 @@ func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs 
 		var param *tokens.Value
 		if i < len(params) {
 			param = params[i]
-		} else if len(params) > 0 {
+		} else if len(params) > 0 && params[len(params)-1] != nil && params[len(params)-1].Variadic {
 			param = params[len(params)-1]
+		} else if sig.Variadic {
+			// C-style variadics (`...`) accept unconstrained trailing args.
+			param = nil
 		}
 
 		var expectedArg *tokens.TypeRef
@@ -1231,14 +1316,36 @@ func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs 
 		actual := a.inferArgumentType(arg, env, expectedArg)
 		if param != nil && param.Type != nil {
 			if err := unifyType(param.Type, actual, subst, typeParamsByName); err != nil {
+				concreteExpected := SubstituteTypeParams(param.Type, subst)
+				if concreteExpected != nil && actual != nil && TypesCompatible(concreteExpected, actual) {
+					// Allow backend-compatible argument coercions (for example string vs string*!).
+					goto argCompatible
+				}
+				if concreteExpected != nil && actual != nil && !isUnresolvedTypeParamRef(concreteExpected, typeParamsByName) && !TypesCompatible(concreteExpected, actual) {
+					a.program.addDiagnostic(Diagnostic{
+						Severity: SeverityError,
+						Kind:     DiagnosticTypeMismatch,
+						Title:    "Type Mismatch",
+						Message:  fmt.Sprintf("Function '%s' expects type '%s', got '%s'", sig.Name, TypeRefString(concreteExpected), TypeRefString(actual)),
+						Pos:      arg.Pos,
+					})
+				}
 				return nil
 			}
 		}
+	argCompatible:
 		concreteExpected := expectedArg
 		if param != nil && param.Type != nil {
 			concreteExpected = SubstituteTypeParams(param.Type, subst)
 		}
 		if concreteExpected != nil && actual != nil && !isUnresolvedTypeParamRef(concreteExpected, typeParamsByName) && !TypesCompatible(concreteExpected, actual) {
+			a.program.addDiagnostic(Diagnostic{
+				Severity: SeverityError,
+				Kind:     DiagnosticTypeMismatch,
+				Title:    "Type Mismatch",
+				Message:  fmt.Sprintf("Function '%s' expects type '%s', got '%s'", sig.Name, TypeRefString(concreteExpected), TypeRefString(actual)),
+				Pos:      arg.Pos,
+			})
 			return nil
 		}
 	}
@@ -1276,7 +1383,7 @@ func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs 
 				a.program.addDiagnostic(Diagnostic{
 					Severity: SeverityError,
 					Kind:     DiagnosticConstraintFailure,
-					Title:    "Generic Constraint Error",
+					Title:    "Trait Constraint Error",
 					Message:  fmt.Sprintf("Type '%s' does not satisfy constraint '%s' for type parameter '%s'", TypeRefString(resolved), required, tp.Name),
 				})
 				return nil
@@ -1436,6 +1543,7 @@ func (a *analyzer) findFunctionCandidates(module, ownerType, name string) []*Fun
 }
 
 func (a *analyzer) extractConditionFacts(expr *tokens.Expression, env *flowEnv) conditionFacts {
+	expr = unwrapParenthesizedExpression(expr)
 	if expr == nil || expr.GetLogicalOr() == nil {
 		return conditionFacts{trueNonNull: map[int64]bool{}, falseNonNull: map[int64]bool{}}
 	}
@@ -1605,6 +1713,7 @@ func primaryFromEquality(eq *tokens.Equality) *tokens.Primary {
 }
 
 func extractSymbolFromExpression(expr *tokens.Expression) string {
+	expr = unwrapParenthesizedExpression(expr)
 	if expr == nil || expr.GetLogicalOr() == nil {
 		return ""
 	}
@@ -1661,5 +1770,44 @@ func isNilFromComparison(cmp *tokens.Comparison) bool {
 		return false
 	}
 	lit := mul.Unary.Primary.Literal
-	return (lit.Symbol == "nil" || lit.Symbol == "null") && lit.SymbolModule == "" && len(lit.Chain) == 0 && lit.ArrayIndex == nil
+	if (lit.Symbol == "nil" || lit.Symbol == "null") && lit.SymbolModule == "" && len(lit.Chain) == 0 && lit.ArrayIndex == nil {
+		return true
+	}
+	// Allow C-style null pointer comparisons (`ptr != 0 as T*`) for narrowing.
+	if lit.Number == "0" && lit.Symbol == "" && lit.SymbolModule == "" && len(lit.Chain) == 0 && lit.ArrayIndex == nil {
+		if mul.Unary.Cast != nil && mul.Unary.Cast.Type != nil && mul.Unary.Cast.Type.Pointer {
+			return true
+		}
+	}
+	return false
+}
+
+func unwrapParenthesizedExpression(expr *tokens.Expression) *tokens.Expression {
+	current := expr
+	for {
+		if current == nil || current.OrExpr == nil || current.OrExpr.Or != nil {
+			return current
+		}
+		lo := current.OrExpr.LogicalOr
+		if lo == nil || lo.Next != nil || lo.LogicalAnd == nil || lo.LogicalAnd.Next != nil {
+			return current
+		}
+		eq := lo.LogicalAnd.Equality
+		if eq == nil || eq.Op != "" || eq.Next != nil || eq.Comparison == nil || eq.Comparison.Op != "" || eq.Comparison.Next != nil {
+			return current
+		}
+		add := eq.Comparison.Addition
+		if add == nil || add.Op != "" || add.Next != nil || add.Multiplication == nil {
+			return current
+		}
+		mul := add.Multiplication
+		if mul.Op != "" || mul.Next != nil || mul.Unary == nil {
+			return current
+		}
+		un := mul.Unary
+		if un.Op != "" || un.Unary != nil || un.Cast != nil || un.Primary == nil || un.Primary.SubExpression == nil || un.Primary.Literal != nil {
+			return current
+		}
+		current = un.Primary.SubExpression
+	}
 }

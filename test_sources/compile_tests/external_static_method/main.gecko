@@ -1,0 +1,13 @@
+// spec: spec/functions.md, spec/classes.md, spec/c-interop.md
+
+package main
+
+class Foo {
+    external func bar(): int32 {
+        return 42
+    }
+}
+
+external func main(): int32 {
+    return Foo::bar()
+}

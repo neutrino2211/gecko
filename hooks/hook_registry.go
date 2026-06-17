@@ -3,6 +3,7 @@
 package hooks
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/alecthomas/participle/v2/lexer"
@@ -23,6 +24,7 @@ const (
 	HookMul HookType = "mul_hook"
 	HookDiv HookType = "div_hook"
 	HookNeg HookType = "neg_hook"
+	HookNot HookType = "not_hook"
 
 	// Comparison operator hooks
 	HookEq HookType = "eq_hook"
@@ -54,10 +56,10 @@ const (
 
 // HookSignature describes the expected signature for a hook
 type HookSignature struct {
-	MethodCount int      // Number of methods (e.g., iterator has 2: next, has_next)
-	HasSelf     bool     // Whether methods should have self parameter
-	ParamCount  int      // Additional parameters (not counting self)
-	ReturnType  string   // Expected return type pattern ("void", "bool", "Self", "T", "any")
+	MethodCount int    // Number of methods (e.g., iterator has 2: next, has_next)
+	HasSelf     bool   // Whether methods should have self parameter
+	ParamCount  int    // Additional parameters (not counting self)
+	ReturnType  string // Expected return type pattern ("void", "bool", "Self", "T", "any")
 }
 
 // Known hook signatures
@@ -71,6 +73,7 @@ var hookSignatures = map[HookType]HookSignature{
 	HookMul: {MethodCount: 1, HasSelf: true, ParamCount: 1, ReturnType: "T"},
 	HookDiv: {MethodCount: 1, HasSelf: true, ParamCount: 1, ReturnType: "T"},
 	HookNeg: {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "Self"},
+	HookNot: {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "Self"},
 
 	// Comparison (return bool)
 	HookEq: {MethodCount: 1, HasSelf: true, ParamCount: 1, ReturnType: "bool"},
@@ -103,11 +106,11 @@ var hookSignatures = map[HookType]HookSignature{
 
 // RegisteredHook represents a trait registered as a hook
 type RegisteredHook struct {
-	TraitName   string   // Name of the trait
-	HookType    HookType // Type of hook
-	Methods     []string // Method names to call (from hook attribute)
-	ModulePath  string   // Module where this hook is defined
-	Pos         lexer.Position
+	TraitName  string   // Name of the trait
+	HookType   HookType // Type of hook
+	Methods    []string // Method names to call (from hook attribute)
+	ModulePath string   // Module where this hook is defined
+	Pos        lexer.Position
 }
 
 // HookRegistry tracks all registered hooks per module
@@ -173,6 +176,36 @@ func (r *HookRegistry) GetHookFromAnyModule(hookType HookType) *RegisteredHook {
 		}
 	}
 	return nil
+}
+
+// GetVisibleHooks returns hooks for a capability that are visible from a module.
+// Local hooks are returned first; imported hooks are returned in module-name order
+// for deterministic diagnostics.
+func (r *HookRegistry) GetVisibleHooks(modulePath string, hookType HookType, traitVisible func(string) bool) []*RegisteredHook {
+	var hooks []*RegisteredHook
+
+	if moduleHooks, ok := r.hooks[modulePath]; ok {
+		if hook, ok := moduleHooks[hookType]; ok && (traitVisible == nil || traitVisible(hook.TraitName)) {
+			hooks = append(hooks, hook)
+		}
+	}
+
+	moduleNames := make([]string, 0, len(r.hooks))
+	for moduleName := range r.hooks {
+		if moduleName != modulePath {
+			moduleNames = append(moduleNames, moduleName)
+		}
+	}
+	sort.Strings(moduleNames)
+
+	for _, moduleName := range moduleNames {
+		moduleHooks := r.hooks[moduleName]
+		if hook, ok := moduleHooks[hookType]; ok && (traitVisible == nil || traitVisible(hook.TraitName)) {
+			hooks = append(hooks, hook)
+		}
+	}
+
+	return hooks
 }
 
 // GetAllHooksForModule returns all hooks registered in a module
@@ -346,6 +379,7 @@ var OperatorToHook = map[string]HookType{
 	"-":  HookSub,
 	"*":  HookMul,
 	"/":  HookDiv,
+	"!":  HookNot,
 	"==": HookEq,
 	"!=": HookNe,
 	"<":  HookLt,

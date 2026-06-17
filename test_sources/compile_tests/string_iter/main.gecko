@@ -2,7 +2,7 @@
 
 package main
 
-import std.collections.string use { String, StringIterator }
+import std.collections.string use { String, StringIterator, Add }
 
 declare external variardic func printf(fmt: string): int32
 

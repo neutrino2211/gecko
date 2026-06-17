@@ -1,0 +1,47 @@
+// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/control-flow.md, spec/operators.md
+
+package main
+
+@add_hook(.combine)
+trait Summable<T> {
+    func combine(self, other: T): T
+}
+
+@not_hook(.flip)
+trait Toggle {
+    func flip(self): Self
+}
+
+class Counter {
+    let value: int32
+}
+
+class Flag {
+    let on: bool
+}
+
+impl Summable<Counter> for Counter {
+    func combine(self, other: Counter): Counter {
+        return Counter { value: self.value + other.value }
+    }
+}
+
+impl Toggle for Flag {
+    func flip(self): Flag {
+        return Flag { on: !self.on }
+    }
+}
+
+external func main(): int32 {
+    let base: Counter = Counter { value: 40 }
+    let inc: Counter = Counter { value: 2 }
+    let total: Counter = base + inc
+
+    let enabled: Flag = Flag { on: true }
+    let disabled: Flag = !enabled
+    if disabled.on {
+        return 1
+    }
+
+    return total.value
+}

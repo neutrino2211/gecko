@@ -11,35 +11,9 @@ import (
 	"github.com/neutrino2211/gecko/tokens"
 )
 
-// OperatorTraitInfo maps an operator to its trait name and method name
-type OperatorTraitInfo struct {
-	TraitName  string
-	MethodName string
-}
-
-// operatorTraitMap maps operators to their trait info
-var operatorTraitMap = map[string]OperatorTraitInfo{
-	"+":  {"Add", "add"},
-	"-":  {"Sub", "sub"},
-	"*":  {"Mul", "mul"},
-	"/":  {"Div", "div"},
-	"==": {"Eq", "eq"},
-	"!=": {"Ne", "ne"},
-	"<":  {"Lt", "lt"},
-	">":  {"Gt", "gt"},
-	"<=": {"Le", "le"},
-	">=": {"Ge", "ge"},
-	"&":  {"BitAnd", "bitand"},
-	"|":  {"BitOr", "bitor"},
-	"^":  {"BitXor", "bitxor"},
-	"<<": {"Shl", "shl"},
-	">>": {"Shr", "shr"},
-}
-
-// unaryOperatorTraitMap maps unary operators to their trait info
-var unaryOperatorTraitMap = map[string]OperatorTraitInfo{
-	"-": {"Neg", "neg"},
-	"!": {"Not", "not"},
+var unaryOperatorToHook = map[string]hooks.HookType{
+	"-": hooks.HookNeg,
+	"!": hooks.HookNot,
 }
 
 // isPrimitiveType checks if a type name is a primitive type
@@ -841,6 +815,46 @@ func (impl *CBackendImplementation) GetOperatorTraitName(typeName string, traitN
 	return "", false
 }
 
+func formatHookCandidates(candidates []*hooks.RegisteredHook) string {
+	names := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		label := candidate.TraitName
+		if candidate.ModulePath != "" {
+			label += " from " + candidate.ModulePath
+		}
+		names = append(names, label)
+	}
+	return strings.Join(names, ", ")
+}
+
+func (impl *CBackendImplementation) resolveVisibleOperatorHook(scope *ast.Ast, hookType hooks.HookType, pos lexer.Position) (*hooks.RegisteredHook, bool) {
+	if scope == nil {
+		return nil, false
+	}
+
+	root := scope.GetRoot()
+	candidates := hooks.GetHookRegistry().GetVisibleHooks(root.Scope, hookType, func(traitName string) bool {
+		return !scope.ResolveTrait(traitName).IsNil()
+	})
+	if len(candidates) == 0 {
+		return nil, false
+	}
+	if len(candidates) > 1 {
+		if scope.ErrorScope != nil {
+			scope.ErrorScope.NewCompileTimeError(
+				"Hook Resolution Error",
+				"Multiple visible traits register '"+string(hookType)+"': "+formatHookCandidates(candidates)+"\nhelp: keep only one hook trait for each operator capability visible in this module",
+				pos,
+			)
+		}
+		return nil, false
+	}
+	return candidates[0], true
+}
+
 // GetOperatorTraitMethodCall generates a trait method call for an operator
 func (impl *CBackendImplementation) GetOperatorTraitMethodCall(
 	leftCode string,
@@ -848,6 +862,7 @@ func (impl *CBackendImplementation) GetOperatorTraitMethodCall(
 	rightCode string,
 	op string,
 	scope *ast.Ast,
+	pos lexer.Position,
 ) (string, bool) {
 	if leftType == nil {
 		return "", false
@@ -858,18 +873,23 @@ func (impl *CBackendImplementation) GetOperatorTraitMethodCall(
 		return "", false
 	}
 
-	traitInfo, ok := operatorTraitMap[op]
+	hookType, ok := hooks.OperatorToHook[op]
 	if !ok {
 		return "", false
 	}
 
-	mangledTraitName, found := impl.GetOperatorTraitName(typeName, traitInfo.TraitName, scope)
+	hook, ok := impl.resolveVisibleOperatorHook(scope, hookType, pos)
+	if !ok || hook == nil || len(hook.Methods) == 0 {
+		return "", false
+	}
+
+	mangledTraitName, found := impl.GetOperatorTraitName(typeName, hook.TraitName, scope)
 	if !found {
 		return "", false
 	}
 
 	// Generate: TypeName__MangledTraitName__methodName(&left, right)
-	methodName := typeName + "__" + mangledTraitName + "__" + traitInfo.MethodName
+	methodName := typeName + "__" + mangledTraitName + "__" + hook.Methods[0]
 	return methodName + "(&(" + leftCode + "), " + rightCode + ")", true
 }
 
@@ -879,6 +899,7 @@ func (impl *CBackendImplementation) GetUnaryOperatorTraitMethodCall(
 	operandType *tokens.TypeRef,
 	op string,
 	scope *ast.Ast,
+	pos lexer.Position,
 ) (string, bool) {
 	if operandType == nil {
 		return "", false
@@ -889,17 +910,22 @@ func (impl *CBackendImplementation) GetUnaryOperatorTraitMethodCall(
 		return "", false
 	}
 
-	traitInfo, ok := unaryOperatorTraitMap[op]
+	hookType, ok := unaryOperatorToHook[op]
 	if !ok {
 		return "", false
 	}
 
-	mangledTraitName, found := impl.GetOperatorTraitName(typeName, traitInfo.TraitName, scope)
+	hook, ok := impl.resolveVisibleOperatorHook(scope, hookType, pos)
+	if !ok || hook == nil || len(hook.Methods) == 0 {
+		return "", false
+	}
+
+	mangledTraitName, found := impl.GetOperatorTraitName(typeName, hook.TraitName, scope)
 	if !found {
 		return "", false
 	}
 
 	// Generate: TypeName__MangledTraitName__methodName(&operand)
-	methodName := typeName + "__" + mangledTraitName + "__" + traitInfo.MethodName
+	methodName := typeName + "__" + mangledTraitName + "__" + hook.Methods[0]
 	return methodName + "(&(" + operandCode + "))", true
 }

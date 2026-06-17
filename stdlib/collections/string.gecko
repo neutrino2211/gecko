@@ -6,6 +6,7 @@ import std.core.traits use { Drop, Clone, Index, Iterator }
 import std.ffi.libc use { malloc, realloc, free, memcpy, strlen }
 
 /// Add<T> - Trait for the `+` operator.
+@add_hook(.add)
 public trait Add<T> {
     func add(self, other: T): T
 }

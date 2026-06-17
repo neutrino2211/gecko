@@ -138,6 +138,7 @@ trait Drop {
 | `@mul_hook(.method)` | `*` | `func method(self, other: T): T` |
 | `@div_hook(.method)` | `/` | `func method(self, other: T): T` |
 | `@neg_hook(.method)` | unary `-` | `func method(self): Self` |
+| `@not_hook(.method)` | unary `!` | `func method(self): Self` |
 | `@eq_hook(.method)` | `==` | `func method(self, other: T): bool` |
 | `@ne_hook(.method)` | `!=` | `func method(self, other: T): bool` |
 | `@lt_hook(.method)` | `<` | `func method(self, other: T): bool` |

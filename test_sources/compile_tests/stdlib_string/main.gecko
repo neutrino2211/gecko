@@ -9,6 +9,7 @@ declare external func memcpy(dest: void*, src: void*, n: uint64): void*
 declare external func strlen(s: string): uint64
 declare external func puts(s: string): int32
 
+@add_hook(.add)
 trait Add<T> {
     func add(self, other: T): T
 }

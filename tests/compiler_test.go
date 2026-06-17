@@ -103,6 +103,7 @@ var compileTests = []compileTest{
 	{"hooks_operators_comparison", "test_sources/compile_tests/hooks/operators_comparison.gecko", 63, false},
 	{"hooks_operators_bitwise", "test_sources/compile_tests/hooks/operators_bitwise.gecko", 79, false},
 	{"hooks_operators_unary", "test_sources/compile_tests/hooks/operators_unary.gecko", 42, false},
+	{"hooks_custom_operator_names", "test_sources/compile_tests/hooks/custom_operator_hooks.gecko", 42, false},
 
 	// Examples
 	{"example_traits", "examples/traits/shapes.gecko", 93, false},

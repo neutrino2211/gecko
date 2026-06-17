@@ -225,7 +225,7 @@ func (impl *CBackendImplementation) EqualityToCString(eq *tokens.Equality, scope
 		leftType := impl.GetTypeOfComparison(eq.Comparison, scope)
 		rightCode := impl.EqualityToCString(eq.Next, scope)
 
-		if traitCall, ok := impl.GetOperatorTraitMethodCall(base, leftType, rightCode, eq.Op, scope); ok {
+		if traitCall, ok := impl.GetOperatorTraitMethodCall(base, leftType, rightCode, eq.Op, scope, eq.Pos); ok {
 			return traitCall
 		}
 
@@ -249,7 +249,7 @@ func (impl *CBackendImplementation) ComparisonToCString(c *tokens.Comparison, sc
 		leftType := impl.GetTypeOfAddition(c.Addition, scope)
 		rightCode := impl.ComparisonToCString(c.Next, scope)
 
-		if traitCall, ok := impl.GetOperatorTraitMethodCall(base, leftType, rightCode, c.Op, scope); ok {
+		if traitCall, ok := impl.GetOperatorTraitMethodCall(base, leftType, rightCode, c.Op, scope, c.Pos); ok {
 			return traitCall
 		}
 
@@ -276,7 +276,7 @@ func (impl *CBackendImplementation) AdditionToCString(a *tokens.Addition, scope 
 
 		impl.reportPointerArithmeticIfNeeded(a.Op, leftType, rightType, scope, a.Pos)
 
-		if traitCall, ok := impl.GetOperatorTraitMethodCall(base, leftType, rightCode, a.Op, scope); ok {
+		if traitCall, ok := impl.GetOperatorTraitMethodCall(base, leftType, rightCode, a.Op, scope, a.Pos); ok {
 			return traitCall
 		}
 
@@ -328,7 +328,7 @@ func (impl *CBackendImplementation) MultiplicationToCString(m *tokens.Multiplica
 		leftType := impl.GetTypeOfUnary(m.Unary, scope)
 		rightCode := impl.MultiplicationToCString(m.Next, scope)
 
-		if traitCall, ok := impl.GetOperatorTraitMethodCall(base, leftType, rightCode, m.Op, scope); ok {
+		if traitCall, ok := impl.GetOperatorTraitMethodCall(base, leftType, rightCode, m.Op, scope, m.Pos); ok {
 			return traitCall
 		}
 
@@ -370,7 +370,7 @@ func (impl *CBackendImplementation) UnaryToCString(u *tokens.Unary, scope *ast.A
 				// Keep expression emission stable after reporting the compile-time error.
 				base = innerCode
 			}
-		} else if traitCall, ok := impl.GetUnaryOperatorTraitMethodCall(innerCode, innerType, u.Op, scope); ok {
+		} else if traitCall, ok := impl.GetUnaryOperatorTraitMethodCall(innerCode, innerType, u.Op, scope, u.Pos); ok {
 			// Try operator overloading for other unary operators
 			base = traitCall
 		} else {

@@ -10,18 +10,22 @@ package main
 // =============================================================================
 
 // Core traits (no external dependencies)
+@add_hook(.add)
 trait Add<T> {
     func add(self, other: T): T
 }
 
+@sub_hook(.sub)
 trait Sub<T> {
     func sub(self, other: T): T
 }
 
+@mul_hook(.mul)
 trait Mul<T> {
     func mul(self, other: T): T
 }
 
+@eq_hook(.eq)
 trait Eq<T> {
     func eq(self, other: T): bool
 }

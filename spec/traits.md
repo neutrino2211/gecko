@@ -232,6 +232,7 @@ trait Clone {
 @mul_hook(.mul)      trait Mul<T> { func mul(self, other: T): T }
 @div_hook(.div)      trait Div<T> { func div(self, other: T): T }
 @neg_hook(.neg)      trait Neg { func neg(self): Self }
+@not_hook(.not)      trait Not { func not(self): Self }
 
 // Comparison
 @eq_hook(.eq)        trait Eq<T> { func eq(self, other: T): bool }

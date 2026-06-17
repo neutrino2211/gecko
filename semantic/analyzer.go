@@ -883,6 +883,9 @@ func (a *analyzer) inferUnary(un *tokens.Unary, env *flowEnv, expected *tokens.T
 	if un.Unary != nil {
 		inner := a.inferUnary(un.Unary, env, expected)
 		if un.Op == "!" {
+			if inner != nil && inner.Type != "bool" {
+				return inner
+			}
 			return &tokens.TypeRef{Type: "bool"}
 		}
 		if un.Op == "try" {

@@ -4,10 +4,12 @@ package main
 
 declare external func puts(s: string): int32
 
+@add_hook(.add)
 trait Add<T> {
     func add(self, other: T): T
 }
 
+@eq_hook(.eq)
 trait Eq<T> {
     func eq(self, other: T): bool
 }

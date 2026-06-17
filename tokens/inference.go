@@ -108,6 +108,9 @@ func inferFromUnary(un *Unary, resolveSymbol func(string) *TypeRef) *TypeRef {
 		innerType := inferFromUnary(un.Unary, resolveSymbol)
 		// Logical NOT returns bool
 		if un.Op == "!" {
+			if innerType != nil && innerType.Type != "bool" {
+				return innerType
+			}
 			return &TypeRef{Type: "bool"}
 		}
 		// Negation and plus preserve type

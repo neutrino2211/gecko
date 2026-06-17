@@ -90,41 +90,37 @@ var GeckoToCType = map[string]string{
 // CState holds all per-compilation mutable state for the C backend.
 // Previously these were package-level globals that needed ResetState().
 type CState struct {
-	ScopeDataMap    *CScopeData
-	ProgramValues   *CValuesMap
-	MethodSignatures map[string]*MethodSignature
-	TraitDefinitions map[string]*tokens.Trait
-	TraitDefinitionOrigins map[string]string
-	EnumToCType     map[string]string
-	MethodReturnTypes map[string]*tokens.TypeRef
-	Generics        *GenericRegistry
-	MonomorphContext *MonomorphContext
-	Methods         map[string]*ast.Method
-	Backend         interfaces.BackendInterface
-	TypeState       *ast.TypeState
-	LastCImportLibraries []string
-	LastCImportObjects  []string
-	LastTreeshakeAutoDisabled bool
-	LastTreeshakeDisableWarnings []TreeshakeDynamicCallWarning
+	ScopeDataMap                        *CScopeData
+	ProgramValues                       *CValuesMap
+	MethodSignatures                    map[string]*MethodSignature
+	TraitDefinitions                    map[string]*tokens.Trait
+	TraitDefinitionOrigins              map[string]string
+	EnumToCType                         map[string]string
+	MethodReturnTypes                   map[string]*tokens.TypeRef
+	Generics                            *GenericRegistry
+	MonomorphContext                    *MonomorphContext
+	Methods                             map[string]*ast.Method
+	Backend                             interfaces.BackendInterface
+	TypeState                           *ast.TypeState
+	LastCImportLibraries                []string
+	LastCImportObjects                  []string
+	LastTreeshakeAutoDisabled           bool
+	LastTreeshakeDisableWarnings        []TreeshakeDynamicCallWarning
 	currentTreeshakeDynamicCallWarnings []TreeshakeDynamicCallWarning
-	operatorTraitMap      map[string]OperatorTraitInfo
-	unaryOperatorTraitMap map[string]OperatorTraitInfo
 }
 
 // NewCState creates a fresh compilation state.
 func NewCState() *CState {
 	return &CState{
-		ScopeDataMap:    &CScopeData{},
-		ProgramValues:   &CValuesMap{},
-		MethodSignatures: make(map[string]*MethodSignature),
-		TraitDefinitions: make(map[string]*tokens.Trait),
+		ScopeDataMap:           &CScopeData{},
+		ProgramValues:          &CValuesMap{},
+		MethodSignatures:       make(map[string]*MethodSignature),
+		TraitDefinitions:       make(map[string]*tokens.Trait),
 		TraitDefinitionOrigins: make(map[string]string),
-		EnumToCType:     make(map[string]string),
-		MethodReturnTypes: make(map[string]*tokens.TypeRef),
-		Generics:        NewGenericRegistry(),
-		Methods:         make(map[string]*ast.Method),
-		operatorTraitMap:      operatorTraitMap,
-		unaryOperatorTraitMap: unaryOperatorTraitMap,
+		EnumToCType:            make(map[string]string),
+		MethodReturnTypes:      make(map[string]*tokens.TypeRef),
+		Generics:               NewGenericRegistry(),
+		Methods:                make(map[string]*ast.Method),
 	}
 }
 

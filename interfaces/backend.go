@@ -79,6 +79,8 @@ type BackendCodegenImplementations interface {
 	// Control flow
 	NewIf(*ast.Ast, *tokens.If)
 	NewLoop(*ast.Ast, *tokens.Loop)
+	NewMatch(*ast.Ast, *tokens.Match)
+	NewDefer(*ast.Ast, *tokens.Defer)
 	NewAssignment(*ast.Ast, *tokens.Assignment)
 	NewBreak(*ast.Ast)
 	NewContinue(*ast.Ast)
@@ -94,4 +96,13 @@ type BackendCodegenImplementations interface {
 
 	// Foreign interop blocks
 	NewForeign(*ast.Ast, *tokens.Foreign)
+
+	// Increment/decrement operators
+	NewIncDec(*ast.Ast, *tokens.IncDec)
+
+	// Expression statements
+	ExprStatement(*ast.Ast, *tokens.Expression)
+
+	// Struct destructuring declarations
+	DestructuringDeclaration(*ast.Ast, *tokens.DestructuringDeclaration)
 }

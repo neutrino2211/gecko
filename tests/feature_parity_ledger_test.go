@@ -22,19 +22,3 @@ func TestFeatureParityLedgerCoverage(t *testing.T) {
 		}
 	}
 }
-
-func TestLLVMParitySliceOneLedger(t *testing.T) {
-	if len(backends.LLVMParitySliceOne) != 3 {
-		t.Fatalf("unexpected LLVM parity slice-one size: got %d want 3", len(backends.LLVMParitySliceOne))
-	}
-
-	for _, feature := range backends.LLVMParitySliceOne {
-		record, ok := backends.FeatureParityLedger[feature]
-		if !ok {
-			t.Fatalf("missing parity ledger entry for slice-one feature %q", feature)
-		}
-		if record.LLVM != backends.ParitySupported {
-			t.Fatalf("slice-one feature %q must be marked LLVM supported; got %q", feature, record.LLVM)
-		}
-	}
-}

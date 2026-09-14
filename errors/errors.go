@@ -11,11 +11,74 @@ import (
 	"github.com/fatih/color"
 )
 
+type DiagnosticSeverity int
+
+const (
+	SeverityError   DiagnosticSeverity = iota
+	SeverityWarning
+	SeverityNote
+	SeverityHelp
+)
+
+func (d DiagnosticSeverity) String() string {
+	switch d {
+	case SeverityError:
+		return "error"
+	case SeverityWarning:
+		return "warning"
+	case SeverityNote:
+		return "note"
+	case SeverityHelp:
+		return "help"
+	default:
+		return "unknown"
+	}
+}
+
+// Diagnostic error codes for machine-readable error identification
+const (
+	// Expression errors
+	CodeIncDecAsExpr = "E0001"
+
+	// Type errors
+	CodeTypeMismatch     = "E0010"
+	CodeIncompatibleType = "E0011"
+	CodeCannotInfer      = "E0012"
+
+	// Name resolution errors
+	CodeUndefinedSymbol   = "E0020"
+	CodeUndefinedType     = "E0021"
+	CodeUndefinedFunction = "E0022"
+
+	// Control flow errors
+	CodeMissingReturn     = "E0030"
+	CodeUnreachableCode   = "E0031"
+	CodeNonExhaustiveMatch = "E0032"
+
+	// Declaration errors
+	CodeRedefinition      = "E0040"
+	CodeInvalidModifier   = "E0041"
+	CodeMissingFieldInit  = "E0042"
+
+	// Import errors
+	CodeImportNotFound    = "E0050"
+	CodeCircularImport    = "E0051"
+
+	// Semantic warnings (not errors)
+	CodeUnusedVariable    = "W0001"
+	CodeDeprecatedSyntax  = "W0002"
+	CodeUnreachableBranch = "W0003"
+)
+
 type CompileTimeMessage struct {
-	Message string
-	Scope   *ErrorScope
-	Title   string
-	Pos     lexer.Position
+	Message  string
+	Scope    *ErrorScope
+	Title    string
+	Pos      lexer.Position
+	Severity DiagnosticSeverity
+	Code     string
+	Help     string
+	Notes    []string
 }
 
 type ErrorScope struct {
@@ -108,7 +171,21 @@ func (ce *CompileTimeMessage) getText(level string) string {
 
 	heading := color.HiGreenString(ce.Scope.SourceName+":"+ce.Pos.String()) + " => " + bold.Sprint(ce.Title) + normal.Sprint(": "+ce.Message)
 
-	return heading + "\n" + addTabs(code)
+	if ce.Code != "" {
+		heading += color.HiWhiteString(fmt.Sprintf(" [%s]", ce.Code))
+	}
+
+	result := heading + "\n" + addTabs(code)
+
+	for _, note := range ce.Notes {
+		result += color.HiCyanString("    = note: ") + note + "\n"
+	}
+
+	if ce.Help != "" {
+		result += color.HiCyanString("    = help: ") + ce.Help + "\n"
+	}
+
+	return result
 }
 
 func (c *CompileTimeMessage) GetError() string {
@@ -121,10 +198,11 @@ func (c *CompileTimeMessage) GetWarning() string {
 
 func (s *ErrorScope) NewCompileTimeError(title string, message string, pos lexer.Position) {
 	e := &CompileTimeMessage{
-		Message: message,
-		Pos:     pos,
-		Scope:   s,
-		Title:   title,
+		Message:  message,
+		Pos:      pos,
+		Scope:    s,
+		Title:    title,
+		Severity: SeverityError,
 	}
 
 	s.CompileTimeErrors = append(s.CompileTimeErrors, e)
@@ -132,12 +210,45 @@ func (s *ErrorScope) NewCompileTimeError(title string, message string, pos lexer
 
 func (s *ErrorScope) NewCompileTimeWarning(title string, message string, pos lexer.Position) {
 	e := &CompileTimeMessage{
-		Message: message,
-		Pos:     pos,
-		Scope:   s,
-		Title:   title,
+		Message:  message,
+		Pos:      pos,
+		Scope:    s,
+		Title:    title,
+		Severity: SeverityWarning,
 	}
 
+	s.CompileTimeWarnings = append(s.CompileTimeWarnings, e)
+}
+
+// NewError creates an error with an error code and optional help text
+func (s *ErrorScope) NewError(code string, title string, message string, pos lexer.Position, help ...string) {
+	e := &CompileTimeMessage{
+		Message:  message,
+		Pos:      pos,
+		Scope:    s,
+		Title:    title,
+		Severity: SeverityError,
+		Code:     code,
+	}
+	if len(help) > 0 {
+		e.Help = help[0]
+	}
+	s.CompileTimeErrors = append(s.CompileTimeErrors, e)
+}
+
+// NewWarning creates a warning with an error code and optional help text
+func (s *ErrorScope) NewWarning(code string, title string, message string, pos lexer.Position, help ...string) {
+	e := &CompileTimeMessage{
+		Message:  message,
+		Pos:      pos,
+		Scope:    s,
+		Title:    title,
+		Severity: SeverityWarning,
+		Code:     code,
+	}
+	if len(help) > 0 {
+		e.Help = help[0]
+	}
 	s.CompileTimeWarnings = append(s.CompileTimeWarnings, e)
 }
 

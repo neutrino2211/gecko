@@ -1,0 +1,11 @@
+declare external variardic func printf(format: string): int32
+
+external func main(): int32 {
+    let offset: int32 = 10
+    let adder: func(int32): int32 = fn(x: int32): int32 {
+        return x + offset
+    }
+    let result: int32 = adder(5)
+    printf("Result: %d\n", result)
+    return result
+}

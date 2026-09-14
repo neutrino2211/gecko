@@ -27,12 +27,17 @@ const (
 	LoweredOpReturn         LoweredOperationKind = "return"
 	LoweredOpIf             LoweredOperationKind = "if"
 	LoweredOpLoop           LoweredOperationKind = "loop"
+	LoweredOpMatch          LoweredOperationKind = "match"
+	LoweredOpDefer          LoweredOperationKind = "defer"
 	LoweredOpAssignment     LoweredOperationKind = "assignment"
 	LoweredOpAsm            LoweredOperationKind = "asm"
 	LoweredOpBreak          LoweredOperationKind = "break"
 	LoweredOpContinue       LoweredOperationKind = "continue"
 	LoweredOpCImport        LoweredOperationKind = "cimport"
 	LoweredOpForeign        LoweredOperationKind = "foreign"
+	LoweredOpIncDec         LoweredOperationKind = "inc_dec"
+	LoweredOpExprStmt       LoweredOperationKind = "expr_stmt"
+	LoweredOpDestructuring  LoweredOperationKind = "destructuring"
 )
 
 // LoweredOperation is the shared lowering payload that backend emitters consume.
@@ -51,10 +56,15 @@ type LoweredOperation struct {
 	ReturnLiteral  *tokens.Expression
 	If             *tokens.If
 	Loop           *tokens.Loop
+	Match          *tokens.Match
+	Defer          *tokens.Defer
 	Assignment     *tokens.Assignment
 	Asm            *tokens.Asm
 	CImport        *tokens.CImport
 	Foreign        *tokens.Foreign
+	IncDec         *tokens.IncDec
+	ExprStmt       *tokens.Expression
+	Destructuring  *tokens.DestructuringDeclaration
 }
 
 func lowerEntry(entry *tokens.Entry) (LoweredOperation, bool) {
@@ -65,6 +75,8 @@ func lowerEntry(entry *tokens.Entry) (LoweredOperation, bool) {
 	switch {
 	case entry.Method != nil:
 		return LoweredOperation{Kind: LoweredOpMethod, Method: entry.Method}, true
+	case entry.Destructuring != nil:
+		return LoweredOperation{Kind: LoweredOpDestructuring, Destructuring: entry.Destructuring}, true
 	case entry.Field != nil:
 		return LoweredOperation{Kind: LoweredOpField, Field: entry.Field}, true
 	case entry.Class != nil:
@@ -89,6 +101,10 @@ func lowerEntry(entry *tokens.Entry) (LoweredOperation, bool) {
 		return LoweredOperation{Kind: LoweredOpReturn}, true
 	case entry.If != nil:
 		return LoweredOperation{Kind: LoweredOpIf, If: entry.If}, true
+	case entry.Match != nil:
+		return LoweredOperation{Kind: LoweredOpMatch, Match: entry.Match}, true
+	case entry.Defer != nil:
+		return LoweredOperation{Kind: LoweredOpDefer, Defer: entry.Defer}, true
 	case entry.Loop != nil:
 		return LoweredOperation{Kind: LoweredOpLoop, Loop: entry.Loop}, true
 	case entry.Assignment != nil:
@@ -103,6 +119,10 @@ func lowerEntry(entry *tokens.Entry) (LoweredOperation, bool) {
 		return LoweredOperation{Kind: LoweredOpCImport, CImport: entry.CImport}, true
 	case entry.Foreign != nil:
 		return LoweredOperation{Kind: LoweredOpForeign, Foreign: entry.Foreign}, true
+	case entry.IncDec != nil:
+		return LoweredOperation{Kind: LoweredOpIncDec, IncDec: entry.IncDec}, true
+	case entry.ExprStmt != nil:
+		return LoweredOperation{Kind: LoweredOpExprStmt, ExprStmt: entry.ExprStmt}, true
 	default:
 		return LoweredOperation{}, false
 	}
@@ -160,6 +180,10 @@ func (e *compatibilityEmitter) EmitLoweredOperation(scope *ast.Ast, op LoweredOp
 		e.impl.NewReturn(scope)
 	case LoweredOpIf:
 		e.impl.NewIf(scope, op.If)
+	case LoweredOpMatch:
+		e.impl.NewMatch(scope, op.Match)
+	case LoweredOpDefer:
+		e.impl.NewDefer(scope, op.Defer)
 	case LoweredOpLoop:
 		e.impl.NewLoop(scope, op.Loop)
 	case LoweredOpAssignment:
@@ -174,24 +198,42 @@ func (e *compatibilityEmitter) EmitLoweredOperation(scope *ast.Ast, op LoweredOp
 		e.impl.NewCImport(scope, op.CImport)
 	case LoweredOpForeign:
 		e.impl.NewForeign(scope, op.Foreign)
+	case LoweredOpIncDec:
+		e.impl.NewIncDec(scope, op.IncDec)
+	case LoweredOpExprStmt:
+		e.impl.ExprStatement(scope, op.ExprStmt)
+	case LoweredOpDestructuring:
+		e.impl.DestructuringDeclaration(scope, op.Destructuring)
 	}
 }
 
 // SharedLoweringPipeline lowers entries into normalized operations and emits them.
 type SharedLoweringPipeline struct {
-	emitter LoweredOperationEmitter
+	emitter        LoweredOperationEmitter
+	scopeLifecycle *ScopeLifecycleRegistry
 }
 
 func newSharedLoweringPipeline(emitter LoweredOperationEmitter) *SharedLoweringPipeline {
-	return &SharedLoweringPipeline{emitter: emitter}
+	return &SharedLoweringPipeline{
+		emitter:        emitter,
+		scopeLifecycle: GlobalScopeLifecycle,
+	}
 }
 
 func (p *SharedLoweringPipeline) EmitEntries(scope *ast.Ast, entries []*tokens.Entry) {
+	if p.scopeLifecycle != nil {
+		p.scopeLifecycle.NotifyScopeEnter(scope, entries)
+	}
+
 	ops := lowerEntries(entries)
 	for _, op := range ops {
 		if op.Kind == LoweredOpTrait && op.Trait != nil {
 			hooks.ProcessTraitHooks(op.Trait, scope.Scope, scope.ErrorScope)
 		}
 		p.emitter.EmitLoweredOperation(scope, op)
+	}
+
+	if p.scopeLifecycle != nil {
+		p.scopeLifecycle.NotifyScopeExit(scope, entries)
 	}
 }

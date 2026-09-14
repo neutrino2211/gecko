@@ -174,9 +174,13 @@ func PrepareSharedCompilePipeline(b interfaces.BackendInterface, c *interfaces.B
 			processKey := firstNonEmpty(importedFile.Path, moduleKey)
 
 			if existingScope, ok := processedModules[processKey]; ok {
-				if parentScope != nil {
-					parentScope.Children[moduleKey] = existingScope
+				// Register the existing scope under this import's name/alias too,
+				// so `import a.b as X` and `import a.b as Y` both resolve.
+				target := parentScope
+				if target == nil {
+					target = rootScope
 				}
+				target.Children[moduleKey] = existingScope
 				return existingScope, true
 			}
 

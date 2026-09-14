@@ -1,0 +1,11 @@
+package util
+
+const OFFSET: int32 = 100
+
+func double(x: int32): int32 {
+    return x * 2
+}
+
+func triple(x: int32): int32 {
+    return x * 3
+}

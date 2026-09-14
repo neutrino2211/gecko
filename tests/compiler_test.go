@@ -24,7 +24,7 @@ type compileOnlyTest struct {
 	file string
 }
 
-var allTestBackends = []string{"c", "llvm"}
+var allTestBackends = []string{"c"}
 
 var compileTests = []compileTest{
 	// Trait tests
@@ -186,6 +186,27 @@ var compileTests = []compileTest{
 	// Runtime-checked stdlib FFI boundary constructors
 	{"ffi_runtime_guards", "test_sources/compile_tests/ffi_runtime_guards/main.gecko", 0, false},
 
+	// New language features
+	{"compound_assignment", "test_sources/compile_tests/compound_assignment/main.gecko", 6, false},
+	{"compound_assignment_bitwise_modulo", "test_sources/compile_tests/compound_assignment/bitwise_modulo.gecko", 0, false},
+	{"match_expression", "test_sources/compile_tests/match/main.gecko", 20, false},
+	{"match_or_patterns", "test_sources/compile_tests/match/or_patterns.gecko", 30, false},
+	{"match_range_patterns", "test_sources/compile_tests/match/range_patterns.gecko", 200, false},
+	{"match_guard_patterns", "test_sources/compile_tests/match/guard_patterns.gecko", 100, false},
+	{"match_enum", "test_sources/compile_tests/match/enum_match.gecko", 1, false},
+	{"match_struct_destructure", "test_sources/compile_tests/match/struct_destructure.gecko", 1, false},
+	{"match_comprehensive", "test_sources/compile_tests/match/pattern_comprehensive.gecko", 0, false},
+	{"ternary", "test_sources/compile_tests/ternary/main.gecko", 0, false},
+	{"incdec", "test_sources/compile_tests/incdec/main.gecko", 0, false},
+	{"defer_statement", "test_sources/compile_tests/defer/main.gecko", 42, false},
+	{"lambda_expressions", "test_sources/compile_tests/lambda/main.gecko", 16, false},
+	{"closure_capture", "test_sources/compile_tests/closure/basic_capture.gecko", 15, false},
+	{"closure_capture_assignment", "test_sources/compile_tests/closure/assignment_capture.gecko", 15, false},
+	{"self_type", "test_sources/compile_tests/self_type/main.gecko", 0, false},
+	{"import_alias", "test_sources/compile_tests/import_alias/main.gecko", 0, false},
+	{"destructuring", "test_sources/compile_tests/destructuring/main.gecko", 0, false},
+	{"where_clause", "test_sources/compile_tests/where_clause/main.gecko", 0, false},
+
 	// TODO: Fix these tests
 	// {"integers", "test_sources/compile_tests/ints/int.gecko", 0, false}, // printf declaration issues
 }
@@ -293,9 +314,6 @@ func TestTryDiagnosticsUsesGeckoExpression(t *testing.T) {
 
 			outputStr := string(output)
 			assertNoBackendPanic(t, backend, outputStr)
-			if backend == "llvm" {
-				return
-			}
 			if !strings.Contains(outputStr, `File::open(\"no_exist\", \"r\")`) {
 				t.Fatalf("Expected try diagnostics expression to use Gecko syntax, got:\n%s", outputStr)
 			}
@@ -374,13 +392,6 @@ func runCompileTest(t *testing.T, geckoPath string, tc compileTest, backend stri
 	outputStr := string(output)
 	assertNoBackendPanic(t, backend, outputStr)
 
-	if backend == "llvm" {
-		if exitCode != tc.expectedExit {
-			t.Logf("LLVM runtime/diagnostic divergence for %s: expected exit %d, got %d\nOutput:\n%s", tc.name, tc.expectedExit, exitCode, outputStr)
-		}
-		return
-	}
-
 	if exitCode != tc.expectedExit {
 		t.Errorf("Expected exit code %d, got %d\nOutput:\n%s", tc.expectedExit, exitCode, output)
 	}
@@ -419,12 +430,6 @@ func runCompileOnlyTest(t *testing.T, geckoPath string, tc compileOnlyTest, back
 
 	outputStr := string(output)
 	assertNoBackendPanic(t, backend, outputStr)
-	if backend == "llvm" {
-		if !strings.Contains(outputStr, "Total of ") {
-			t.Fatalf("Expected LLVM compile output summary, got:\n%s", outputStr)
-		}
-		return
-	}
 
 	matches := errorsGeneratedPattern.FindAllStringSubmatch(outputStr, -1)
 	if len(matches) == 0 {
@@ -468,19 +473,6 @@ func TestTraitConstraintError(t *testing.T) {
 
 			outputStr := string(output)
 			assertNoBackendPanic(t, backend, outputStr)
-			if backend == "llvm" {
-				if strings.Contains(outputStr, "Trait Constraint Error") {
-					if !strings.Contains(outputStr, "NotAddable") || !strings.Contains(outputStr, "Addable") {
-						t.Errorf("LLVM trait constraint diagnostics should mention NotAddable and Addable when emitted:\n%s", outputStr)
-					}
-					return
-				}
-				if !outputHasCompileErrors(outputStr) && !strings.Contains(outputStr, "Unsupported Feature") {
-					t.Errorf("Expected LLVM backend to report compile diagnostics for trait constraint fixture, got:\n%s", outputStr)
-				}
-				return
-			}
-
 			if !strings.Contains(outputStr, "Trait Constraint Error") {
 				t.Errorf("Expected trait constraint error, got:\n%s", outputStr)
 			}
@@ -739,15 +731,6 @@ func TestTypeCheckingErrors(t *testing.T) {
 
 					outputStr := string(output)
 					assertNoBackendPanic(t, backend, outputStr)
-					if backend == "llvm" {
-						if !strings.Contains(outputStr, "Total of ") {
-							t.Errorf("Expected LLVM compile output summary, got:\n%s", outputStr)
-						}
-						if !strings.Contains(outputStr, tc.expectedError) || !strings.Contains(outputStr, tc.expectedMsg) {
-							t.Logf("LLVM diagnostic divergence for %s (expected '%s' / '%s'):\n%s", tc.name, tc.expectedError, tc.expectedMsg, outputStr)
-						}
-						return
-					}
 
 					if !strings.Contains(outputStr, tc.expectedError) {
 						t.Errorf("Expected error '%s', got:\n%s", tc.expectedError, outputStr)

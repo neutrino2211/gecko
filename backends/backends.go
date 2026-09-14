@@ -25,7 +25,6 @@ func BackendProcessEntries(b interfaces.BackendInterface, scope *ast.Ast, entrie
 }
 
 var Backends = map[string]interfaces.BackendInterface{
-	"llvm": &LLVMBackend{},
-	"c":    &CBackend{},
-	"asm":  &AsmBackend{},
+	"c":   &CBackend{},
+	"asm": &AsmBackend{},
 }

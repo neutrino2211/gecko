@@ -1,0 +1,16 @@
+declare external variardic func printf(format: string): int32
+
+external func main(): int32 {
+    let x: int32 = 5
+
+    let result: int32 = match x {
+        1 => 10
+        2 | 3 => 20
+        4 | 5 | 6 => 30
+        7 => 40
+        default => 0
+    }
+
+    printf("OR patterns result: %d\n", result)
+    return result
+}

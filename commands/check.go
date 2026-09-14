@@ -52,7 +52,7 @@ var CheckCommand = &cli.Command{
 		&cli.StringFlag{
 			Name:  "backend",
 			Value: "c",
-			Usage: "The compilation backend to use (c | llvm)",
+			Usage: "The compilation backend to use (c)",
 		},
 		&cli.StringFlag{
 			Name:  "target-arch",

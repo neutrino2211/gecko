@@ -1,0 +1,22 @@
+declare external variardic func printf(format: string): int32
+
+external func main(): int32 {
+    let a: int32 = 10
+    let b: int32 = 0xFF
+
+    a &= 0x0F
+    printf("a &= 0x0F => %d\n", a)
+
+    b |= 0x100
+    printf("b |= 0x100 => %d\n", b)
+
+    let c: int32 = 0xAA
+    c ^= 0xFF
+    printf("c ^= 0xFF => %d\n", c)
+
+    let d: int32 = 17
+    d %= 5
+    printf("d %%= 5 => %d\n", d)
+
+    return 0
+}

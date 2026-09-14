@@ -11,6 +11,9 @@ import (
 	"github.com/neutrino2211/gecko/tokens"
 )
 
+// CurrentSelfType tracks the current class type for resolving `Self` in method signatures.
+var CurrentSelfType string
+
 type DiagnosticSeverity string
 
 const (
@@ -525,6 +528,20 @@ func TypesCompatible(expected, actual *tokens.TypeRef) bool {
 	}
 	if TypesEqual(expected, actual) {
 		return true
+	}
+
+	// Resolve Self to the current class type
+	if CurrentSelfType != "" {
+		if expected.Type == "Self" {
+			resolved := *expected
+			resolved.Type = CurrentSelfType
+			return TypesCompatible(&resolved, actual)
+		}
+		if actual.Type == "Self" {
+			resolved := *actual
+			resolved.Type = CurrentSelfType
+			return TypesCompatible(expected, &resolved)
+		}
 	}
 
 	if IsNumericType(expected) && IsNumericType(actual) {

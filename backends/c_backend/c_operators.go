@@ -400,6 +400,24 @@ func (impl *CBackendImplementation) getBaseLiteralType(l *tokens.Literal, scope 
 
 // GetTypeOfFuncCall attempts to determine the return type of a function call
 func (impl *CBackendImplementation) GetTypeOfFuncCall(f *tokens.FuncCall, scope *ast.Ast) *tokens.TypeRef {
+	return ResolveCallSelfType(impl.getTypeOfFuncCallRaw(f, scope), f)
+}
+
+// ResolveCallSelfType replaces a `Self` return type with the receiver's concrete
+// type, since `Self` is only meaningful inside the owning type's methods.
+func ResolveCallSelfType(t *tokens.TypeRef, f *tokens.FuncCall) *tokens.TypeRef {
+	if t == nil || t.Type != "Self" || f == nil {
+		return t
+	}
+	if f.StaticType != "" {
+		resolved := *t
+		resolved.Type = f.StaticType
+		return &resolved
+	}
+	return t
+}
+
+func (impl *CBackendImplementation) getTypeOfFuncCallRaw(f *tokens.FuncCall, scope *ast.Ast) *tokens.TypeRef {
 	if f == nil {
 		return nil
 	}
@@ -689,7 +707,7 @@ func (impl *CBackendImplementation) GetTypeOfExpression(e *tokens.Expression, sc
 			return inferred
 		}
 	}
-	return impl.GetTypeOfOrExpression(e.OrExpr, scope)
+	return impl.GetTypeOfOrExpression(e.Cond.LogicalOr, scope)
 }
 
 // GetTypeOfOrExpression gets the type of an `or` expression chain.

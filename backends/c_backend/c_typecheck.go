@@ -74,6 +74,20 @@ func TypesAreCompatible(expected, actual *tokens.TypeRef, scope *ast.Ast) bool {
 		return true
 	}
 
+	// Resolve Self to the current class type
+	if CurrentSelfType != "" {
+		if expected.Type == "Self" {
+			resolved := *expected
+			resolved.Type = CurrentSelfType
+			return TypesAreCompatible(&resolved, actual, scope)
+		}
+		if actual.Type == "Self" {
+			resolved := *actual
+			resolved.Type = CurrentSelfType
+			return TypesAreCompatible(expected, &resolved, scope)
+		}
+	}
+
 	// If expected is a type parameter (single uppercase letter or known param), skip for now
 	// This will be handled properly when we implement generic function type checking
 	if isTypeParameter(expected.Type) {

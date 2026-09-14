@@ -3,6 +3,7 @@
 package cbackend
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -14,10 +15,30 @@ import (
 
 // ExpressionToCString converts an expression to C code
 func (impl *CBackendImplementation) ExpressionToCString(e *tokens.Expression, scope *ast.Ast) string {
-	if e == nil {
+	if e == nil || e.Cond == nil {
 		return ""
 	}
-	return impl.OrExpressionToCString(e.OrExpr, scope)
+	cond := impl.OrExpressionToCString(e.Cond.LogicalOr, scope)
+	if e.Cond.TrueExpr != nil {
+		trueExpr := impl.ExpressionToCString(e.Cond.TrueExpr, scope)
+		falseExpr := impl.ConditionalExprToCString(e.Cond.FalseExpr, scope)
+		return fmt.Sprintf("(%s) ? (%s) : (%s)", cond, trueExpr, falseExpr)
+	}
+	return cond
+}
+
+// ConditionalExprToCString converts the false branch of a ternary to C code
+func (impl *CBackendImplementation) ConditionalExprToCString(c *tokens.ConditionalExpr, scope *ast.Ast) string {
+	if c == nil {
+		return ""
+	}
+	cond := impl.OrExpressionToCString(c.LogicalOr, scope)
+	if c.TrueExpr != nil {
+		trueExpr := impl.ExpressionToCString(c.TrueExpr, scope)
+		falseExpr := impl.ConditionalExprToCString(c.FalseExpr, scope)
+		return fmt.Sprintf("(%s) ? (%s) : (%s)", cond, trueExpr, falseExpr)
+	}
+	return cond
 }
 
 // getTypeOriginModule resolves the package/module that owns a type.
@@ -503,10 +524,10 @@ func geckoTypeRefToString(t *tokens.TypeRef) string {
 }
 
 func geckoExpressionToString(e *tokens.Expression) string {
-	if e == nil || e.OrExpr == nil {
+	if e == nil || e.Cond == nil || e.Cond.LogicalOr == nil {
 		return ""
 	}
-	return geckoOrExpressionToString(e.OrExpr)
+	return geckoOrExpressionToString(e.Cond.LogicalOr)
 }
 
 func geckoOrExpressionToString(o *tokens.OrExpression) string {
@@ -983,7 +1004,8 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 			if !structVar.IsNil() {
 				variable := structVar.Unwrap()
 				reportUseAfterMoveIfNeeded(scope, variable.GetFullName(), l.SymbolModule, l.Pos)
-				varName := CVariableIdentifier(variable)
+				info := CGetScopeInformation(scope)
+				varName := resolveVariableWithIdentifier(variable, scope, info)
 				// Check if it's a pointer - use -> instead of .
 				if variable.IsPointer {
 					base = varName + "->" + symbolName
@@ -1019,7 +1041,8 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 				if !symbolVariable.IsNil() {
 					variable := symbolVariable.Unwrap()
 					reportUseAfterMoveIfNeeded(scope, variable.GetFullName(), symbolName, l.Pos)
-					base = CVariableIdentifier(variable)
+					info := CGetScopeInformation(scope)
+					base = resolveVariableWithIdentifier(variable, scope, info)
 				} else {
 					// Try to resolve as a function reference (for function pointers)
 					symbolMethod := scope.ResolveMethod(symbolName)
@@ -1039,6 +1062,10 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 		base = impl.IntrinsicToCString(l.Intrinsic, scope)
 	} else if l.FuncCall != nil {
 		base = impl.FuncCallToCString(l.FuncCall, scope)
+	} else if l.Lambda != nil {
+		base = impl.LambdaToCString(l.Lambda, scope)
+	} else if l.Match != nil {
+		base = impl.MatchAsExpressionToCString(l.Match, scope)
 	} else if len(l.Array) > 0 {
 		base = "{"
 		for i, arrayLit := range l.Array {
@@ -1133,6 +1160,17 @@ func (impl *CBackendImplementation) LiteralToCString(l *tokens.Literal, scope *a
 	// Handle address-of operator
 	if l.IsPointer {
 		base = "&" + base
+	}
+
+	// Increment/decrement in expression context is an error
+	if l.IncDec != nil {
+		scope.ErrorScope.NewError(
+			"E0001",
+			"Increment/Decrement as Expression",
+			"++ and -- operators cannot be used as expressions",
+			l.IncDec.Pos,
+			"use `x = x + 1` or `x = x - 1` instead",
+		)
 	}
 
 	return base
@@ -1562,7 +1600,8 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 			// It's a variable - check for trait method call
 			variable := varOpt.Unwrap()
 			reportUseAfterMoveIfNeeded(scope, variable.GetFullName(), f.Module, f.Pos)
-			varName := CVariableIdentifier(variable)
+			info := CGetScopeInformation(scope)
+			varName := resolveVariableWithIdentifier(variable, scope, info)
 
 			// Get the variable's type to find trait methods
 			fullVarName := variable.GetFullName()
@@ -1663,6 +1702,15 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 			args += ", "
 		}
 		if arg.Value != nil {
+			// Check if argument is a lambda with captures
+			if lambda := arg.Value.GetLambda(); lambda != nil {
+				key := fmt.Sprintf("%d:%d", lambda.Pos.Line, lambda.Pos.Column)
+				if initCode, ok := PendingCaptureInit[key]; ok && initCode != "" {
+					info := CGetScopeInformation(scope)
+					info.Code += initCode
+					delete(PendingCaptureInit, key)
+				}
+			}
 			argExpr := impl.ExpressionToCString(arg.Value, scope)
 			if arg.Out {
 				args += "&" + argExpr
@@ -1683,4 +1731,127 @@ func escapeString(s string) string {
 		return s
 	}
 	return strconv.Quote(unquoted)
+}
+
+// InferLambdaTypes fills in missing param types and return type on a Lambda
+// from an expected FuncType (e.g., from a variable's type annotation).
+func InferLambdaTypes(l *tokens.Lambda, ft *tokens.FuncType) {
+	if l == nil || ft == nil {
+		return
+	}
+	for i, param := range l.Params {
+		if param.Type == nil && i < len(ft.ParamTypes) {
+			param.Type = ft.ParamTypes[i]
+		}
+	}
+	if l.ReturnType == nil && ft.ReturnType != nil {
+		l.ReturnType = ft.ReturnType
+	}
+}
+
+// LambdaToCString generates a static C function for a lambda expression and returns its name
+func (impl *CBackendImplementation) LambdaToCString(l *tokens.Lambda, scope *ast.Ast) string {
+	info := CGetScopeInformation(scope)
+
+	// Generate unique function name
+	lambdaCount := len(info.Functions)
+	funcName := fmt.Sprintf("__lambda_%d_%d", lambdaCount, l.Pos.Line)
+
+	// Detect captured variables
+	capturedFields := collectCapturedVariables(l, scope)
+
+	// Build parameter list
+	params := ""
+	for i, param := range l.Params {
+		if i > 0 {
+			params += ", "
+		}
+		paramType := "void*"
+		if param.Type != nil {
+			paramType = TypeRefToCType(param.Type, scope)
+		}
+		paramName := param.Name
+		if paramName == "" {
+			paramName = fmt.Sprintf("p%d", i)
+		}
+		params += paramType + " " + paramName
+	}
+	if params == "" {
+		params = "void"
+	}
+
+	// Determine return type
+	retType := "void"
+	if l.ReturnType != nil {
+		retType = TypeRefToCType(l.ReturnType, scope)
+	}
+
+	// If we have captures, generate a global capture slot
+	var capContext *ClosureCaptureContext
+	var captureGlobalName string
+	if len(capturedFields) > 0 {
+		structName, structDef, _ := generateCaptureStruct(capturedFields, scope)
+		captureGlobalName = fmt.Sprintf("__%s_global", structName)
+
+		// Add struct definition to root scope
+		rootScope := scope.GetRoot()
+		rootInfo := CGetScopeInformation(rootScope)
+		rootInfo.StructDefs = append(rootInfo.StructDefs, &StructDefinition{
+			Name: structName,
+			Code: structDef,
+		})
+
+		// Add global capture slot
+		rootInfo.Globals = append(rootInfo.Globals,
+			fmt.Sprintf("static struct %s %s;\n", structName, captureGlobalName))
+
+		// Create capture context for the lambda body
+		capContext = &ClosureCaptureContext{
+			StructName: structName,
+			ParamName:  captureGlobalName,
+			Fields:     capturedFields,
+			FieldMap:   make(map[string]*ClosureCaptureField),
+			GlobalSlot: captureGlobalName,
+			OuterScope: scope,
+		}
+		for _, field := range capturedFields {
+			capContext.FieldMap[field.FullName] = field
+		}
+
+		// Generate capture initialization code to be emitted at creation site
+		initCode := generateCaptureInit(capturedFields, captureGlobalName)
+		capContext.StructDef = initCode
+
+		// Store the init code so NewAssignment can retrieve it
+		key := fmt.Sprintf("%d:%d", l.Pos.Line, l.Pos.Column)
+		PendingCaptureInit[key] = initCode
+	}
+
+	// Generate the function definition
+	funcDef := fmt.Sprintf("%s %s(%s) {\n", retType, funcName, params)
+
+	// Save current code and create new scope for lambda body
+	savedCode := info.Code
+	savedCapContext := info.ClosureCaptures
+	info.Code = ""
+	info.ClosureCaptures = capContext
+
+	// Process body entries
+	for _, entry := range l.Body {
+		impl.processEntry(scope, entry)
+	}
+
+	bodyCode := info.Code
+	info.Code = savedCode
+	info.ClosureCaptures = savedCapContext
+
+	funcDef += bodyCode
+	funcDef += "}\n"
+
+	// Add the function definition to the root/file scope's Functions list
+	rootScope := scope.GetRoot()
+	rootInfo := CGetScopeInformation(rootScope)
+	rootInfo.Functions = append(rootInfo.Functions, funcDef)
+
+	return funcName
 }

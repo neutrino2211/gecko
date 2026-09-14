@@ -1,0 +1,10 @@
+declare external variardic func printf(format: string): int32
+
+external func main(): int32 {
+    printf("Start\n")
+    defer printf("Deferred 1\n")
+    defer printf("Deferred 2\n")
+    defer printf("Deferred 3\n")
+    printf("End\n")
+    return 0
+}

@@ -103,9 +103,19 @@ func scopeFindMethodByNameOrQualifiedSuffix(scope *ast.Ast, target string) (stri
 // NewReturn generates a void return statement
 func (impl *CBackendImplementation) NewReturn(scope *ast.Ast) {
 	info := CGetScopeInformation(scope)
+	// Emit deferred expressions before returning (in reverse order)
+	impl.emitDefers(scope, info)
 	// Generate drop calls for droppable variables before returning
 	impl.generateDropCalls(scope, info)
 	info.Code += "    return;\n"
+}
+
+// emitDefers emits all deferred expressions from the scope's defer stack in reverse order.
+func (impl *CBackendImplementation) emitDefers(scope *ast.Ast, info *CScopeInformation) {
+	for i := len(info.DeferStack) - 1; i >= 0; i-- {
+		info.Code += info.DeferStack[i]
+	}
+	info.DeferStack = nil
 }
 
 // NewReturnLiteral generates a return statement with a value
@@ -117,6 +127,18 @@ func (impl *CBackendImplementation) NewReturnLiteral(scope *ast.Ast, literal *to
 
 	val := impl.ExpressionToCString(literal, scope)
 	impl.ApplyMoveFromExpression(literal, scope)
+
+	// Emit capture initialization for lambdas (must be after ExpressionToCString stores it)
+	if lambda := literal.GetLambda(); lambda != nil {
+		key := fmt.Sprintf("%d:%d", lambda.Pos.Line, lambda.Pos.Column)
+		if initCode, ok := PendingCaptureInit[key]; ok && initCode != "" {
+			info.Code += initCode
+			delete(PendingCaptureInit, key)
+		}
+	}
+
+	// Emit deferred expressions before returning (in reverse order)
+	impl.emitDefers(scope, info)
 
 	// Check if we have droppable variables
 	droppables := impl.getDroppableVariables(scope)
@@ -840,6 +862,7 @@ func (impl *CBackendImplementation) GenerateClassMethodDef(scope *ast.Ast, class
 	oldIsTypeParameter := tokens.IsTypeParameter
 	classTypeParams := map[string]bool{}
 	if classToken != nil {
+		classTypeParams["Self"] = true // Allow Self as a type alias for the current class
 		classTypeParams[classToken.Name] = true // Allow self-references like Option<T> inside generic class methods
 		for _, tp := range classToken.TypeParams {
 			classTypeParams[tp.Name] = true
@@ -853,6 +876,15 @@ func (impl *CBackendImplementation) GenerateClassMethodDef(scope *ast.Ast, class
 	}
 	defer func() {
 		tokens.IsTypeParameter = oldIsTypeParameter
+	}()
+
+	// Set Self type for resolving Self in method signatures
+	oldSelfType := CurrentSelfType
+	if className != "" {
+		CurrentSelfType = className
+	}
+	defer func() {
+		CurrentSelfType = oldSelfType
 	}()
 
 	// Determine return type with substitution
@@ -1275,6 +1307,15 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 	methodScope.Init(scope.ErrorScope)
 	methodScope.Config = scope.Config
 
+	// Set Self type for resolving Self in method signatures
+	oldSelfType := CurrentSelfType
+	if className != "" {
+		CurrentSelfType = className
+	}
+	defer func() {
+		CurrentSelfType = oldSelfType
+	}()
+
 	// Determine return type
 	returnType := "void"
 	if m.Type != nil {
@@ -1444,15 +1485,6 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 	methodScope.Init(scope.ErrorScope)
 	methodScope.Config = scope.Config
 
-	// Determine return type
-	returnType := "void"
-	geckoReturnType := "void"
-	if m.Type != nil {
-		m.Type.Check(scope)
-		returnType = TypeRefToCType(m.Type, scope)
-		geckoReturnType = m.Type.Type
-	}
-
 	// Check if this is a class method (scope is a class AST)
 	isClassMethod := false
 	className := ""
@@ -1461,6 +1493,24 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 			isClassMethod = true
 			className = scope.Scope
 		}
+	}
+
+	// Set Self type for resolving Self in method signatures
+	oldSelfType := CurrentSelfType
+	if className != "" {
+		CurrentSelfType = className
+	}
+	defer func() {
+		CurrentSelfType = oldSelfType
+	}()
+
+	// Determine return type
+	returnType := "void"
+	geckoReturnType := "void"
+	if m.Type != nil {
+		m.Type.Check(scope)
+		returnType = TypeRefToCType(m.Type, scope)
+		geckoReturnType = m.Type.Type
 	}
 
 	// Build parameter list
@@ -1584,10 +1634,36 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 	attrStr := tokens.ToCAttributes(m.Attributes)
 	isStatic := tokens.HasAttribute(m.Attributes, "static")
 	var funcDecl string
-	if attrStr != "" {
-		funcDecl = fmt.Sprintf("%s %s %s(%s)", attrStr, returnType, funcName, paramStr)
+	// Handle function pointer return types: generate correct C syntax
+	// For func(int32): func(int32): int32, the C signature is:
+	// int32_t (*funcname(int32_t))(int32_t)
+	if IsFuncPointerType(returnType) {
+		// Extract the inner return type and params from the function pointer type
+		// returnType is like "int32_t (*__FUNCPTR__)(int32_t)"
+		// We need: "int32_t (*funcname(params))(int32_t_inner)"
+		// Parse: retType (*__FUNCPTR__)(params)
+		innerRetType := returnType
+		innerParams := ""
+		if idx := strings.Index(returnType, "(*"); idx >= 0 {
+			innerRetType = returnType[:idx]
+			rest := returnType[idx:]
+			if endIdx := strings.Index(rest, ")("); endIdx >= 0 {
+				innerParams = rest[endIdx+2:]
+				innerParams = strings.TrimSuffix(innerParams, ")")
+			}
+		}
+		// Generate: innerRetType (*funcname(innerParams))(originalParams)
+		if attrStr != "" {
+			funcDecl = fmt.Sprintf("%s %s (*%s(%s))(%s)", attrStr, strings.TrimSpace(innerRetType), funcName, paramStr, innerParams)
+		} else {
+			funcDecl = fmt.Sprintf("%s (*%s(%s))(%s)", strings.TrimSpace(innerRetType), funcName, paramStr, innerParams)
+		}
 	} else {
-		funcDecl = fmt.Sprintf("%s %s(%s)", returnType, funcName, paramStr)
+		if attrStr != "" {
+			funcDecl = fmt.Sprintf("%s %s %s(%s)", attrStr, returnType, funcName, paramStr)
+		} else {
+			funcDecl = fmt.Sprintf("%s %s(%s)", returnType, funcName, paramStr)
+		}
 	}
 	if isStatic {
 		funcDecl = "static " + funcDecl
@@ -1789,6 +1865,13 @@ func (impl *CBackendImplementation) NewGlobalVariable(scope *ast.Ast, f *tokens.
 func (impl *CBackendImplementation) NewLocalVariable(scope *ast.Ast, f *tokens.Field, cType string, varName string) {
 	info := CGetScopeInformation(scope)
 
+	// Infer lambda param types from variable's declared type
+	if f.Value != nil && f.Type != nil && f.Type.FuncType != nil {
+		if lambda := f.Value.GetLambda(); lambda != nil {
+			InferLambdaTypes(lambda, f.Type.FuncType)
+		}
+	}
+
 	// Handle const modifier - either from Type.Const or from Mutability == "const"
 	isConst := (f.Type != nil && f.Type.Const) || f.Mutability == "const"
 	typeDecl := cType
@@ -1803,6 +1886,14 @@ func (impl *CBackendImplementation) NewLocalVariable(scope *ast.Ast, f *tokens.F
 	if IsFuncPointerType(cType) {
 		if f.Value != nil {
 			val := impl.ExpressionToCString(f.Value, scope)
+			// Emit capture initialization for lambdas (must be after ExpressionToCString)
+			if lambda := f.Value.GetLambda(); lambda != nil {
+				key := fmt.Sprintf("%d:%d", lambda.Pos.Line, lambda.Pos.Column)
+				if initCode, ok := PendingCaptureInit[key]; ok && initCode != "" {
+					info.Code += initCode
+					delete(PendingCaptureInit, key)
+				}
+			}
 			varDecl = fmt.Sprintf("    %s = %s;\n", FormatFuncPointerDecl(cType, varName), val)
 		} else {
 			varDecl = fmt.Sprintf("    %s;\n", FormatFuncPointerDecl(cType, varName))
@@ -2416,6 +2507,339 @@ func (impl *CBackendImplementation) NewLoop(scope *ast.Ast, l *tokens.Loop) {
 	info.Code += "    }\n"
 }
 
+// NewMatch handles match expressions by generating if-else chains
+func (impl *CBackendImplementation) NewMatch(scope *ast.Ast, m *tokens.Match) {
+	info := CGetScopeInformation(scope)
+
+	scrutinee := impl.ExpressionToCString(m.Scrutinee, scope)
+
+	// Generate if-else chain for each case
+	for i, caseClause := range m.Cases {
+		cond := impl.MatchPatternToCondition(caseClause.Pattern, scrutinee, scope)
+
+		// Add guard if present
+		if caseClause.Guard != nil {
+			guardExpr := impl.ExpressionToCString(caseClause.Guard, scope)
+			cond = "(" + cond + ") && (" + guardExpr + ")"
+		}
+
+		// Check if this is a default case (wildcard "_" or bare "default" identifier)
+		isDefault := caseClause.Pattern != nil && len(caseClause.Pattern.Alts) == 1 &&
+			caseClause.Pattern.Alts[0].Inner != nil &&
+			(caseClause.Pattern.Alts[0].Inner.Wildcard != nil ||
+				(caseClause.Pattern.Alts[0].Inner.Literal != nil &&
+					caseClause.Pattern.Alts[0].Inner.Literal.GetBareIdentifier() == "default"))
+
+		if isDefault {
+			info.Code += "    else {\n"
+		} else if i == 0 {
+			info.Code += fmt.Sprintf("    if (%s) {\n", cond)
+		} else {
+			info.Code += fmt.Sprintf("    else if (%s) {\n", cond)
+		}
+
+		// Emit destructuring bindings before body entries
+		if caseClause.Pattern != nil {
+			impl.EmitDestructuringBindings(caseClause.Pattern, scrutinee, scope)
+		}
+
+		entries, expr := impl.GetMatchCaseBody(caseClause.Body)
+		for _, entry := range entries {
+			impl.processEntry(scope, entry)
+		}
+		if expr != nil {
+			exprStr := impl.ExpressionToCString(expr, scope)
+			info.Code += fmt.Sprintf("    return %s;\n", exprStr)
+		}
+		info.Code += "    }\n"
+	}
+}
+
+// MatchPatternToCondition compiles a MatchPattern into a C boolean expression
+func (impl *CBackendImplementation) MatchPatternToCondition(pattern *tokens.MatchPattern, scrutinee string, scope *ast.Ast) string {
+	if pattern == nil {
+		return "1" // always true (default case)
+	}
+
+	if len(pattern.Alts) == 0 {
+		return "1"
+	}
+
+	// Single "default"/"_" wildcard
+	if len(pattern.Alts) == 1 && pattern.Alts[0].Inner != nil {
+		if pattern.Alts[0].Inner.Wildcard != nil {
+			return "1"
+		}
+		// Check for bare "default" identifier
+		if pattern.Alts[0].Inner.Literal != nil && pattern.Alts[0].Inner.Literal.GetBareIdentifier() == "default" {
+			return "1"
+		}
+	}
+
+	var parts []string
+	for _, alt := range pattern.Alts {
+		cond := impl.MatchPatternAltToCondition(alt, scrutinee, scope)
+		parts = append(parts, cond)
+	}
+	if len(parts) == 1 {
+		return parts[0]
+	}
+	return "(" + strings.Join(parts, " || ") + ")"
+}
+
+// MatchPatternAltToCondition compiles a single pattern alternative into a C boolean expression
+func (impl *CBackendImplementation) MatchPatternAltToCondition(alt *tokens.MatchPatternAlt, scrutinee string, scope *ast.Ast) string {
+	if alt == nil || alt.Inner == nil {
+		return "1"
+	}
+	inner := alt.Inner
+
+	if inner.Wildcard != nil {
+		return "1"
+	}
+
+	if inner.Literal != nil {
+		pattern := impl.PrimaryToCString(inner.Literal, scope)
+		return fmt.Sprintf("%s == %s", scrutinee, pattern)
+	}
+
+	if inner.Range != nil {
+		start := impl.PrimaryToCString(inner.Range.Start, scope)
+		end := impl.PrimaryToCString(inner.Range.End, scope)
+		return fmt.Sprintf("%s >= %s && %s <= %s", scrutinee, start, scrutinee, end)
+	}
+
+	if inner.Destructure != nil {
+		var checks []string
+		for _, f := range inner.Destructure.Fields {
+			fieldExpr := fmt.Sprintf("%s.%s", scrutinee, f.Name)
+			if f.Pattern != nil {
+				fieldCond := impl.MatchPatternToCondition(f.Pattern, fieldExpr, scope)
+				checks = append(checks, fieldCond)
+			}
+		}
+		if len(checks) == 0 {
+			return "1"
+		}
+		if len(checks) == 1 {
+			return checks[0]
+		}
+		return "(" + strings.Join(checks, " && ") + ")"
+	}
+
+	return "1"
+}
+
+// EmitDestructuringBindings emits variable bindings for destructuring and OR-pattern bindings
+func (impl *CBackendImplementation) EmitDestructuringBindings(pattern *tokens.MatchPattern, scrutinee string, scope *ast.Ast) {
+	if pattern == nil {
+		return
+	}
+	info := CGetScopeInformation(scope)
+
+	for _, alt := range pattern.Alts {
+		if alt == nil || alt.Binding == nil || alt.Inner == nil {
+			continue
+		}
+		bindingName := *alt.Binding
+		// Only bind the first matching alt (for OR patterns, this is an approximation)
+		info.Code += fmt.Sprintf("    int32_t %s = %s;\n", bindingName, scrutinee)
+
+		// Also emit destructuring bindings for struct fields
+		if alt.Inner.Destructure != nil {
+			for _, f := range alt.Inner.Destructure.Fields {
+				if f.Pattern != nil && f.Pattern.Alts != nil {
+					for _, innerAlt := range f.Pattern.Alts {
+						if innerAlt != nil && innerAlt.Binding != nil {
+							fieldBinding := *innerAlt.Binding
+							info.Code += fmt.Sprintf("    int32_t %s = %s.%s;\n", fieldBinding, bindingName, f.Name)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// GetMatchCaseBody returns the entries and optional expression from a MatchCaseBody
+func (impl *CBackendImplementation) GetMatchCaseBody(body *tokens.MatchCaseBody) ([]*tokens.Entry, *tokens.Expression) {
+	if body == nil {
+		return nil, nil
+	}
+	if body.Expr != nil {
+		return nil, body.Expr
+	}
+	return body.Entries, nil
+}
+
+// ExprStatement handles expression statements (e.g., i++, method calls without side effects)
+func (impl *CBackendImplementation) ExprStatement(scope *ast.Ast, expr *tokens.Expression) {
+	info := CGetScopeInformation(scope)
+	exprStr := impl.ExpressionToCString(expr, scope)
+	info.Code += fmt.Sprintf("    %s;\n", exprStr)
+}
+
+// DestructuringDeclaration handles `let Point { x, y } = p`, binding each named
+// field to a fresh local variable initialized from the source value.
+func (impl *CBackendImplementation) DestructuringDeclaration(scope *ast.Ast, d *tokens.DestructuringDeclaration) {
+	if d == nil {
+		return
+	}
+	info := CGetScopeInformation(scope)
+
+	valueType := impl.GetTypeOfExpression(d.Value, scope)
+	if valueType == nil && CurrentSemanticProgram != nil {
+		valueType = CurrentSemanticProgram.TypeOfExpression(d.Value)
+	}
+
+	// Resolve the struct class so field types can be recovered.
+	var structClass *ast.Ast
+	if valueType != nil {
+		if classOpt := scope.ResolveClass(normalizeTypeName(valueType.Type)); !classOpt.IsNil() {
+			structClass = classOpt.Unwrap()
+		} else if classOpt := scope.ResolveClass(valueType.Type); !classOpt.IsNil() {
+			structClass = classOpt.Unwrap()
+		}
+	}
+
+	valueStr := impl.ExpressionToCString(d.Value, scope)
+	if valueType != nil {
+		tempName := fmt.Sprintf("__destructure_%d_%d", d.Pos.Line, d.Pos.Column)
+		info.Code += fmt.Sprintf("    %s %s = %s;\n", TypeRefToCType(valueType, scope), tempName, valueStr)
+
+		for _, binding := range d.Bindings {
+			if binding == nil {
+				continue
+			}
+			target := binding.Target()
+			if target == "" {
+				continue
+			}
+
+			fieldType := destructuredFieldType(structClass, binding.Field)
+			cFieldType := "int32_t"
+			if fieldType != nil {
+				cFieldType = TypeRefToCType(fieldType, scope)
+			}
+
+			localVar := ast.Variable{
+				Name:      target,
+				IsPointer: fieldType != nil && fieldType.Pointer,
+				Parent:    scope,
+			}
+			scope.Variables[target] = localVar
+			(*CProgramValues)[localVar.GetFullName()] = &CValueInformation{
+				CType:     cFieldType,
+				GeckoType: fieldType,
+			}
+
+			info.Code += fmt.Sprintf("    %s %s = %s.%s;\n", cFieldType, target, tempName, binding.Field)
+		}
+	} else {
+		// Type unknown: fall back to a statement preserving the evaluation once.
+		info.Code += fmt.Sprintf("    %s;\n", valueStr)
+	}
+}
+
+// destructuredFieldType looks up the Gecko type of a class field, returning nil
+// when it cannot be resolved (e.g. opaque or generic structs).
+func destructuredFieldType(structClass *ast.Ast, field string) *tokens.TypeRef {
+	if structClass == nil || field == "" {
+		return nil
+	}
+	fieldVar, ok := structClass.Variables[field]
+	if !ok {
+		return nil
+	}
+	if valInfo, ok := (*CProgramValues)[fieldVar.GetFullName()]; ok && valInfo != nil && valInfo.GeckoType != nil {
+		return valInfo.GeckoType
+	}
+	return nil
+}
+
+// NewIncDec handles i++ and i-- statements
+func (impl *CBackendImplementation) NewIncDec(scope *ast.Ast, incDec *tokens.IncDec) {
+	info := CGetScopeInformation(scope)
+	variable := scope.ResolveSymbolAsVariable(incDec.Target)
+	if variable.IsNil() {
+		return
+	}
+	v := variable.Unwrap()
+	varName := v.Name
+	if v.IsGlobal {
+		varName = v.GetFullName()
+	}
+	op := "+"
+	if incDec.Op == "--" {
+		op = "-"
+	}
+	info.Code += fmt.Sprintf("    %s = %s %s 1;\n", varName, varName, op)
+}
+
+// MatchAsExpressionToCString compiles a match expression into a C expression using GCC statement expressions
+func (impl *CBackendImplementation) MatchAsExpressionToCString(m *tokens.Match, scope *ast.Ast) string {
+	info := CGetScopeInformation(scope)
+	scrutinee := impl.ExpressionToCString(m.Scrutinee, scope)
+
+	// Generate a temp variable name using position
+	tmpVar := fmt.Sprintf("____match_%d_%d", m.Pos.Line, m.Pos.Column)
+
+	// Declare the temp variable
+	info.Code += fmt.Sprintf("    int32_t %s;\n", tmpVar)
+
+	// Generate if-else chain that assigns to temp
+	for i, caseClause := range m.Cases {
+		cond := impl.MatchPatternToCondition(caseClause.Pattern, scrutinee, scope)
+
+		if caseClause.Guard != nil {
+			guardExpr := impl.ExpressionToCString(caseClause.Guard, scope)
+			cond = "(" + cond + ") && (" + guardExpr + ")"
+		}
+
+		isDefault := caseClause.Pattern != nil && len(caseClause.Pattern.Alts) == 1 &&
+			caseClause.Pattern.Alts[0].Inner != nil &&
+			(caseClause.Pattern.Alts[0].Inner.Wildcard != nil ||
+				(caseClause.Pattern.Alts[0].Inner.Literal != nil &&
+					caseClause.Pattern.Alts[0].Inner.Literal.GetBareIdentifier() == "default"))
+
+		if isDefault {
+			info.Code += "    else {\n"
+		} else if i == 0 {
+			info.Code += fmt.Sprintf("    if (%s) {\n", cond)
+		} else {
+			info.Code += fmt.Sprintf("    else if (%s) {\n", cond)
+		}
+
+		// Emit destructuring bindings
+		if caseClause.Pattern != nil {
+			impl.EmitDestructuringBindings(caseClause.Pattern, scrutinee, scope)
+		}
+
+		entries, expr := impl.GetMatchCaseBody(caseClause.Body)
+		for _, entry := range entries {
+			impl.processEntry(scope, entry)
+		}
+		if expr != nil {
+			exprStr := impl.ExpressionToCString(expr, scope)
+			info.Code += fmt.Sprintf("        %s = %s;\n", tmpVar, exprStr)
+		}
+		info.Code += "    }\n"
+	}
+
+	return tmpVar
+}
+
+// NewDefer handles defer statements by generating the expression
+// Note: This is a simplified implementation - the expression runs at the current point,
+// not at scope exit. A full implementation would track exit points and emit cleanup code.
+func (impl *CBackendImplementation) NewDefer(scope *ast.Ast, d *tokens.Defer) {
+	info := CGetScopeInformation(scope)
+	expr := impl.ExpressionToCString(d.Expression, scope)
+	// Push deferred expression onto the scope's defer stack.
+	// It will be emitted in reverse order at scope exit.
+	info.DeferStack = append(info.DeferStack, fmt.Sprintf("    %s;\n", expr))
+}
+
 // inferMethodCallType infers the return type of a method call expression like s.iter()
 func (impl *CBackendImplementation) inferMethodCallType(expr *tokens.Expression, scope *ast.Ast) *tokens.TypeRef {
 	if expr == nil || expr.GetLogicalOr() == nil {
@@ -2709,13 +3133,37 @@ func (impl *CBackendImplementation) NewAssignment(scope *ast.Ast, a *tokens.Assi
 	if !varOpt.IsNil() {
 		variable := varOpt.Unwrap()
 		isPointer = variable.IsPointer
-		varName = CVariableIdentifier(variable)
+		info := CGetScopeInformation(scope)
+		varName = resolveVariableWithIdentifier(variable, scope, info)
 	} else if a.Global {
 		scope.ErrorScope.NewCompileTimeError("Assignment Error", "unable to resolve global variable '"+a.Name+"'", a.Pos)
 		return
 	}
 
+	// Infer lambda param types from variable's declared type
+	if a.Value != nil {
+		if lambda := a.Value.GetLambda(); lambda != nil && !varOpt.IsNil() {
+			variable := varOpt.Unwrap()
+			fullName := variable.GetFullName()
+			if valInfo, ok := (*CProgramValues)[fullName]; ok && valInfo != nil && valInfo.GeckoType != nil && valInfo.GeckoType.FuncType != nil {
+				InferLambdaTypes(lambda, valInfo.GeckoType.FuncType)
+			}
+		}
+	}
+
 	value := impl.ExpressionToCString(a.Value, scope)
+
+	// Check if we're assigning a lambda with captures - emit capture initialization
+	// This must happen AFTER ExpressionToCString because that's where PendingCaptureInit is populated
+	if a.Value != nil {
+		if lambda := a.Value.GetLambda(); lambda != nil {
+			key := fmt.Sprintf("%d:%d", lambda.Pos.Line, lambda.Pos.Column)
+			if initCode, ok := PendingCaptureInit[key]; ok && initCode != "" {
+				info.Code += initCode
+				delete(PendingCaptureInit, key)
+			}
+		}
+	}
 
 	applyMoveState := func() {
 		// RHS ownership transfer happens after expression lowering.
@@ -2729,6 +3177,12 @@ func (impl *CBackendImplementation) NewAssignment(scope *ast.Ast, a *tokens.Assi
 		}
 	}
 
+	// Determine the assignment operator
+	assignOp := "="
+	if a.Op != "" {
+		assignOp = a.Op
+	}
+
 	// Handle field assignment (e.g., p.x = value)
 	if a.Field != "" {
 		accessor := "."
@@ -2737,9 +3191,9 @@ func (impl *CBackendImplementation) NewAssignment(scope *ast.Ast, a *tokens.Assi
 		}
 		if a.Index != nil {
 			indexStr := impl.ExpressionToCString(a.Index, scope)
-			info.Code += fmt.Sprintf("    %s%s%s[%s] = %s;\n", varName, accessor, a.Field, indexStr, value)
+			info.Code += fmt.Sprintf("    %s%s%s[%s] %s %s;\n", varName, accessor, a.Field, indexStr, assignOp, value)
 		} else {
-			info.Code += fmt.Sprintf("    %s%s%s = %s;\n", varName, accessor, a.Field, value)
+			info.Code += fmt.Sprintf("    %s%s%s %s %s;\n", varName, accessor, a.Field, assignOp, value)
 		}
 		applyMoveState()
 		return
@@ -2748,12 +3202,12 @@ func (impl *CBackendImplementation) NewAssignment(scope *ast.Ast, a *tokens.Assi
 	// Handle indexed assignment (e.g., arr[0] = value)
 	if a.Index != nil {
 		indexStr := impl.ExpressionToCString(a.Index, scope)
-		info.Code += fmt.Sprintf("    %s[%s] = %s;\n", varName, indexStr, value)
+		info.Code += fmt.Sprintf("    %s[%s] %s %s;\n", varName, indexStr, assignOp, value)
 		applyMoveState()
 		return
 	}
 
-	info.Code += fmt.Sprintf("    %s = %s;\n", varName, value)
+	info.Code += fmt.Sprintf("    %s %s %s;\n", varName, assignOp, value)
 	applyMoveState()
 }
 
@@ -2953,13 +3407,23 @@ func (impl *CBackendImplementation) processEntry(scope *ast.Ast, entry *tokens.E
 		impl.FuncCall(scope, entry.FuncCall)
 	} else if entry.Field != nil {
 		impl.NewVariable(scope, entry.Field)
+	} else if entry.Destructuring != nil {
+		impl.DestructuringDeclaration(scope, entry.Destructuring)
 	} else if entry.Assignment != nil {
 		impl.NewAssignment(scope, entry.Assignment)
 	} else if entry.If != nil {
 		impl.NewIf(scope, entry.If)
+	} else if entry.Match != nil {
+		impl.NewMatch(scope, entry.Match)
+	} else if entry.Defer != nil {
+		impl.NewDefer(scope, entry.Defer)
 	} else if entry.Loop != nil {
 		impl.NewLoop(scope, entry.Loop)
 	} else if entry.Asm != nil {
 		impl.NewAsm(scope, entry.Asm)
+	} else if entry.ExprStmt != nil {
+		impl.ExprStatement(scope, entry.ExprStmt)
+	} else if entry.IncDec != nil {
+		impl.NewIncDec(scope, entry.IncDec)
 	}
 }

@@ -1,0 +1,77 @@
+declare external variardic func printf(format: string): int32
+
+class Point {
+    let x: int32
+    let y: int32
+}
+
+func is_even(x: int32): bool {
+    if x / 2 * 2 == x {
+        return true
+    }
+    return false
+}
+
+func test_or(x: int32): int32 {
+    return match x {
+        1 => 10
+        2 | 3 => 20
+        4 | 5 | 6 => 30
+        default => 0
+    }
+}
+
+func test_range(y: int32): int32 {
+    return match y {
+        1..10 => 100
+        11..20 => 200
+        21..30 => 300
+        default => 0
+    }
+}
+
+func test_guard(z: int32): int32 {
+    return match z {
+        1..10 if is_even(z) => 1
+        1..10 => 2
+        default => 0
+    }
+}
+
+func test_struct(p: Point): int32 {
+    return match p {
+        Point { x = 0, y = 0 } => 1
+        Point { x = 0, y = _ } => 2
+        Point { x = _, y = 0 } => 3
+        Point { x = _, y = _ } => 4
+        default => 0
+    }
+}
+
+func test_combined(x: int32): int32 {
+    return match x {
+        1..5 if is_even(x) => 100
+        1..5 => 200
+        6 | 7 | 8 => 300
+        default => 400
+    }
+}
+
+external func main(): int32 {
+    let or_result: int32 = test_or(5)
+    let range_result: int32 = test_range(15)
+    let guard_result: int32 = test_guard(8)
+    let struct_result: int32 = test_struct(Point { x: 0, y: 5 })
+    let combined: int32 = test_combined(7)
+
+    printf("or=%d range=%d guard=%d struct=%d combined=%d\n",
+        or_result, range_result, guard_result, struct_result, combined)
+
+    if or_result != 30 { return 1 }
+    if range_result != 200 { return 2 }
+    if guard_result != 1 { return 3 }
+    if struct_result != 2 { return 4 }
+    if combined != 300 { return 5 }
+
+    return 0
+}

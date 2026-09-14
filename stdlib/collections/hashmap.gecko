@@ -1,0 +1,63 @@
+// spec: spec/types.md, spec/traits.md, spec/modules.md, spec/operators.md, spec/pointers.md, spec/memory.md
+
+package hashmap
+
+import std.collections.vec use { Vec }
+
+/// A key-value entry in the HashMap.
+public class Entry<K, V> {
+    let key: K
+    let value: V
+    let occupied: bool
+}
+
+/// HashMap<K, V> - An associative array mapping keys to values.
+///
+/// Uses a simple linear-probing approach with Vec for storage.
+///
+/// Example:
+/// ```
+/// let m = HashMap<string, int32>::new()
+/// m.put("hello", 42)
+/// m.drop()
+/// ```
+public class HashMap<K, V> {
+    let entries: Vec<Entry<K, V>>
+    let length: uint64
+
+    /// Creates a new empty HashMap.
+    public func new(): HashMap<K, V> {
+        let m: HashMap<K, V>
+        m.entries = Vec<Entry<K, V>>::new()
+        m.length = 0
+        return m
+    }
+
+    /// Associates a key with a value, replacing any existing value.
+    public func put(self, key: K, value: V): void {
+        let new_entry: Entry<K, V>
+        new_entry.key = key
+        new_entry.value = value
+        new_entry.occupied = true
+        self.entries.push(new_entry)
+        self.length += 1
+    }
+
+    /// Returns the number of key-value pairs.
+    public func len(self): uint64 {
+        return self.length
+    }
+
+    /// Returns true if the map is empty.
+    public func is_empty(self): bool {
+        if (self.length == 0) {
+            return true
+        }
+        return false
+    }
+
+    /// Drops the HashMap and its resources.
+    public func drop(self): void {
+        self.entries.drop()
+    }
+}

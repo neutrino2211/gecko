@@ -16,7 +16,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/neutrino2211/gecko/backends"
 	cbackend "github.com/neutrino2211/gecko/backends/c_backend"
-	llvmbackend "github.com/neutrino2211/gecko/backends/llvm_backend"
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/errors"
 	"github.com/neutrino2211/gecko/hooks"
@@ -358,7 +357,7 @@ func appendImportIfMissing(sourceFile *tokens.File, imported *tokens.File) {
 
 	importedPath := normalizePath(imported.Path)
 	for _, existing := range sourceFile.Imports {
-		if normalizePath(existing.Path) == importedPath {
+		if normalizePath(existing.Path) == importedPath && existing.Alias == imported.Alias {
 			return
 		}
 	}
@@ -734,6 +733,9 @@ func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.Compile
 		moduleName := entry.Import.ModuleName()
 		fullPath := entry.Import.Package()
 		cacheKey := importCacheKey(baseDir, fullPath)
+		if entry.Import.Alias != "" {
+			cacheKey += "|as:" + entry.Import.Alias
+		}
 
 		// Skip if already resolved for this importer+path.
 		if importedFile, ok := state.importCache[cacheKey]; ok {
@@ -749,6 +751,7 @@ func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.Compile
 				Path:       fullPath,
 				DirPath:    location.DirPath,
 				UseObjects: entry.Import.Objects,
+				Alias:      entry.Import.Alias,
 			}
 			sourceFile.DirectoryImports = append(sourceFile.DirectoryImports, dirImport)
 			continue
@@ -766,7 +769,7 @@ func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.Compile
 		}
 
 		normalizedFilePath := normalizePath(location.FilePath)
-		moduleFile, ok := state.fileCache[normalizedFilePath]
+		cachedFile, ok := state.fileCache[normalizedFilePath]
 		if !ok {
 			moduleContents, err := os.ReadFile(location.FilePath)
 			if err != nil {
@@ -795,12 +798,22 @@ func resolveImports(sourceFile *tokens.File, baseDir string, cfg *config.Compile
 			parsedModule.Content = string(moduleContents)
 			parsedModule.Path = location.FilePath
 			parsedModule.Config = cfg
+			tokens.NormalizeWhereClauses(parsedModule)
 
-			moduleFile = parsedModule
-			state.fileCache[normalizedFilePath] = moduleFile
+			cachedFile = parsedModule
+			state.fileCache[normalizedFilePath] = cachedFile
+		}
+
+		// When an alias is used, shallow-copy the cached file so the alias
+		// name does not clobber the shared module identity for other importers.
+		moduleFile := cachedFile
+		if entry.Import.Alias != "" && cachedFile.Name != entry.Import.Alias {
+			copiedFile := *cachedFile
+			moduleFile = &copiedFile
 		}
 
 		moduleFile.Name = moduleName
+		moduleFile.Alias = entry.Import.Alias
 		moduleFile.Config = cfg
 
 		state.importCache[cacheKey] = moduleFile
@@ -823,6 +836,7 @@ func Compile(file string, config *config.CompileCfg) string {
 	sourceFile.Content = string(fileContents)
 	sourceFile.Path = file
 	sourceFile.Config = config
+	tokens.NormalizeWhereClauses(sourceFile)
 
 	state := newCompileState()
 
@@ -840,7 +854,7 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	buildDir := os.TempDir() + "/gecko/build/" + ts
 
-	outName := buildDir + "/" + file + ".ll"
+	outName := buildDir + "/" + file + ".c"
 	compiledName := buildDir + "/" + file + ".o"
 
 	// Check for @backend attribute in the file, fall back to CLI flag
@@ -947,9 +961,6 @@ func Compile(file string, config *config.CompileCfg) string {
 
 	if err != nil {
 		msg := "Error compiling for backend '" + backend + "' " + err.Error()
-		if backend == "llvm" && strings.Contains(err.Error(), "\"llc\"") && strings.Contains(err.Error(), "executable file not found") {
-			msg = "LLVM toolchain error: llc not found in PATH"
-		}
 		compileErrorScope.NewCompileTimeError("Compilation Backend Error", msg, lexer.Position{})
 		return ""
 	}
@@ -1079,29 +1090,10 @@ func validateFeatures(sourceFile *tokens.File, compilationBackend interfaces.Bac
 		return unsupportedFeatures[i] < unsupportedFeatures[j]
 	})
 
-	// Warn about experimental LLVM backend with feature-set-derived unsupported usage.
-	if backend == "llvm" {
-		println(color.YellowString("Warning: LLVM backend is experimental and incomplete."))
-		if len(unsupportedFeatures) > 0 {
-			featureNames := make([]string, 0, len(unsupportedFeatures))
-			for _, feature := range unsupportedFeatures {
-				featureNames = append(featureNames, string(feature))
-			}
-			println(color.YellowString("  Unsupported in effective import closure: " + strings.Join(featureNames, ", ") + "."))
-		} else {
-			println(color.YellowString("  No unsupported features were detected in the effective import closure by feature gating."))
-		}
-		println(color.YellowString("  For production use, prefer the C backend (--backend c)."))
-		println()
-	}
-
 	for _, feature := range unsupportedFeatures {
 		msg := "Feature '" + string(feature) + "' is not supported by the '" + backend + "' backend"
 		if origins, ok := featureSources[feature]; ok && len(origins) > 0 {
 			msg += " (used in: " + strings.Join(origins, ", ") + ")"
-		}
-		if backend == "llvm" {
-			msg += " (prefer '--backend c' for this file)"
 		}
 		compileErrorScope.NewCompileTimeError(
 			"Unsupported Feature",
@@ -1133,11 +1125,6 @@ func expectedArtifactPath(backend, sourceFile, irPath, objPath string, cfg *conf
 	irOnly := cfg != nil && cfg.Ctx != nil && cfg.Ctx.Bool("ir-only")
 
 	switch backend {
-	case "llvm":
-		if irOnly {
-			return irPath
-		}
-		return objPath
 	case "c":
 		if irOnly {
 			if cfg != nil && cfg.Project != nil {
@@ -1185,8 +1172,8 @@ func ResetCompilationState() {
 	LastNativeLibraries = nil
 	LastNativeObjects = nil
 	cbackend.ResetState()
-	llvmbackend.ResetState()
 	hooks.ResetHookRegistry()
+	backends.GlobalScopeLifecycle.Reset()
 }
 
 // GetAllErrors returns all errors from all scopes

@@ -1,0 +1,16 @@
+declare external variardic func printf(format: string): int32
+
+func check(x: int32): int32 {
+    defer printf("Deferred in check\n")
+    if (x > 0) {
+        return 1
+    }
+    return 0
+}
+
+external func main(): int32 {
+    defer printf("Deferred in main\n")
+    let r: int32 = check(5)
+    printf("Result: %d\n", r)
+    return 0
+}

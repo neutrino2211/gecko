@@ -15,7 +15,6 @@ import (
 	"github.com/neutrino2211/gecko/compiler"
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/logger"
-	"github.com/neutrino2211/gecko/parser"
 	"github.com/neutrino2211/gecko/utils"
 	"github.com/urfave/cli/v2"
 
@@ -162,35 +161,6 @@ func effectiveTargetPlatform(ctx *cli.Context) string {
 		return runtime.GOOS
 	}
 	return platform
-}
-
-func defaultLLVMExecutableLinkFlags(platform string, isStatic bool) []string {
-	flags := make([]string, 0, 1)
-	// Linux toolchains often default to PIE executables. Our LLVM .o artifacts
-	// may contain absolute relocations; avoid PIE link-mode unless explicitly
-	// requested by user flags.
-	if platform == "linux" && !isStatic {
-		flags = append(flags, "-no-pie")
-	}
-	return flags
-}
-
-func resolveEffectiveBackend(source string, requestedBackend string) string {
-	sourceContents, err := os.ReadFile(source)
-	if err != nil {
-		return requestedBackend
-	}
-
-	parsedFile, parseErr := parser.Parser.ParseString(source, string(sourceContents))
-	if parseErr != nil || parsedFile == nil {
-		return requestedBackend
-	}
-
-	if sourceBackend := parsedFile.GetBackend(); sourceBackend != "" {
-		return sourceBackend
-	}
-
-	return requestedBackend
 }
 
 func collectNativePkgCFlags() []string {
@@ -358,7 +328,7 @@ var CompileCommand = &cli.Command{
 		&cli.StringFlag{
 			Name:  "backend",
 			Value: "c",
-			Usage: "The compilation backend to use (c | llvm [experimental])",
+		Usage: "The compilation backend to use (c)",
 		},
 		&cli.StringFlag{
 			Name:  "target-arch",
@@ -395,11 +365,6 @@ var CompileCommand = &cli.Command{
 			Value: false,
 			Usage: "Disable treeshake",
 		},
-		&cli.StringSliceFlag{
-			Name:  "llc-args",
-			Value: &cli.StringSlice{},
-			Usage: "Pass arguments to underlying llc command",
-		},
 		&cli.StringFlag{
 			Name:  "log-level",
 			Value: "silent",
@@ -420,7 +385,7 @@ var commonFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:  "backend",
 		Value: "c",
-		Usage: "The compilation backend to use (c | llvm [experimental])",
+		Usage: "The compilation backend to use (c)",
 	},
 	&cli.StringFlag{
 		Name:  "target-arch",
@@ -449,10 +414,6 @@ var commonFlags = []cli.Flag{
 	&cli.StringSliceFlag{
 		Name:  "ldflags",
 		Usage: "Additional linker flags (can be specified multiple times)",
-	},
-	&cli.StringSliceFlag{
-		Name:  "llc-args",
-		Usage: "Pass arguments to underlying llc command (LLVM backend)",
 	},
 	&cli.StringSliceFlag{
 		Name:  "pkg-config",
@@ -516,50 +477,6 @@ func compileToC(ctx *cli.Context, source string, projectCfg *config.ProjectConfi
 	}
 
 	return compiled, treeshakeEnabled, nil
-}
-
-func compileToLLVMObject(ctx *cli.Context, source string, projectCfg *config.ProjectConfig) (string, error) {
-	if _, err := exec.LookPath("llc"); err != nil {
-		return "", fmt.Errorf("LLVM toolchain error: llc not found in PATH")
-	}
-
-	targetKey := resolveTargetKey(ctx, projectCfg)
-	treeshakeEnabled := resolveTreeshakeEnabled(ctx, projectCfg)
-
-	originalIrOnly := ctx.Bool("ir-only")
-	_ = ctx.Set("ir-only", "false")
-	defer func() {
-		if originalIrOnly {
-			_ = ctx.Set("ir-only", "true")
-			return
-		}
-		_ = ctx.Set("ir-only", "false")
-	}()
-
-	compiled := compiler.Compile(source, &config.CompileCfg{
-		Arch:      ctx.String("target-arch"),
-		Platform:  ctx.String("target-platform"),
-		Vendor:    ctx.String("target-vendor"),
-		TargetKey: targetKey,
-		Treeshake: treeshakeEnabled,
-		CFlags:    []string{},
-		CLFlags:   ctx.StringSlice("ldflags"),
-		CObjects:  []string{},
-		Ctx:       ctx,
-		Project:   projectCfg,
-	})
-	if compiled == "" {
-		return "", fmt.Errorf("LLVM compilation failed for %s", source)
-	}
-
-	if filepath.Ext(compiled) != ".o" {
-		return "", fmt.Errorf("expected LLVM backend artifact to be .o, got %s", compiled)
-	}
-	if _, err := os.Stat(compiled); err != nil {
-		return "", fmt.Errorf("generated LLVM object not found: %s", compiled)
-	}
-
-	return compiled, nil
 }
 
 // runPkgConfig executes pkg-config and returns the flags
@@ -693,7 +610,6 @@ var BuildCommand = &cli.Command{
 			}
 		}
 
-		backend := resolveEffectiveBackend(source, ctx.String("backend"))
 		targetKey := resolveTargetKey(ctx, projectCfg)
 		pkgConfigPkgs := ctx.StringSlice("pkg-config")
 
@@ -717,48 +633,6 @@ var BuildCommand = &cli.Command{
 			}
 		}
 		ldflags = append(ldflags, collectNativePkgLibFlags(isStatic)...)
-
-		if backend == "llvm" {
-			if _, err := exec.LookPath("clang"); err != nil {
-				return fmt.Errorf("LLVM toolchain error: clang not found in PATH")
-			}
-
-			objFile, err := compileToLLVMObject(ctx, source, projectCfg)
-			if err != nil {
-				return err
-			}
-			treeshakeEnabled := resolveTreeshakeEnabled(ctx, projectCfg)
-			ldflags = append(ldflags, treeshakeLinkerFlagsForPlatform(effectiveTargetPlatform(ctx), treeshakeEnabled)...)
-
-			clangArgs := []string{}
-			if ctx.Bool("release") {
-				clangArgs = append(clangArgs, "-O2")
-			}
-			if isStatic {
-				clangArgs = append(clangArgs, "-static")
-			}
-			clangArgs = append(clangArgs, defaultLLVMExecutableLinkFlags(effectiveTargetPlatform(ctx), isStatic)...)
-
-			clangArgs = append(clangArgs, "-o", output, objFile)
-			clangArgs = append(clangArgs, collectObjectInputs(projectCfg, targetKey)...)
-			clangArgs = append(clangArgs, ldflags...)
-
-			cmd := exec.Command("clang", clangArgs...)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				return fmt.Errorf("clang linking failed: %w", err)
-			}
-
-			fmt.Printf("Built: %s\n", output)
-
-			if projectCfg != nil && projectCfg.Build.Scripts != nil {
-				if err := runBuildScripts(projectCfg, projectCfg.Build.Scripts.PostBuild, "post-build", output); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
 
 		// Compile to C
 		cFile, treeshakeEnabled, err := compileToC(ctx, source, projectCfg)
@@ -849,7 +723,7 @@ var BuildCommand = &cli.Command{
 		&cli.BoolFlag{
 			Name:  "ir-only",
 			Value: true,
-			Usage: "Internal C-backend IR mode (ignored for llvm build)",
+			Usage: "Internal C-backend IR mode",
 		},
 		&cli.BoolFlag{
 			Name:  "static",
@@ -892,7 +766,6 @@ var RunCommand = &cli.Command{
 		}
 		defer os.RemoveAll(tmpRunDir)
 		tmpExe := filepath.Join(tmpRunDir, "gecko_"+exeName)
-		backend := resolveEffectiveBackend(source, ctx.String("backend"))
 		targetKey := resolveTargetKey(ctx, projectCfg)
 		pkgConfigPkgs := ctx.StringSlice("pkg-config")
 		ldflags := ctx.StringSlice("ldflags")
@@ -908,71 +781,47 @@ var RunCommand = &cli.Command{
 		}
 		ldflags = append(ldflags, collectNativePkgLibFlags(false)...)
 
-		if backend == "llvm" {
-			if _, err := exec.LookPath("clang"); err != nil {
-				return fmt.Errorf("LLVM toolchain error: clang not found in PATH")
+		// Compile to C
+		cFile, treeshakeEnabled, err := compileToC(ctx, source, projectCfg)
+		if err != nil {
+			return err
+		}
+
+		ldflags = append(ldflags, treeshakeLinkerFlagsForPlatform(effectiveTargetPlatform(ctx), treeshakeEnabled)...)
+
+		// Build gcc args with linker flags
+		gccArgs := []string{}
+
+		// Add compile flags from CLI + project + cimport pkg-config libraries.
+		cflags := ctx.StringSlice("cflags")
+		if len(pkgConfigPkgs) > 0 {
+			if pkgCFlags, err := runPkgConfig("--cflags", pkgConfigPkgs); err == nil {
+				cflags = append(cflags, pkgCFlags...)
 			}
-
-			objFile, err := compileToLLVMObject(ctx, source, projectCfg)
-			if err != nil {
-				return err
+		}
+		if projectCfg != nil {
+			if projCFlags, err := projectCfg.GetCFlagsForTarget(targetKey); err == nil {
+				cflags = append(cflags, projCFlags...)
 			}
-			treeshakeEnabled := resolveTreeshakeEnabled(ctx, projectCfg)
-			ldflags = append(ldflags, treeshakeLinkerFlagsForPlatform(effectiveTargetPlatform(ctx), treeshakeEnabled)...)
+		}
+		cflags = append(cflags, collectNativePkgCFlags()...)
+		cflags = addTreeshakeCompileFlags(cflags, treeshakeEnabled)
+		gccArgs = append(gccArgs, cflags...)
 
-			clangArgs := []string{"-o", tmpExe, objFile}
-			clangArgs = append(clangArgs, defaultLLVMExecutableLinkFlags(effectiveTargetPlatform(ctx), false)...)
-			clangArgs = append(clangArgs, collectObjectInputs(projectCfg, targetKey)...)
-			clangArgs = append(clangArgs, ldflags...)
+		gccArgs = append(gccArgs, "-o", tmpExe, cFile)
+		gccArgs = append(gccArgs, collectObjectInputs(projectCfg, targetKey)...)
+		gccArgs = append(gccArgs, ldflags...)
 
-			cmd := exec.Command("clang", clangArgs...)
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				return fmt.Errorf("clang linking failed: %w", err)
-			}
-		} else {
-			// Compile to C
-			cFile, treeshakeEnabled, err := compileToC(ctx, source, projectCfg)
-			if err != nil {
-				return err
-			}
+		// Compile C to executable
+		cmd := exec.Command("gcc", gccArgs...)
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("gcc linking failed: %w", err)
+		}
 
-			ldflags = append(ldflags, treeshakeLinkerFlagsForPlatform(effectiveTargetPlatform(ctx), treeshakeEnabled)...)
-
-			// Build gcc args with linker flags
-			gccArgs := []string{}
-
-			// Add compile flags from CLI + project + cimport pkg-config libraries.
-			cflags := ctx.StringSlice("cflags")
-			if len(pkgConfigPkgs) > 0 {
-				if pkgCFlags, err := runPkgConfig("--cflags", pkgConfigPkgs); err == nil {
-					cflags = append(cflags, pkgCFlags...)
-				}
-			}
-			if projectCfg != nil {
-				if projCFlags, err := projectCfg.GetCFlagsForTarget(targetKey); err == nil {
-					cflags = append(cflags, projCFlags...)
-				}
-			}
-			cflags = append(cflags, collectNativePkgCFlags()...)
-			cflags = addTreeshakeCompileFlags(cflags, treeshakeEnabled)
-			gccArgs = append(gccArgs, cflags...)
-
-			gccArgs = append(gccArgs, "-o", tmpExe, cFile)
-			gccArgs = append(gccArgs, collectObjectInputs(projectCfg, targetKey)...)
-			gccArgs = append(gccArgs, ldflags...)
-
-			// Compile C to executable
-			cmd := exec.Command("gcc", gccArgs...)
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				return fmt.Errorf("gcc linking failed: %w", err)
-			}
-
-			// Keep generated C for project builds in .gecko_build; clean up ad-hoc runs.
-			if projectCfg == nil {
-				os.Remove(cFile)
-			}
+		// Keep generated C for project builds in .gecko_build; clean up ad-hoc runs.
+		if projectCfg == nil {
+			os.Remove(cFile)
 		}
 
 		// Run the executable
@@ -1009,7 +858,7 @@ var RunCommand = &cli.Command{
 		&cli.BoolFlag{
 			Name:  "ir-only",
 			Value: true,
-			Usage: "Internal C-backend IR mode (ignored for llvm run)",
+			Usage: "Internal C-backend IR mode",
 		},
 	),
 }

@@ -1,0 +1,13 @@
+declare external variardic func printf(format: string): int32
+
+external func main(): int32 {
+    let x: int32 = 2
+    let result: int32 = match x {
+        1 => 10
+        2 => 20
+        3 => 30
+        default => 40
+    }
+    printf("Result: %d\n", result)
+    return result
+}

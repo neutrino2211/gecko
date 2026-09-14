@@ -1,0 +1,56 @@
+class Point {
+    let x: int32
+    let y: int32
+}
+
+class Rect {
+    let min: Point
+    let max: Point
+}
+
+impl Point {
+    func new(x: int32, y: int32): Self {
+        return Point { x: x, y: y }
+    }
+}
+
+impl Rect {
+    func new(min: Point, max: Point): Self {
+        return Rect { min: min, max: max }
+    }
+}
+
+external func main(): int32 {
+    let p: Point = Point::new(3, 7)
+
+    let Point { x, y } = p
+    if x != 3 {
+        return 1
+    }
+    if y != 7 {
+        return 2
+    }
+
+    let Point { x = px, y = py } = p
+    if px != 3 {
+        return 3
+    }
+    if py != 7 {
+        return 4
+    }
+
+    let r: Rect = Rect::new(Point::new(1, 2), Point::new(5, 6))
+    let Rect { min = lower, max = upper } = r
+    let Point { x = lx, y = ly } = lower
+    if lx != 1 {
+        return 5
+    }
+    if ly != 2 {
+        return 6
+    }
+    if upper.x != 5 || upper.y != 6 {
+        return 7
+    }
+
+    return 0
+}

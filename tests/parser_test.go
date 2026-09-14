@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/neutrino2211/gecko/parser"
+	"github.com/neutrino2211/gecko/tokens"
 )
 
 func stripQuotes(v string) string {
@@ -63,6 +64,30 @@ import std.collections.hash.map`,
 			expectedPath:   "std.collections.hash.map",
 			expectedModule: "map",
 			expectedUse:    nil,
+		},
+		{
+			name: "import with alias",
+			code: `package main
+import std.collections.vec as Vec`,
+			expectedPath:   "std.collections.vec",
+			expectedModule: "Vec",
+			expectedUse:    nil,
+		},
+		{
+			name: "single level import with alias",
+			code: `package main
+import math as M`,
+			expectedPath:   "math",
+			expectedModule: "M",
+			expectedUse:    nil,
+		},
+		{
+			name: "import with alias and use clause",
+			code: `package main
+import std.option as Opt use { Option, Some, None }`,
+			expectedPath:   "std.option",
+			expectedModule: "Opt",
+			expectedUse:    []string{"Option", "Some", "None"},
 		},
 	}
 
@@ -450,6 +475,60 @@ func main(): int32 {
 	}
 }
 
+func TestWhereClauseParsing(t *testing.T) {
+	code := `package main
+
+func combine<T, U>(a: T, b: U): int32 where T is Addable & Scalable, U is Displayable {
+    return 0
+}`
+
+	file, err := parser.Parser.ParseString("where.gecko", code)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	if len(file.Entries) == 0 || file.Entries[0].Method == nil {
+		t.Fatal("Expected top-level method entry")
+	}
+
+	method := file.Entries[0].Method
+	if method.Where == nil {
+		t.Fatal("Expected where clause to be parsed")
+	}
+	if len(method.Where.Constraints) != 2 {
+		t.Fatalf("Expected 2 where constraints, got %d", len(method.Where.Constraints))
+	}
+
+	first := method.Where.Constraints[0]
+	if first.Name != "T" {
+		t.Errorf("Expected constraint on T, got %q", first.Name)
+	}
+	if traits := first.AllTraits(); len(traits) != 2 || traits[0] != "Addable" || traits[1] != "Scalable" {
+		t.Errorf("Expected T traits [Addable Scalable], got %v", traits)
+	}
+
+	second := method.Where.Constraints[1]
+	if second.Name != "U" || second.Trait != "Displayable" {
+		t.Errorf("Expected constraint U is Displayable, got %q is %q", second.Name, second.Trait)
+	}
+
+	// Normalization folds the where clause into the type parameters so the rest
+	// of the pipeline sees a single source of constraints.
+	tokens.NormalizeWhereClauses(file)
+	for _, tp := range method.TypeParams {
+		if tp.Name == "T" {
+			if traits := tp.AllTraits(); len(traits) != 2 || traits[0] != "Addable" || traits[1] != "Scalable" {
+				t.Errorf("Expected merged T traits [Addable Scalable], got %v", traits)
+			}
+		}
+		if tp.Name == "U" {
+			if traits := tp.AllTraits(); len(traits) != 1 || traits[0] != "Displayable" {
+				t.Errorf("Expected merged U traits [Displayable], got %v", traits)
+			}
+		}
+	}
+}
+
 func TestBacktickStringLiteralParsing(t *testing.T) {
 	code := "package main\n\nexternal func main(): int32 {\n    let s = `hello\nworld`\n    return 0\n}"
 
@@ -467,7 +546,7 @@ func TestBacktickStringLiteralParsing(t *testing.T) {
 		t.Fatal("Expected first function statement to be a field declaration")
 	}
 
-	lit := mainFn.Value[0].Field.Value.OrExpr.LogicalOr.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary.Literal
+	lit := mainFn.Value[0].Field.Value.Cond.LogicalOr.LogicalOr.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary.Literal
 	if lit == nil {
 		t.Fatal("Expected string literal")
 	}
@@ -573,10 +652,10 @@ func boot(): void {
 		},
 		{
 			name: "backend attribute on file",
-			code: `@backend("llvm")
+			code: `@backend("c")
 package main`,
 			attrName:      "backend",
-			expectedValue: "llvm",
+			expectedValue: "c",
 		},
 	}
 

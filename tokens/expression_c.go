@@ -7,18 +7,73 @@ import (
 )
 
 func (e *Expression) ToCString(scope *ast.Ast) string {
-	if e.OrExpr == nil {
+	if e.Cond == nil || e.Cond.LogicalOr == nil {
 		return ""
 	}
-	return e.OrExpr.ToCString(scope)
+	return e.Cond.LogicalOr.ToCString(scope)
 }
 
 // GetLogicalOr returns the LogicalOr part of the expression (for backwards compatibility)
 func (e *Expression) GetLogicalOr() *LogicalOr {
-	if e.OrExpr == nil {
+	if e.Cond == nil || e.Cond.LogicalOr == nil {
 		return nil
 	}
-	return e.OrExpr.LogicalOr
+	return e.Cond.LogicalOr.LogicalOr
+}
+
+// IsBareIdentifier returns true if the expression is just a single identifier with no operators or chains
+func (e *Expression) IsBareIdentifier() bool {
+	if e.Cond == nil || e.Cond.LogicalOr == nil || e.Cond.LogicalOr.LogicalOr == nil {
+		return false
+	}
+	lo := e.Cond.LogicalOr.LogicalOr
+	if lo.Next != nil {
+		return false
+	}
+	la := lo.LogicalAnd
+	if la.Next != nil {
+		return false
+	}
+	eq := la.Equality
+	if eq.Next != nil {
+		return false
+	}
+	cmp := eq.Comparison
+	if cmp.Next != nil {
+		return false
+	}
+	add := cmp.Addition
+	if add.Next != nil {
+		return false
+	}
+	mul := add.Multiplication
+	if mul.Next != nil {
+		return false
+	}
+	unary := mul.Unary
+	if unary.Unary != nil {
+		return false
+	}
+	if unary.Cast != nil {
+		return false
+	}
+	primary := unary.Primary
+	if primary.SubExpression != nil {
+		return false
+	}
+	lit := primary.Literal
+	if lit.Chain != nil || lit.ArrayIndex != nil || lit.FuncCall != nil || lit.Intrinsic != nil {
+		return false
+	}
+	return lit.Symbol != ""
+}
+
+// GetBareIdentifier returns the identifier name if the expression is a bare identifier, or "" otherwise
+func (e *Expression) GetBareIdentifier() string {
+	if !e.IsBareIdentifier() {
+		return ""
+	}
+	return e.Cond.LogicalOr.LogicalOr.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary.Literal.Symbol
 }
 
 func (o *OrExpression) ToCString(scope *ast.Ast) string {

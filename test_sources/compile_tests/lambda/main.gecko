@@ -1,0 +1,21 @@
+declare external variardic func printf(format: string): int32
+
+func apply(f: func(int32, int32): int32, x: int32, y: int32): int32 {
+    return f(x, y)
+}
+
+external func main(): int32 {
+    let add_explicit: func(int32, int32): int32 = fn(x: int32, y: int32): int32 {
+        return x + y
+    }
+
+    let add_inferred: func(int32, int32): int32 = fn(x, y) {
+        return x + y
+    }
+
+    let r1: int32 = apply(add_explicit, 5, 3)
+    let r2: int32 = apply(add_inferred, 5, 3)
+    printf("explicit: %d, inferred: %d\n", r1, r2)
+
+    return r1 + r2
+}

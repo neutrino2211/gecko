@@ -1,0 +1,19 @@
+declare external variardic func printf(format: string): int32
+
+class Resource {
+    let name: string
+
+    func drop(self): void {
+        printf("Dropping resource: %s\n", self.name)
+    }
+}
+
+external func main(): int32 {
+    let r: Resource = Resource { name: "test" }
+    defer r.drop()
+
+    let result: int32 = 42
+    printf("Using resource: %s\n", r.name)
+
+    return result
+}

@@ -1,0 +1,45 @@
+trait Addable {
+    func add_val(self, other: int32): int32
+}
+
+trait Scalable {
+    func scale(self, factor: int32): int32
+}
+
+class Counter {
+    let value: int32
+}
+
+impl Addable for Counter {
+    func add_val(self, other: int32): int32 {
+        return self.value + other
+    }
+}
+
+impl Scalable for Counter {
+    func scale(self, factor: int32): int32 {
+        return self.value * factor
+    }
+}
+
+func combine<T>(a: T, b: int32): int32 where T is Addable & Scalable {
+    return a.add_val(b) + a.scale(b)
+}
+
+func scaled<T>(a: T, b: int32): int32 where T is Scalable {
+    return a.scale(b)
+}
+
+external func main(): int32 {
+    let c: Counter
+    c.value = 10
+
+    if combine<Counter>(c, 2) != 32 {
+        return 1
+    }
+    if scaled<Counter>(c, 3) != 30 {
+        return 2
+    }
+
+    return 0
+}

@@ -1,0 +1,22 @@
+package main
+
+import util as U
+
+external func main(): int32 {
+    let base: int32 = U.OFFSET
+
+    if U.double(21) != 42 {
+        return 1
+    }
+    if U.triple(4) != 12 {
+        return 2
+    }
+    if base != 100 {
+        return 3
+    }
+    if U.double(base) != 200 {
+        return 4
+    }
+
+    return 0
+}

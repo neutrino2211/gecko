@@ -232,44 +232,13 @@ func NewAsmFeatureSet() *FeatureSet {
 	fs := NewFeatureSet("asm")
 	fs.Enable(CoreFeatures()...)
 	fs.Enable(FreestandingFeatures()...)
-	fs.SetToolchain(ToolchainNative, "c", "llvm") // ASM can link with C and LLVM
+	fs.SetToolchain(ToolchainNative, "c") // ASM can link with C
 	return fs
 }
 
 // NewCFeatureSet creates a feature set for C backend
 func NewCFeatureSet() *FeatureSet {
 	fs := NewFullFeatureSet("c")
-	fs.SetToolchain(ToolchainNative, "llvm", "asm") // C can link with LLVM and ASM
-	return fs
-}
-
-// NewLLVMFeatureSet creates a feature set for LLVM backend
-func NewLLVMFeatureSet() *FeatureSet {
-	fs := NewFeatureSet("llvm")
-	fs.Enable(
-		CoreFeatures()...,
-	)
-	fs.Enable(
-		StructuredFeatures()...,
-	)
-	fs.Enable(
-		FeatureGenerics,
-		FeatureTraits,
-		FeatureImpl,
-		FeaturePointers,
-		FeatureIntrinsics,
-		FeatureExternDecl,
-		FeatureCasts,
-		FeatureVolatile,
-		FeatureAddressOf,
-		FeatureImports,
-		FeatureTypeInfer,
-		FeatureNaked,
-		FeatureNoReturn,
-		FeatureSection,
-		FeaturePacked,
-		FeatureInlineAsm,
-	)
-	fs.SetToolchain(ToolchainNative, "c", "asm") // LLVM can link with C and ASM
+	fs.SetToolchain(ToolchainNative, "asm") // C can link with ASM
 	return fs
 }

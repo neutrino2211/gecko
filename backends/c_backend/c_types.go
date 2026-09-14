@@ -16,6 +16,9 @@ import (
 // This enables flow-sensitive type narrowing (e.g., null checks).
 var CurrentTypeState *ast.TypeState
 
+// CurrentSelfType tracks the current class type for resolving `Self` in method signatures.
+var CurrentSelfType string
+
 // StructDefinition holds a struct definition with its dependencies
 type StructDefinition struct {
 	Name              string         // The struct name (e.g., "Shell")
@@ -43,6 +46,28 @@ type CScopeInformation struct {
 	LocalVars             map[string]string // variable name -> C type
 	ChildContexts         map[string]*CScopeInformation
 	TypeState             *ast.TypeState // Flow-sensitive type state for this scope
+	DeferStack            []string       // Deferred C code expressions to emit at scope exit
+	ClosureCaptures       *ClosureCaptureContext // Active closure capture context for lambda compilation
+}
+
+// ClosureCaptureContext tracks captured variables during lambda compilation
+type ClosureCaptureContext struct {
+	StructName  string                          // Name of the capture struct (e.g., "__cap_0")
+	ParamName   string                          // Parameter name in lambda (e.g., "__cap")
+	Fields      []*ClosureCaptureField          // Captured variable fields
+	FieldMap    map[string]*ClosureCaptureField // Quick lookup by variable name
+	StructDef   string                          // Generated C struct definition
+	GlobalSlot  string                          // Global variable name for the capture
+	OuterScope  *ast.Ast                        // The enclosing scope where variables are defined
+}
+
+// ClosureCaptureField represents a single captured variable
+type ClosureCaptureField struct {
+	VarName     string // Original variable name
+	FullName    string // Full qualified name
+ CType      string // C type of the variable
+	IsPointer   bool   // Whether the variable is a pointer
+	Scope       *ast.Ast // The scope where the variable is defined
 }
 
 // TreeshakeDynamicCallWarning tracks dynamic-call patterns that require treeshake fallback.
@@ -150,12 +175,16 @@ var CProgramValues = &CValuesMap{}
 var TraitDefinitions = make(map[string]*tokens.Trait)
 
 // TraitDefinitionOrigins stores the defining package for trait declarations.
-// Maps trait name (e.g., "Iterator") to origin package (e.g., "traits").
+// Maps trait name (e.g., "Iterator") to origin package (e.g., "std.core").
 var TraitDefinitionOrigins = make(map[string]string)
 
 // EnumToCType maps enum names to their mangled C type names
 // Separate from GeckoToCType to avoid loadPrimitives overwriting enum ASTs
 var EnumToCType = make(map[string]string)
+
+// PendingCaptureInit stores capture initialization code generated during lambda compilation
+// Key: lambda position (line:col), Value: capture initialization C code
+var PendingCaptureInit = make(map[string]string)
 
 // MethodReturnTypes maps method full names to their return TypeRef
 // This preserves generic type arguments that ast.Method.Type (a string) can't hold
@@ -231,6 +260,11 @@ func GetTreeshakeDynamicCallWarnings() []TreeshakeDynamicCallWarning {
 func TypeRefToCType(t *tokens.TypeRef, scope *ast.Ast) string {
 	if t == nil {
 		return "void"
+	}
+
+	// Resolve Self to the current class type
+	if t.Type == "Self" && CurrentSelfType != "" {
+		return CurrentSelfType
 	}
 
 	base := ""

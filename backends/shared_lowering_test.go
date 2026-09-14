@@ -56,6 +56,17 @@ func (f *fakeBackendImpl) NewTrait(*ast.Ast, *tokens.Trait) { f.calls = append(f
 func (f *fakeBackendImpl) NewEnum(*ast.Ast, *tokens.Enum)   { f.calls = append(f.calls, "enum") }
 func (f *fakeBackendImpl) NewIf(*ast.Ast, *tokens.If)       { f.calls = append(f.calls, "if") }
 func (f *fakeBackendImpl) NewLoop(*ast.Ast, *tokens.Loop)   { f.calls = append(f.calls, "loop") }
+func (f *fakeBackendImpl) NewMatch(*ast.Ast, *tokens.Match) { f.calls = append(f.calls, "match") }
+func (f *fakeBackendImpl) NewDefer(*ast.Ast, *tokens.Defer) { f.calls = append(f.calls, "defer") }
+func (f *fakeBackendImpl) NewIncDec(*ast.Ast, *tokens.IncDec) {
+	f.calls = append(f.calls, "incdec")
+}
+func (f *fakeBackendImpl) ExprStatement(*ast.Ast, *tokens.Expression) {
+	f.calls = append(f.calls, "exprstmt")
+}
+func (f *fakeBackendImpl) DestructuringDeclaration(*ast.Ast, *tokens.DestructuringDeclaration) {
+	f.calls = append(f.calls, "destructuring")
+}
 func (f *fakeBackendImpl) NewAssignment(*ast.Ast, *tokens.Assignment) {
 	f.calls = append(f.calls, "assignment")
 }

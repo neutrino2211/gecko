@@ -1,0 +1,22 @@
+declare external variardic func printf(format: string): int32
+
+external func main(): int32 {
+    let i: int32 = 0
+    i++
+    let after_inc: int32 = i
+    i++
+    i++
+    let after_three: int32 = i
+
+    let j: int32 = 10
+    j--
+    let after_dec: int32 = j
+
+    printf("after_inc=%d after_three=%d after_dec=%d\n", after_inc, after_three, after_dec)
+
+    if after_inc != 1 { return 1 }
+    if after_three != 3 { return 2 }
+    if after_dec != 9 { return 3 }
+
+    return 0
+}

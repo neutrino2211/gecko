@@ -62,13 +62,20 @@ func (a *analyzer) fileKey(file *tokens.File) string {
 	if file == nil {
 		return ""
 	}
+	key := ""
 	if file.Path != "" {
-		return file.Path
+		key = file.Path
+	} else if file.Name != "" {
+		key = file.Name
+	} else {
+		key = fmt.Sprintf("%p", file)
 	}
-	if file.Name != "" {
-		return file.Name
+	// Distinguish the same module imported under different aliases so each
+	// alias gets its own symbol table entries.
+	if file.Alias != "" {
+		key += "|as:" + file.Alias
 	}
-	return fmt.Sprintf("%p", file)
+	return key
 }
 
 func moduleNameForFile(file *tokens.File) string {
@@ -423,6 +430,15 @@ func (a *analyzer) analyzeMethod(module, ownerType string, method *tokens.Method
 		return
 	}
 
+	// Set Self type for resolving Self in method signatures
+	oldSelfType := CurrentSelfType
+	if ownerType != "" {
+		CurrentSelfType = ownerType
+	}
+	defer func() {
+		CurrentSelfType = oldSelfType
+	}()
+
 	env := newFlowEnv()
 	for globalName, typ := range a.program.globalsByName {
 		sid := a.program.globalSymbolIDs[globalName]
@@ -475,6 +491,8 @@ func (a *analyzer) analyzeEntries(entries []*tokens.Entry, in *flowEnv) *flowEnv
 		switch {
 		case entry.Field != nil:
 			env = a.analyzeFieldDecl(entry.Field, env)
+		case entry.Destructuring != nil:
+			env = a.analyzeDestructuringDecl(entry.Destructuring, env)
 		case entry.Assignment != nil:
 			env = a.analyzeAssignment(entry.Assignment, env)
 		case entry.Return != nil:
@@ -497,6 +515,38 @@ func (a *analyzer) analyzeEntries(entries []*tokens.Entry, in *flowEnv) *flowEnv
 		}
 	}
 	return env
+}
+
+func (a *analyzer) analyzeDestructuringDecl(d *tokens.DestructuringDeclaration, env *flowEnv) *flowEnv {
+	out := env.clone()
+	valueType := a.inferExpression(d.Value, out, nil)
+	if valueType == nil {
+		return out
+	}
+
+	class, ok := a.program.classes[valueType.Type]
+	if !ok {
+		return out
+	}
+
+	for _, binding := range d.Bindings {
+		if binding == nil {
+			continue
+		}
+		fieldType, ok := class.Fields[binding.Field]
+		if !ok || fieldType == nil {
+			continue
+		}
+		target := binding.Target()
+		full := target
+		if a.currentFunction != nil {
+			full = a.currentFunction.FullName + "::" + target + fmt.Sprintf("@%d:%d", binding.Pos.Line, binding.Pos.Column)
+		}
+		sid := a.program.addSymbol(SymbolVariable, target, full, CloneTypeRef(fieldType), binding.Pos)
+		a.nameForID[sid] = target
+		out.bind(target, CloneTypeRef(fieldType), sid)
+	}
+	return out
 }
 
 func (a *analyzer) analyzeFieldDecl(field *tokens.Field, env *flowEnv) *flowEnv {
@@ -750,19 +800,44 @@ func (a *analyzer) inferMethodCallStatement(call *tokens.MethodCall, env *flowEn
 		return
 	}
 	lit := &tokens.Literal{Symbol: call.Base, Chain: call.Chain}
-	expr := &tokens.Expression{OrExpr: &tokens.OrExpression{LogicalOr: &tokens.LogicalOr{LogicalAnd: &tokens.LogicalAnd{Equality: &tokens.Equality{Comparison: &tokens.Comparison{Addition: &tokens.Addition{Multiplication: &tokens.Multiplication{Unary: &tokens.Unary{Primary: &tokens.Primary{Literal: lit}}}}}}}}}}
+	expr := &tokens.Expression{Cond: &tokens.ConditionalExpr{LogicalOr: &tokens.OrExpression{LogicalOr: &tokens.LogicalOr{LogicalAnd: &tokens.LogicalAnd{Equality: &tokens.Equality{Comparison: &tokens.Comparison{Addition: &tokens.Addition{Multiplication: &tokens.Multiplication{Unary: &tokens.Unary{Primary: &tokens.Primary{Literal: lit}}}}}}}}}}}
 	a.inferExpression(expr, env, nil)
 }
 
 func (a *analyzer) inferExpression(expr *tokens.Expression, env *flowEnv, expected *tokens.TypeRef) *tokens.TypeRef {
-	if expr == nil || expr.OrExpr == nil {
+	if expr == nil || expr.Cond == nil || expr.Cond.LogicalOr == nil {
 		return nil
 	}
-	resolved := a.inferOrExpression(expr.OrExpr, env, expected)
+	// Handle ternary: condition must be bool, result type is from true/false branches
+	if expr.Cond.TrueExpr != nil {
+		trueType := a.inferExpression(expr.Cond.TrueExpr, env, expected)
+		if expr.Cond.FalseExpr != nil {
+			a.inferConditionalExpr(expr.Cond.FalseExpr, env, expected)
+		}
+		if trueType != nil {
+			a.program.expressionTypes[expr] = CloneTypeRef(trueType)
+		}
+		return trueType
+	}
+	resolved := a.inferOrExpression(expr.Cond.LogicalOr, env, expected)
 	if resolved != nil {
 		a.program.expressionTypes[expr] = CloneTypeRef(resolved)
 	}
 	return resolved
+}
+
+func (a *analyzer) inferConditionalExpr(c *tokens.ConditionalExpr, env *flowEnv, expected *tokens.TypeRef) *tokens.TypeRef {
+	if c == nil || c.LogicalOr == nil {
+		return nil
+	}
+	if c.TrueExpr != nil {
+		a.inferExpression(c.TrueExpr, env, expected)
+		if c.FalseExpr != nil {
+			a.inferConditionalExpr(c.FalseExpr, env, expected)
+		}
+		return a.inferExpression(c.TrueExpr, env, expected)
+	}
+	return a.inferOrExpression(c.LogicalOr, env, expected)
 }
 
 func (a *analyzer) inferOrExpression(orExpr *tokens.OrExpression, env *flowEnv, expected *tokens.TypeRef) *tokens.TypeRef {
@@ -1265,6 +1340,16 @@ func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs 
 		}
 		typeParamsByName[tp.Name] = tp
 	}
+
+	// Set Self type for resolving Self in method signatures
+	oldSelfType := CurrentSelfType
+	if sig.OwnerType != "" {
+		CurrentSelfType = sig.OwnerType
+	}
+	defer func() {
+		CurrentSelfType = oldSelfType
+	}()
+
 	ownerTypeParams := a.ownerTypeParams(sig.OwnerType)
 	for _, tp := range ownerTypeParams {
 		if tp == nil {
@@ -1431,10 +1516,22 @@ func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs 
 	}
 
 	ret := SubstituteTypeParams(sig.ReturnType, subst)
+	ret = resolveSelfType(ret, sig.OwnerType)
 	if expected != nil && ret != nil && !TypesCompatible(expected, ret) {
 		return nil
 	}
 	return &resolutionAttempt{signature: sig, returnTyp: ret, subst: subst}
+}
+
+// resolveSelfType rewrites a `Self` type to the concrete owner type so call
+// sites see e.g. `Point` rather than the context-dependent `Self`.
+func resolveSelfType(t *tokens.TypeRef, ownerType string) *tokens.TypeRef {
+	if t == nil || ownerType == "" || t.Type != "Self" {
+		return t
+	}
+	resolved := CloneTypeRef(t)
+	resolved.Type = ownerType
+	return resolved
 }
 
 func (a *analyzer) inferArgumentType(arg *tokens.Argument, env *flowEnv, expected *tokens.TypeRef) *tokens.TypeRef {
@@ -1824,10 +1921,10 @@ func isNilFromComparison(cmp *tokens.Comparison) bool {
 func unwrapParenthesizedExpression(expr *tokens.Expression) *tokens.Expression {
 	current := expr
 	for {
-		if current == nil || current.OrExpr == nil || current.OrExpr.Or != nil {
+		if current == nil || current.Cond == nil || current.Cond.LogicalOr == nil || current.Cond.LogicalOr.Or != nil {
 			return current
 		}
-		lo := current.OrExpr.LogicalOr
+		lo := current.Cond.LogicalOr.LogicalOr
 		if lo == nil || lo.Next != nil || lo.LogicalAnd == nil || lo.LogicalAnd.Next != nil {
 			return current
 		}

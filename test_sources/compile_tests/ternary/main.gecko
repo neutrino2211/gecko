@@ -1,0 +1,29 @@
+declare external variardic func printf(format: string): int32
+
+func abs(x: int32): int32 {
+    return x >= 0 ? x : 0 - x
+}
+
+func max(a: int32, b: int32): int32 {
+    return a >= b ? a : b
+}
+
+func clamp(val: int32, lo: int32, hi: int32): int32 {
+    return val < lo ? lo : val > hi ? hi : val
+}
+
+external func main(): int32 {
+    let a: int32 = abs(-5)
+    let b: int32 = max(3, 7)
+    let c: int32 = clamp(15, 0, 10)
+    let d: int32 = 1 > 0 ? 100 : 200
+
+    printf("abs(-5)=%d max(3,7)=%d clamp(15,0,10)=%d ternary=%d\n", a, b, c, d)
+
+    if a != 5 { return 1 }
+    if b != 7 { return 2 }
+    if c != 10 { return 3 }
+    if d != 100 { return 4 }
+
+    return 0
+}

@@ -59,6 +59,7 @@ type DirectoryImport struct {
 	Path       string   // Full import path (e.g., "std.collections")
 	DirPath    string   // Filesystem path to the directory
 	UseObjects []string // Specific symbols to import (empty = all public)
+	Alias      string   // Import alias (e.g., "Vec" from `import std.collections as Vec`)
 }
 
 type File struct {
@@ -71,6 +72,7 @@ type File struct {
 	Name             string
 	Path             string
 	Content          string
+	Alias            string // Import alias (e.g., "Vec" from `import std.collections as Vec`)
 }
 
 // GetBackend returns the backend specified by @backend attribute, or empty string if not specified
@@ -193,6 +195,7 @@ func (f *Foreign) GetWithObjects() []string {
 type Import struct {
 	baseToken
 	Path    []string `parser:"'import' @Ident { '.' @Ident }"`
+	Alias   string   `parser:"[ 'as' @Ident ]"`
 	Objects []string `parser:"['use' '{' [ @Ident { ',' @Ident } ] '}']"`
 }
 
@@ -208,8 +211,11 @@ func (i *Import) Package() string {
 	return result
 }
 
-// ModuleName returns the last component of the import path (the module name)
+// ModuleName returns the alias if set, otherwise the last component of the import path
 func (i *Import) ModuleName() string {
+	if i.Alias != "" {
+		return i.Alias
+	}
 	if len(i.Path) == 0 {
 		return ""
 	}
@@ -222,30 +228,49 @@ type Entry struct {
 	VoidReturn *bool       `parser:"| @'return'"`
 	Break      *bool       `parser:"| @'break'"`
 	Continue   *bool       `parser:"| @'continue'"`
+	// Keyword-led statements that begin with a bare identifier must precede
+	// ExprStmt. Expression parsing greedily consumes a leading identifier, so
+	// `import ...`, `cimport ...`, `asm ...` and `impl ...` would otherwise be
+	// misread as an expression statement and never reach their own alternatives.
+	Import         *Import         `parser:"| @@"`
+	CImport        *CImport        `parser:"| @@"`
+	Asm            *Asm            `parser:"| @@"`
 	// Implementation must come before Assignment to prevent 'impl' being parsed as identifier
 	Implementation *Implementation `parser:"| @@"`
 	Assignment     *Assignment     `parser:"| @@"`
 	ElseIf         *ElseIf         `parser:"| @@"`
 	Else           *Else           `parser:"| @@"`
 	If             *If             `parser:"| @@"`
+	Match          *Match          `parser:"| @@"`
+	Defer          *Defer          `parser:"| @@"`
 	// Declarations with optional attributes must come before Intrinsic
 	// so @attr func/class/trait is parsed as declaration, not intrinsic
 	Class       *Class       `parser:"| @@"`
 	Trait       *Trait       `parser:"| @@"`
 	Method      *Method      `parser:"| @@"`
-	Field       *Field       `parser:"| @@"`
-	Declaration *Declaration `parser:"| @@"`
+	// Destructuring declarations must precede Field: `let Point { x, y } = p`
+	// otherwise Field consumes `let Point` and leaves the braces unconsumed.
+	Destructuring *DestructuringDeclaration `parser:"| @@"`
+	Field         *Field                    `parser:"| @@"`
+	Declaration   *Declaration              `parser:"| @@"`
 	Foreign     *Foreign     `parser:"| @@"`
 	Enum        *Enum        `parser:"| @@"`
-	// Intrinsic, MethodCall, and FuncCall must come after declarations
-	// MethodCall handles chained calls like self.field.method()
-	Intrinsic  *Intrinsic  `parser:"| @@"`
-	MethodCall *MethodCall `parser:"| @@"`
+	// Intrinsic must come before declarations
+	Intrinsic *Intrinsic `parser:"| @@"`
+	// IncDec must come before ExprStmt to avoid i++ being parsed as expression i followed by unexpected ++
+	IncDec *IncDec `parser:"| @@"`
+	// Loop must come before ExprStmt to avoid `loop {}` being parsed as expression `loop` followed by unexpected `{`
+	Loop *Loop `parser:"| @@"`
+	// FuncCall and MethodCall are more specific than the generic ExprStmt and
+	// must precede it; otherwise ExprStmt (an Expression, which itself contains
+	// a FuncCall) swallows every call statement and these alternatives are dead.
+	// FuncCall is tried before MethodCall: it captures a single optional
+	// `module.`/`Type::` prefix, so `math.add()` stays a module/static call while
+	// deeper chains like `self.field.method()` fail FuncCall and fall through to
+	// MethodCall.
 	FuncCall   *FuncCall   `parser:"| @@"`
-	Loop       *Loop       `parser:"| @@"`
-	CImport    *CImport    `parser:"| @@"`
-	Import     *Import     `parser:"| @@"`
-	Asm        *Asm        `parser:"| @@"`
+	MethodCall *MethodCall `parser:"| @@"`
+	ExprStmt   *Expression `parser:"| @@"`
 }
 
 // Generic type parameters
@@ -265,6 +290,104 @@ func (t *TypeParam) AllTraits() []string {
 	return append([]string{t.Trait}, t.Traits...)
 }
 
+// WhereClause is a trailing generic constraint list:
+// `func f<T, U>(...) where T is Eq & Ord, U is Show { ... }`.
+type WhereClause struct {
+	baseToken
+	Constraints []*WhereConstraint `parser:"'where' @@ { ',' @@ }"`
+}
+
+// WhereConstraint constrains one type parameter: `T is Eq & Ord`.
+type WhereConstraint struct {
+	baseToken
+	Name   string   `parser:"@Ident 'is'"`
+	Trait  string   `parser:"@Ident"`
+	Traits []string `parser:"{ '&' @Ident }"`
+}
+
+// AllTraits returns every trait named in the constraint.
+func (c *WhereConstraint) AllTraits() []string {
+	if c == nil || c.Trait == "" {
+		return nil
+	}
+	return append([]string{c.Trait}, c.Traits...)
+}
+
+// HasTrait reports whether name is already one of the parameter's constraints.
+func (t *TypeParam) HasTrait(name string) bool {
+	if t == nil || name == "" {
+		return false
+	}
+	if t.Trait == name {
+		return true
+	}
+	for _, tr := range t.Traits {
+		if tr == name {
+			return true
+		}
+	}
+	return false
+}
+
+// ApplyWhereClause merges where-clause constraints into the matching type
+// parameters, so consumers can keep reading constraints via TypeParam.AllTraits.
+// The operation is idempotent, which makes it safe to run more than once.
+func ApplyWhereClause(typeParams []*TypeParam, where *WhereClause) {
+	if where == nil {
+		return
+	}
+	byName := make(map[string]*TypeParam, len(typeParams))
+	for _, tp := range typeParams {
+		if tp != nil {
+			byName[tp.Name] = tp
+		}
+	}
+	for _, c := range where.Constraints {
+		if c == nil {
+			continue
+		}
+		tp, ok := byName[c.Name]
+		if !ok {
+			continue
+		}
+		for _, trait := range c.AllTraits() {
+			if tp.HasTrait(trait) {
+				continue
+			}
+			if tp.Trait == "" {
+				tp.Trait = trait
+			} else {
+				tp.Traits = append(tp.Traits, trait)
+			}
+		}
+	}
+}
+
+// NormalizeWhereClauses folds every `where` clause in a parsed file into the
+// matching type parameters. Call once after parsing so all later phases see a
+// single, uniform source of generic constraints.
+func NormalizeWhereClauses(file *File) {
+	if file == nil {
+		return
+	}
+	for _, entry := range file.Entries {
+		if entry == nil {
+			continue
+		}
+		if entry.Method != nil {
+			ApplyWhereClause(entry.Method.TypeParams, entry.Method.Where)
+		}
+		if entry.Class != nil {
+			ApplyWhereClause(entry.Class.TypeParams, entry.Class.Where)
+			for _, field := range entry.Class.Fields {
+				if field != nil && field.Method != nil {
+					ApplyWhereClause(field.Method.TypeParams, field.Method.Where)
+				}
+			}
+		}
+	}
+}
+
 // Class tokens
 
 type Class struct {
@@ -275,6 +398,7 @@ type Class struct {
 	ExternalName    string             `parser:"[ 'external' @String ]"`
 	Name            string             `parser:"'class' @Ident"`
 	TypeParams      []*TypeParam       `parser:"[ '<' @@ { ',' @@ } '>' ]"`
+	Where           *WhereClause       `parser:"[ @@ ]"`
 	Fields          []*ClassBlockField `parser:"'{' { @@ } '}'"`
 	Implementations []*Implementation
 }
@@ -318,11 +442,130 @@ type Else struct {
 	Value []*Entry `parser:"'else' '{' { @@ } '}'"`
 }
 
+type MatchCase struct {
+	baseToken
+	Pattern *MatchPattern   `parser:"@@"`
+	Guard   *Expression     `parser:"[ 'if' @@ ]"`
+	Body    *MatchCaseBody  `parser:" '=>' @@"`
+}
+
+// MatchCaseBody handles both block and expression bodies for match cases
+type MatchCaseBody struct {
+	baseToken
+	Entries []*Entry   `parser:" '{' { @@ } '}'"`
+	Expr    *Expression `parser:"| @@"`
+}
+
+type Match struct {
+	baseToken
+	Scrutinee *Expression  `parser:"'match' @@"`
+	Cases     []*MatchCase `parser:"'{' { @@ } '}'"`
+}
+
+// MatchPattern represents a pattern with optional OR alternatives
+type MatchPattern struct {
+	baseToken
+	Alts []*MatchPatternAlt `parser:"@@ { '|' @@ }"`
+}
+
+// MatchPatternAlt is a single pattern alternative
+type MatchPatternAlt struct {
+	baseToken
+	Binding *string            `parser:"[ @Ident '@' ]"`
+	Inner   *MatchPatternInner `parser:"@@"`
+}
+
+// MatchPatternInner is the core pattern (wildcard, literal, range, destructuring)
+type MatchPatternInner struct {
+	baseToken
+	Wildcard    *bool               `parser:"@'_'"`
+	Range       *RangePattern       `parser:"| @@"`
+	Destructure *DestructurePattern `parser:"| @@"`
+	Literal     *Primary            `parser:"| @@"`
+}
+
+// DestructurePattern handles struct destructuring: Type { field = pattern, ... }
+type DestructurePattern struct {
+	baseToken
+	TypeName string              `parser:"@Ident"`
+	TypeArgs []*TypeRef          `parser:"[ '<' @@ { ',' @@ } '>' ]"`
+	Fields   []*DestructureField `parser:"'{' @@ { ',' @@ } '}'"`
+}
+
+// DestructureField is a field in a destructuring pattern
+type DestructureField struct {
+	baseToken
+	Name    string        `parser:"@Ident '='"`
+	Pattern *MatchPattern `parser:"@@"`
+}
+
+// RangePattern handles range matching: start..end
+type RangePattern struct {
+	baseToken
+	Start *Primary `parser:"@@"`
+	Dot   string   `parser:"@RangeDot"`
+	End   *Primary `parser:"@@"`
+}
+
+type Defer struct {
+	baseToken
+	Expression *Expression `parser:"'defer' @@"`
+}
+
 // Expressions
 
 type Expression struct {
 	baseToken
-	OrExpr *OrExpression `parser:"@@"`
+	Cond *ConditionalExpr `parser:"@@"`
+}
+
+// ConditionalExpr handles ternary: cond ? a : b
+type ConditionalExpr struct {
+	baseToken
+	LogicalOr *OrExpression    `parser:"@@"`
+	TrueExpr  *Expression      `parser:"[ '?' @@"`
+	FalseExpr *ConditionalExpr `parser:"':' @@ ]"`
+}
+
+// GetLambda returns the Lambda literal if this expression is a bare lambda (e.g., fun(x) { ... }),
+// or nil otherwise.
+func (e *Expression) GetLambda() *Lambda {
+	if e == nil || e.Cond == nil || e.Cond.LogicalOr == nil || e.Cond.LogicalOr.LogicalOr == nil {
+		return nil
+	}
+	lo := e.Cond.LogicalOr.LogicalOr
+	if lo.Next != nil || lo.Op != "" {
+		return nil
+	}
+	la := lo.LogicalAnd
+	if la == nil || la.Next != nil || la.Op != "" {
+		return nil
+	}
+	eq := la.Equality
+	if eq == nil || eq.Next != nil || eq.Op != "" {
+		return nil
+	}
+	c := eq.Comparison
+	if c == nil || c.Next != nil || c.Op != "" {
+		return nil
+	}
+	a := c.Addition
+	if a == nil || a.Next != nil || a.Op != "" {
+		return nil
+	}
+	m := a.Multiplication
+	if m == nil || m.Next != nil || m.Op != "" {
+		return nil
+	}
+	u := m.Unary
+	if u == nil || u.Cast != nil || u.Unary != nil {
+		return nil
+	}
+	p := u.Primary
+	if p == nil || p.Literal == nil {
+		return nil
+	}
+	return p.Literal.Lambda
 }
 
 // OrExpression handles the 'or' keyword for default values: expr or default
@@ -402,6 +645,17 @@ type Primary struct {
 	// Symbol        string      `parser:" | @Ident"`
 	// Number        string      `parser:" | @Number"`
 	SubExpression *Expression `parser:" | '(' @@ ')'"`
+}
+
+// GetBareIdentifier returns the bare identifier if the primary is just a simple symbol, or "" otherwise.
+func (p *Primary) GetBareIdentifier() string {
+	if p == nil || p.Literal == nil {
+		return ""
+	}
+	if p.Literal.Symbol != "" && len(p.Literal.Chain) == 0 && p.Literal.ArrayIndex == nil {
+		return p.Literal.Symbol
+	}
+	return ""
 }
 
 // Misc TODO: Sort
@@ -531,13 +785,44 @@ type Field struct {
 	Value      *Expression  `parser:"[ '=' @@ ]"`
 }
 
+// DestructuringDeclaration binds struct fields to local variables in one
+// statement: `let Point { x, y } = p`. Shorthand `x` binds field x to local x;
+// `x = a` binds field x to local a.
+type DestructuringDeclaration struct {
+	baseToken
+	Mutability string                `parser:"(@'let' | @'const')"`
+	TypeName   string                `parser:"@Ident"`
+	TypeArgs   []*TypeRef            `parser:"[ '<' @@ { ',' @@ } '>' ]"`
+	Bindings   []*DestructureBinding `parser:"'{' @@ { ',' @@ } '}'"`
+	Value      *Expression           `parser:"'=' @@"`
+}
+
+// DestructureBinding is one field binding in a DestructuringDeclaration.
+type DestructureBinding struct {
+	baseToken
+	Field string `parser:"@Ident"`
+	Alias string `parser:"[ '=' @Ident ]"`
+}
+
+// Target returns the local variable name a binding introduces.
+func (b *DestructureBinding) Target() string {
+	if b == nil {
+		return ""
+	}
+	if b.Alias != "" {
+		return b.Alias
+	}
+	return b.Field
+}
+
 type Assignment struct {
 	baseToken
 	Global bool        `parser:"[ @'global' ]"`
 	Name   string      `parser:"@Ident"`
 	Field  string      `parser:"[ '.' @Ident ]"`
 	Index  *Expression `parser:"[ '[' @@ ']' ]"`
-	Value  *Expression `parser:"'=' @@"`
+	Op     string      `parser:"@( '=' | '+=' | '-=' | '*=' | '/=' | '&=' | '|=' | '^=' | '%=' )"`
+	Value  *Expression `parser:"@@"`
 }
 
 type Declaration struct {
@@ -576,6 +861,7 @@ type Method struct {
 	Variadic   bool         `parser:"[ ',' @'...' | @'...' ] ')'"`
 	Type       *TypeRef     `parser:"[ ':' @@ ]"`
 	Throws     *TypeRef     `parser:"[ 'throws' @@ ]"`
+	Where      *WhereClause `parser:"[ @@ ]"`
 	LinkName   string
 	Value      []*Entry `parser:"[ '{' @@* '}' ]"`
 }
@@ -632,11 +918,21 @@ type FuncType struct {
 	Throws     *TypeRef   `parser:"[ 'throws' @@ ]"`
 }
 
+type Lambda struct {
+	baseToken
+	Params     []*Value    `parser:"'fn' '(' [ @@ { ',' @@ } ] ')'"`
+	ReturnType *TypeRef    `parser:"[ ':' @@ ]"`
+	Body       []*Entry    `parser:"'{' @@* '}'"`
+}
+
 type Literal struct {
 	baseToken
 	IsPointer      bool              `parser:"[ @'&' ]"`
 	Intrinsic      *Intrinsic        `parser:"( @@"`
+	Lambda         *Lambda           `parser:" | @@"`
 	FuncCall       *FuncCall         `parser:" | @@"`
+	IncDec         *IncDec           `parser:" | @@"`
+	Match          *Match            `parser:" | @@"`
 	Bool           string            `parser:" | @( 'true' | 'false' )"`
 	String         string            `parser:" | @String"`
 	BacktickString string            `parser:" | @BacktickString"`
@@ -718,6 +1014,12 @@ type ObjectKeyValue struct {
 	Value *Expression `parser:"@@"`
 }
 
+type IncDec struct {
+	baseToken
+	Target string `parser:"@Ident"`
+	Op     string `parser:"@( Inc | Dec )"`
+}
+
 type Loop struct {
 	baseToken
 	For           string      `parser:"( 'for'"`
@@ -725,8 +1027,9 @@ type Loop struct {
 	ForIn         *ForInLoop  `parser:"   | @@"`
 	ForExpression *Expression `parser:"   | @@ )"`
 	While         string      `parser:"| 'while'"`
-	WhileExpr     *Expression `parser:"  @@ )"`
-	Value         []*Entry    `parser:" '{' @@* '}' "`
+	WhileExpr     *Expression `parser:"  @@ "`
+	LoopKw        string      `parser:"| 'loop'"`
+	Value         []*Entry    `parser:") '{' @@* '}' "`
 }
 
 type ForOfLoop struct {

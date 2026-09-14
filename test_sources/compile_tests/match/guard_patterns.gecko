@@ -1,0 +1,20 @@
+declare external variardic func printf(format: string): int32
+
+func classify(x: int32): int32 {
+    return match x {
+        1..5 if x > 3 => 100
+        1..5 => 200
+        6..10 if x == 7 => 300
+        6..10 => 400
+        default => 0
+    }
+}
+
+external func main(): int32 {
+    let r1: int32 = classify(4)
+    let r2: int32 = classify(2)
+    let r3: int32 = classify(7)
+    let r4: int32 = classify(8)
+    printf("r1=%d r2=%d r3=%d r4=%d\n", r1, r2, r3, r4)
+    return r1
+}

@@ -1,0 +1,23 @@
+import std.collections.hashmap use { HashMap, Entry }
+
+declare external variardic func printf(format: string): int32
+
+external func main(): int32 {
+    let m: HashMap<string, int32>
+    m = HashMap<string, int32>::new()
+
+    m.put("hello", 42)
+    m.put("world", 100)
+
+    printf("Map size: %d\n", m.len())
+
+    if (m.is_empty()) {
+        printf("Map is empty\n")
+    } else {
+        printf("Map is not empty\n")
+    }
+
+    m.drop()
+
+    return 0
+}

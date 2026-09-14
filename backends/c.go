@@ -39,6 +39,17 @@ func (b *CBackend) Init() {
 	cbackend.CurrentTypeState = nil
 	cbackend.SetSemanticProgram(nil)
 	cbackend.InitTypeParameterChecker()
+
+	// Register the DeferHook to emit deferred expressions at scope exit.
+	// This hook fires when the lowering pipeline exits a scope.
+	GlobalScopeLifecycle.Register(&DeferHook{
+		EmitDefer: func(scope *ast.Ast, deferStmt *tokens.Defer) {
+			impl := b.impls.(*cbackend.CBackendImplementation)
+			info := cbackend.CGetScopeInformation(scope)
+			expr := impl.ExpressionToCString(deferStmt.Expression, scope)
+			info.Code += fmt.Sprintf("    /* defer */ %s;\n", expr)
+		},
+	})
 }
 
 func (b *CBackend) ProcessEntries(entries []*tokens.Entry, scope *ast.Ast) {

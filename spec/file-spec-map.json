@@ -13,6 +13,7 @@
     "spec/memory.md",
     "spec/c-interop.md",
     "spec/attributes.md",
+    "spec/unsafe.md",
     "spec/stdlib.md"
   ],
   "exclude_prefixes": [
@@ -143,6 +144,20 @@
       ]
     },
     {
+      "prefix": "semantic/",
+      "specs": [
+        "spec/types.md",
+        "spec/functions.md",
+        "spec/classes.md",
+        "spec/traits.md",
+        "spec/generics.md",
+        "spec/modules.md",
+        "spec/scoping.md",
+        "spec/attributes.md",
+        "spec/unsafe.md"
+      ]
+    },
+    {
       "prefix": "parser/",
       "specs": [
         "spec/types.md",
@@ -223,6 +238,30 @@
     }
   ],
   "contains_rules": [
+    {
+      "contains": "UnsafeHandler",
+      "specs": [
+        "spec/unsafe.md"
+      ]
+    },
+    {
+      "contains": "UnsafeOp",
+      "specs": [
+        "spec/unsafe.md"
+      ]
+    },
+    {
+      "contains": "@unsafe",
+      "specs": [
+        "spec/unsafe.md"
+      ]
+    },
+    {
+      "contains": "unsafe",
+      "specs": [
+        "spec/unsafe.md"
+      ]
+    },
     {
       "contains": "trait",
       "specs": [

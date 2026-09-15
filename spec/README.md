@@ -21,6 +21,7 @@ This spec documents **what exists**, not aspirational features. Each document no
 | [memory.md](memory.md) | Pointers, references, address-of |
 | [c-interop.md](c-interop.md) | External declarations, C ABI |
 | [attributes.md](attributes.md) | Compile-time attributes, trait hooks |
+| [unsafe.md](unsafe.md) | Unsafe intrinsics, `@unsafe` regions, handler model |
 | [stdlib.md](stdlib.md) | Standard library structure and modules |
 | [TODO-implementation-alignment.md](TODO-implementation-alignment.md) | Tracking doc for spec/implementation parity work |
 

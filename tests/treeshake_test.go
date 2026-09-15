@@ -1,3 +1,5 @@
+// spec: spec/types.md, spec/traits.md, spec/modules.md, spec/scoping.md
+
 package tests
 
 import (

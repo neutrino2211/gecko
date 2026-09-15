@@ -52,6 +52,10 @@ Allows compiler to optimize callers.
 Marks a function (or `@unsafe { ... }` block) as an explicit unsafe region.
 `as!` and other trusted operations are only allowed inside `@unsafe`:
 
+The handler-based safety model — composable handler instances that decide what
+happens on a guarded-operation violation (recover to a `Result`, or trap) — is
+documented in [unsafe.md](unsafe.md).
+
 ```gecko
 @unsafe
 func map_reg(addr: uint64): uint32 readonly* {

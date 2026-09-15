@@ -105,4 +105,7 @@ type BackendCodegenImplementations interface {
 
 	// Struct destructuring declarations
 	DestructuringDeclaration(*ast.Ast, *tokens.DestructuringDeclaration)
+
+	// Unsafe regions
+	NewUnsafeBlock(*ast.Ast, *tokens.UnsafeBlock)
 }

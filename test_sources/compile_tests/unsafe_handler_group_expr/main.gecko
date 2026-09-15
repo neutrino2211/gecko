@@ -1,0 +1,42 @@
+import std.unsafe use { UnsafeHandler, UnsafeOp }
+import std.result use { Result }
+
+// Recovering handler that fails its guard when constructed with a null pointer.
+class Tracked {
+    let ptr: void*
+    let violated: bool
+    public func handler(p: void*): Tracked {
+        let h: Tracked
+        h.ptr = p
+        h.violated = false
+        return h
+    }
+}
+
+@attach_handler("write_volatile", "read_volatile")
+impl UnsafeHandler for Tracked {
+    func guard(self, op: UnsafeOp): bool {
+        return self.ptr != null
+    }
+    func catch(self, op: UnsafeOp): void {
+        self.violated = true
+    }
+}
+
+external func main(): int32 {
+    // Group of two handlers composed with `&`. The first fails (null), the
+    // second passes (valid pointer). The `@unsafe with ...` expression yields an
+    // Err whose variant is the first failing handler (index 0).
+    let bad: int32* = null
+    let good: int32* = (1 as void*) as int32*
+    let ha = Tracked::handler(bad as void*)
+    let hb = Tracked::handler(good as void*)
+    let r = @unsafe with ha & hb {
+        @write_volatile(good, 5)
+        9
+    }
+    if (r.is_error()) {
+        return 1
+    }
+    return 0
+}

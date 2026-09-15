@@ -17,13 +17,19 @@ class Rc<T> {
         let addr: uint64 = mem as uint64
 
         let strong_ptr: uint64* = addr as uint64*
-        @write_volatile(strong_ptr, 1)
+        @unsafe {
+            @write_volatile(strong_ptr, 1)
+        }
 
         let weak_ptr: uint64* = (addr + 8) as uint64*
-        @write_volatile(weak_ptr, 1)
+        @unsafe {
+            @write_volatile(weak_ptr, 1)
+        }
 
         let value_ptr: T* = (addr + 16) as T*
-        @write_volatile(value_ptr, value)
+        @unsafe {
+            @write_volatile(value_ptr, value)
+        }
 
         let r: Rc<T>
         r.ptr = addr
@@ -65,7 +71,9 @@ class Rc<T> {
 
         if (count <= 1) {
             // Set strong to 0 but don't free yet if weak refs exist
-            @write_volatile(strong_ptr, 0)
+            @unsafe {
+                @write_volatile(strong_ptr, 0)
+            }
 
             let weak_ptr: uint64* = (self.ptr + 8) as uint64*
             let weak_count: uint64 = @deref(weak_ptr)
@@ -75,7 +83,9 @@ class Rc<T> {
             }
             self.ptr = 0
         } else {
-            @write_volatile(strong_ptr, count - 1)
+            @unsafe {
+                @write_volatile(strong_ptr, count - 1)
+            }
         }
     }
 }
@@ -88,7 +98,9 @@ class Weak<T> {
         if (rc_ptr != 0) {
             let weak_ptr: uint64* = (rc_ptr + 8) as uint64*
             let count: uint64 = @deref(weak_ptr)
-            @write_volatile(weak_ptr, count + 1)
+            @unsafe {
+                @write_volatile(weak_ptr, count + 1)
+            }
         }
 
         let w: Weak<T>
@@ -144,10 +156,14 @@ class Weak<T> {
             if (scount == 0) {
                 free(self.ptr as void*)
             } else {
-                @write_volatile(weak_ptr, wcount - 1)
+                @unsafe {
+                    @write_volatile(weak_ptr, wcount - 1)
+                }
             }
         } else {
-            @write_volatile(weak_ptr, wcount - 1)
+            @unsafe {
+                @write_volatile(weak_ptr, wcount - 1)
+            }
         }
 
         self.ptr = 0

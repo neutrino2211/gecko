@@ -30,7 +30,7 @@
 A type reference specifies a type with optional modifiers:
 
 ```
-TypeRef = ValueType [ 'volatile' ] [ '*' ]
+TypeRef = ValueType [ 'readonly' ] [ 'volatile' ] [ '*' ] [ '!' ]
 ValueType = Type [ '<' TypeArgs '>' ] [ '?' ]
 ```
 
@@ -73,6 +73,19 @@ const y: int32 = 42
 ```
 
 `const` makes the binding immutable.
+
+### Readonly
+
+`readonly` is a type qualifier (same slot as `volatile`):
+
+```gecko
+let p: int32 readonly*     // pointer to readonly int32 → C const int32_t*
+func hash(data: uint8 readonly*, len: uint64): uint64
+```
+
+- `T` may flow into `T readonly` / `T*` into `T readonly*`
+- Discarding `readonly` requires `as!` inside `@unsafe`
+- Stores through `T readonly*` are rejected
 
 ## Arrays
 

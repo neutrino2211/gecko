@@ -18,6 +18,7 @@ func might_fail(x: int32): int32 throws Error {
 }
 
 // Test: as! trusted cast
+@unsafe
 func trusted_cast_example(): void {
     let raw: uint64 = 0xB8000
     let ptr: uint16* = raw as! uint16*

@@ -38,6 +38,7 @@ const (
 	LoweredOpIncDec         LoweredOperationKind = "inc_dec"
 	LoweredOpExprStmt       LoweredOperationKind = "expr_stmt"
 	LoweredOpDestructuring  LoweredOperationKind = "destructuring"
+	LoweredOpUnsafeBlock    LoweredOperationKind = "unsafe_block"
 )
 
 // LoweredOperation is the shared lowering payload that backend emitters consume.
@@ -65,6 +66,7 @@ type LoweredOperation struct {
 	IncDec         *tokens.IncDec
 	ExprStmt       *tokens.Expression
 	Destructuring  *tokens.DestructuringDeclaration
+	UnsafeBlock    *tokens.UnsafeBlock
 }
 
 func lowerEntry(entry *tokens.Entry) (LoweredOperation, bool) {
@@ -121,6 +123,8 @@ func lowerEntry(entry *tokens.Entry) (LoweredOperation, bool) {
 		return LoweredOperation{Kind: LoweredOpForeign, Foreign: entry.Foreign}, true
 	case entry.IncDec != nil:
 		return LoweredOperation{Kind: LoweredOpIncDec, IncDec: entry.IncDec}, true
+	case entry.UnsafeBlock != nil:
+		return LoweredOperation{Kind: LoweredOpUnsafeBlock, UnsafeBlock: entry.UnsafeBlock}, true
 	case entry.ExprStmt != nil:
 		return LoweredOperation{Kind: LoweredOpExprStmt, ExprStmt: entry.ExprStmt}, true
 	default:
@@ -204,6 +208,8 @@ func (e *compatibilityEmitter) EmitLoweredOperation(scope *ast.Ast, op LoweredOp
 		e.impl.ExprStatement(scope, op.ExprStmt)
 	case LoweredOpDestructuring:
 		e.impl.DestructuringDeclaration(scope, op.Destructuring)
+	case LoweredOpUnsafeBlock:
+		e.impl.NewUnsafeBlock(scope, op.UnsafeBlock)
 	}
 }
 

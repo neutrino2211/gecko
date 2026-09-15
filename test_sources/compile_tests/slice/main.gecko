@@ -1,0 +1,60 @@
+// spec: spec/types.md, spec/traits.md, spec/modules.md, spec/operators.md, spec/pointers.md, spec/memory.md, spec/stdlib.md, spec/attributes.md
+
+package main
+
+import std.collections.slice use { Slice, ConstSlice }
+import std.option use { Option }
+
+cimport <stdlib.h>
+
+declare external variardic func printf(fmt: string): int32
+
+external func main(): int32 {
+    let mem: void* = malloc(12)
+    let p: int32* = mem as int32*
+    @unsafe {
+        @write_volatile(p, 10)
+        @write_volatile(@ptr_add(p, 1) as int32*, 20)
+        @write_volatile(@ptr_add(p, 2) as int32*, 30)
+    }
+
+    let s: Slice<int32> = Slice<int32>::from_raw(p, 3)
+    if (s.len() != 3) {
+        return 1
+    }
+
+    let got: Option<int32> = s.get(1)
+    if (got.is_none()) {
+        return 2
+    }
+    if (got.unwrap() != 20) {
+        return 3
+    }
+
+    let miss: Option<int32> = s.get(99)
+    if (miss.is_some()) {
+        return 4
+    }
+
+    s.set_unchecked(0, 42)
+    if (s.get_unchecked(0) != 42) {
+        return 5
+    }
+
+    let sub: Slice<int32> = s.subslice(1, 2)
+    if (sub.len() != 2) {
+        return 6
+    }
+    if (sub.get_unchecked(0) != 20) {
+        return 7
+    }
+
+    let cs: ConstSlice<int32> = s.as_const()
+    if (cs.get_unchecked(0) != 42) {
+        return 8
+    }
+
+    free(mem)
+    printf("slice ok\n")
+    return 0
+}

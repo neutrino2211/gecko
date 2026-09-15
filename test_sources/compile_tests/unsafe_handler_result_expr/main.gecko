@@ -1,0 +1,17 @@
+import std.unsafe use { NonNull }
+import std.result use { Result }
+
+// `@unsafe with ... { }` as an expression yields a Result<T, E> that can be bound
+// directly with `let r = ...` (no `as name` binder needed).
+external func main(): int32 {
+    let x: int32 = 0
+    let p: int32* = &x
+    let r = @unsafe with NonNull::handler(p as void*) {
+        @write_volatile(p, 99)
+        99
+    }
+    if (!r.is_error()) {
+        return r.unwrap()
+    }
+    return 0
+}

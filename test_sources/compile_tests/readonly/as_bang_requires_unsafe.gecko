@@ -1,0 +1,10 @@
+// spec: spec/types.md, spec/attributes.md, spec/operators.md, spec/pointers.md
+
+package main
+
+external func main(): int32 {
+    let raw: uint64 = 0
+    // as! outside @unsafe must fail
+    let p: int32* = raw as! int32*
+    return 0
+}

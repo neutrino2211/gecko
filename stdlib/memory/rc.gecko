@@ -46,14 +46,20 @@ public class Rc<T> {
 
         // Set refcounts
         let strong_ptr: uint64* = addr as uint64*
-        @write_volatile(strong_ptr, 1)  // strong = 1
+        @unsafe {
+            @write_volatile(strong_ptr, 1)  // strong = 1
+        }
 
         let weak_ptr: uint64* = (addr + 8) as uint64*
-        @write_volatile(weak_ptr, 1)    // weak = 1 (includes strong refs)
+        @unsafe {
+            @write_volatile(weak_ptr, 1)    // weak = 1 (includes strong refs)
+        }
 
         // Write value - offset by 16 bytes (2 x uint64)
         let value_ptr: T* = (addr + 16) as T*
-        @write_volatile(value_ptr, value)
+        @unsafe {
+            @write_volatile(value_ptr, value)
+        }
 
         let r: Rc<T>
         r.ptr = addr
@@ -117,7 +123,9 @@ public class Rc<T> {
             // Increment strong count
             let strong_ptr: uint64* = self.ptr as uint64*
             let count: uint64 = @deref(strong_ptr)
-            @write_volatile(strong_ptr, count + 1)
+            @unsafe {
+                @write_volatile(strong_ptr, count + 1)
+            }
         }
 
         let r: Rc<T>
@@ -143,7 +151,9 @@ public class Rc<T> {
             self.ptr = 0
         } else {
             // Decrement count
-            @write_volatile(strong_ptr, count - 1)
+            @unsafe {
+                @write_volatile(strong_ptr, count - 1)
+            }
         }
     }
 
@@ -173,7 +183,9 @@ impl<T> Drop for Rc<T> {
             free(self.ptr as void*)
             self.ptr = 0
         } else {
-            @write_volatile(strong_ptr, count - 1)
+            @unsafe {
+                @write_volatile(strong_ptr, count - 1)
+            }
         }
     }
 }
@@ -183,7 +195,9 @@ impl<T> Clone for Rc<T> {
         if (self.ptr != 0) {
             let strong_ptr: uint64* = self.ptr as uint64*
             let count: uint64 = @deref(strong_ptr)
-            @write_volatile(strong_ptr, count + 1)
+            @unsafe {
+                @write_volatile(strong_ptr, count + 1)
+            }
         }
 
         let r: Rc<T>

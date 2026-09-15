@@ -67,6 +67,9 @@ func (f *fakeBackendImpl) ExprStatement(*ast.Ast, *tokens.Expression) {
 func (f *fakeBackendImpl) DestructuringDeclaration(*ast.Ast, *tokens.DestructuringDeclaration) {
 	f.calls = append(f.calls, "destructuring")
 }
+func (f *fakeBackendImpl) NewUnsafeBlock(*ast.Ast, *tokens.UnsafeBlock) {
+	f.calls = append(f.calls, "unsafe_block")
+}
 func (f *fakeBackendImpl) NewAssignment(*ast.Ast, *tokens.Assignment) {
 	f.calls = append(f.calls, "assignment")
 }

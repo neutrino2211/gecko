@@ -35,7 +35,9 @@ public class Box<T> {
 
         // Write value to allocated memory
         let dest: T* = addr as T*
-        @write_volatile(dest, value)
+        @unsafe {
+            @write_volatile(dest, value)
+        }
 
         let b: Box<T>
         b.ptr = addr
@@ -80,7 +82,9 @@ public class Box<T> {
     /// Overwrites the value stored in the Box.
     func set(self, value: T) {
         let p: T* = self.ptr as T*
-        @write_volatile(p, value)
+        @unsafe {
+            @write_volatile(p, value)
+        }
     }
 
     /// Returns the raw pointer without giving up ownership.

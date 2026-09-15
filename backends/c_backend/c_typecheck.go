@@ -104,6 +104,13 @@ func TypesAreCompatible(expected, actual *tokens.TypeRef, scope *ast.Ast) bool {
 		if expected.Pointer && expected.NonNull && !actual.NonNull {
 			return false
 		}
+		// Word qualifiers: may add readonly/volatile, must not drop them implicitly.
+		if actual.Const && !expected.Const {
+			return false
+		}
+		if actual.Volatile && !expected.Volatile {
+			return false
+		}
 		return true
 	}
 
@@ -117,6 +124,12 @@ func TypesAreCompatible(expected, actual *tokens.TypeRef, scope *ast.Ast) bool {
 	if expected.Pointer && actual.Pointer {
 		// Nullability check for pointers: nullable pointer cannot flow into non-null pointer.
 		if expected.NonNull && !actual.NonNull {
+			return false
+		}
+		if actual.Const && !expected.Const {
+			return false
+		}
+		if actual.Volatile && !expected.Volatile {
 			return false
 		}
 		// void* is compatible with any pointer
@@ -484,6 +497,9 @@ func FormatTypeRef(t *tokens.TypeRef) string {
 
 	result := t.Type
 
+	if t.Const {
+		result += " readonly"
+	}
 	if t.Volatile {
 		result += " volatile"
 	}
@@ -778,6 +794,13 @@ func (impl *CBackendImplementation) CheckFunctionCallTypes(f *tokens.FuncCall, s
 // CheckAssignmentType checks if assignment value matches variable type
 func (impl *CBackendImplementation) CheckAssignmentType(a *tokens.Assignment, scope *ast.Ast) {
 	if a == nil || scope.ErrorScope == nil {
+		return
+	}
+
+	// `@unsafe with ... { }` as the RHS is emitted specially by NewAssignment
+	// (into a temp Result holder that is then assigned in); its type is not
+	// inferred by the general expression path, so skip here.
+	if a.Value != nil && a.Value.GetUnsafeBlock() != nil {
 		return
 	}
 

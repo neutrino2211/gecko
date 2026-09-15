@@ -1,0 +1,38 @@
+package main
+
+import std.unsafe use { UnsafeHandler, UnsafeOp }
+
+// Tracked is a *recovering* handler: when guard fails, catch records the
+// violation on the handler instance so the caller can observe it instead of
+// the operation being blindly executed (or trapping).
+public class Tracked {
+    let ptr: void*
+    let violated: bool
+    public func handler(p: void*): Tracked {
+        let h: Tracked
+        h.ptr = p
+        h.violated = false
+        return h
+    }
+}
+@attach_handler("write_volatile", "read_volatile")
+impl UnsafeHandler for Tracked {
+    func guard(self, op: UnsafeOp): bool {
+        return self.ptr != null
+    }
+    func catch(self, op: UnsafeOp): void {
+        self.violated = true
+    }
+}
+
+external func main(): int32 {
+    let p: int32* = null
+    let h = Tracked::handler(p as void*)
+    @unsafe with h {
+        @write_volatile(p, 42)
+    }
+    if (h.violated) {
+        return 0
+    }
+    return 1
+}

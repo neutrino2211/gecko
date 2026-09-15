@@ -34,7 +34,9 @@ public class Weak<T> {
             // Increment weak count
             let weak_ptr: uint64* = (rc_ptr + 8) as uint64*
             let count: uint64 = @deref(weak_ptr)
-            @write_volatile(weak_ptr, count + 1)
+            @unsafe {
+                @write_volatile(weak_ptr, count + 1)
+            }
         }
 
         let w: Weak<T>
@@ -102,7 +104,9 @@ public class Weak<T> {
         if (self.ptr != 0) {
             let weak_ptr: uint64* = (self.ptr + 8) as uint64*
             let count: uint64 = @deref(weak_ptr)
-            @write_volatile(weak_ptr, count + 1)
+            @unsafe {
+                @write_volatile(weak_ptr, count + 1)
+            }
         }
 
         let w: Weak<T>
@@ -130,7 +134,9 @@ public class Weak<T> {
             if (strong_count == 0) {
                 free(self.ptr as void*)
             } else {
-                @write_volatile(weak_ptr, weak_count - 1)
+                @unsafe {
+                    @write_volatile(weak_ptr, weak_count - 1)
+                }
             }
         } else {
             @write_volatile(weak_ptr, weak_count - 1)

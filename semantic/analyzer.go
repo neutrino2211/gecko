@@ -20,6 +20,8 @@ type analyzer struct {
 	currentFunction *FunctionSignature
 	currentReturn   *tokens.TypeRef
 	loopDepth       int
+
+	unsafeBlockCounter int
 }
 
 type boundVar struct {
@@ -512,6 +514,8 @@ func (a *analyzer) analyzeEntries(entries []*tokens.Entry, in *flowEnv) *flowEnv
 			for _, arg := range entry.Intrinsic.Args {
 				a.inferExpression(arg, env, nil)
 			}
+		case entry.UnsafeBlock != nil:
+			a.analyzeUnsafeBlock(entry.UnsafeBlock, env)
 		}
 	}
 	return env
@@ -551,6 +555,25 @@ func (a *analyzer) analyzeDestructuringDecl(d *tokens.DestructuringDeclaration, 
 
 func (a *analyzer) analyzeFieldDecl(field *tokens.Field, env *flowEnv) *flowEnv {
 	out := env.clone()
+
+	// `@unsafe with ... { }` used as the initializer of a `let`/`const` binds the
+	// block's Result<T, E> directly into the variable (e.g. `let r = @unsafe ...`).
+	if ub := field.Value.GetUnsafeBlock(); ub != nil {
+		tokens.UnsafeBlockBindNames[ub] = field.Name
+		resType := a.analyzeUnsafeBlock(ub, out)
+		if resType == nil {
+			resType = &tokens.TypeRef{Type: "int"}
+		}
+		full := field.Name
+		if a.currentFunction != nil {
+			full = a.currentFunction.FullName + "::" + field.Name + fmt.Sprintf("@%d:%d", field.Pos.Line, field.Pos.Column)
+		}
+		sid := a.program.addSymbol(SymbolVariable, field.Name, full, resType, field.Pos)
+		a.nameForID[sid] = field.Name
+		out.bind(field.Name, resType, sid)
+		return out
+	}
+
 	declType := CloneTypeRef(field.Type)
 	valueType := a.inferExpression(field.Value, out, declType)
 	finalType := declType
@@ -598,6 +621,19 @@ func (a *analyzer) analyzeAssignment(assign *tokens.Assignment, env *flowEnv) *f
 	// Keep semantic pass conservative here to avoid false positives like `p.x = 1`.
 	if assign.Field != "" || assign.Index != nil {
 		a.inferExpression(assign.Value, out, nil)
+		return out
+	}
+
+	// `@unsafe with ... { }` used as the RHS of an assignment (e.g. `r = @unsafe ...`)
+	// reuses an already-declared Result variable: the block binds into it, reusing
+	// the existing variable's error-enum type so the new value matches its type.
+	if ub := assign.Value.GetUnsafeBlock(); ub != nil {
+		if target := out.lookup(assign.Name); target != nil && target.Type != nil &&
+			target.Type.Type == "Result" && len(target.Type.TypeArgs) == 2 {
+			tokens.UnsafeBlockErrorNames[ub] = target.Type.TypeArgs[1].Type
+		}
+		tokens.UnsafeBlockBindNames[ub] = assign.Name
+		a.analyzeUnsafeBlock(ub, out)
 		return out
 	}
 
@@ -989,6 +1025,53 @@ func (a *analyzer) inferPrimary(p *tokens.Primary, env *flowEnv, expected *token
 		return a.inferExpression(p.SubExpression, env, expected)
 	}
 	return a.inferLiteral(p.Literal, env, expected)
+}
+
+// analyzeUnsafeBlock synthesizes an `@unsafe with H { ... }` block's Result type.
+// It records a unique error-enum type name on the token (so codegen can emit the
+// enum), infers the block's trailing expression as the Result's Ok type, and
+// binds the block's name (set programmatically by the `let r =` / `r =` forms) to
+// `Result<T, E>` so later statements can read its Ok/Err via Result's
+// is_error/unwrap/err. It returns the synthesized Result type (or nil when the
+// block has no binder, i.e. a bare `@unsafe with H { }` statement with no Result).
+func (a *analyzer) analyzeUnsafeBlock(block *tokens.UnsafeBlock, env *flowEnv) *tokens.TypeRef {
+	bindName, hasBind := tokens.UnsafeBlockBindNames[block]
+	if !hasBind {
+		return nil
+	}
+	enumName := tokens.UnsafeBlockErrorNames[block]
+	if enumName == "" {
+		a.unsafeBlockCounter++
+		enumName = fmt.Sprintf("__gecko_unsafe_err%d", a.unsafeBlockCounter)
+		tokens.UnsafeBlockErrorNames[block] = enumName
+	}
+	if _, ok := a.program.classes[enumName]; !ok {
+		a.program.classes[enumName] = &ClassInfo{
+			Name:   enumName,
+			Fields: make(map[string]*tokens.TypeRef),
+		}
+	}
+
+	var tType *tokens.TypeRef
+	if len(block.Body) > 0 {
+		last := block.Body[len(block.Body)-1]
+		if last.ExprStmt != nil {
+			tType = a.inferExpression(last.ExprStmt, env, nil)
+		}
+	}
+	if tType == nil {
+		tType = &tokens.TypeRef{Type: "void"}
+	}
+
+	resType := &tokens.TypeRef{
+		Type:     "Result",
+		TypeArgs: []*tokens.TypeRef{tType, &tokens.TypeRef{Type: enumName}},
+	}
+	env.vars[bindName] = &boundVar{
+		Name: bindName,
+		Type: CloneTypeRef(resType),
+	}
+	return resType
 }
 
 func (a *analyzer) inferLiteral(l *tokens.Literal, env *flowEnv, expected *tokens.TypeRef) *tokens.TypeRef {

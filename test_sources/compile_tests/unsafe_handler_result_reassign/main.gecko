@@ -1,0 +1,20 @@
+import std.unsafe use { NonNull }
+import std.result use { Result }
+
+// Reassigning an existing Result variable with `r = @unsafe with ... { }` emits
+// the block into a temp holder and copies it into `r`, reusing `r`'s error enum.
+external func main(): int32 {
+    let x: int32 = 0
+    let p: int32* = &x
+    let r = @unsafe with NonNull::handler(p as void*) {
+        @write_volatile(p, 10)
+        10
+    }
+    if (r.is_error()) { return 2 }
+    r = @unsafe with NonNull::handler(p as void*) {
+        @write_volatile(p, 20)
+        20
+    }
+    if (r.is_error()) { return 3 }
+    return r.unwrap()
+}

@@ -1,0 +1,14 @@
+// spec: spec/attributes.md, spec/functions.md
+
+package main
+
+@unsafe
+func sneaky(): int32 {
+    return 7
+}
+
+func main(): int32 {
+    // Calling an @unsafe function requires an @unsafe region at the call site
+    let v: int32 = sneaky()
+    return v
+}

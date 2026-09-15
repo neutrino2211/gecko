@@ -14,6 +14,13 @@ type baseToken struct {
 	RefID  string
 }
 
+// UnsafeBlockErrorNames maps an `@unsafe with ...` block to the synthesized C
+// error-enum type name (variants = handler ids) produced by the analyzer. It is a
+// package-level map (rather than a `parser:"-"` field on UnsafeBlock) because
+// participle's LL(1) builder rejects an ignored field on a
+// struct that also carries an `@@*` body.
+var UnsafeBlockErrorNames = map[*UnsafeBlock]string{}
+
 // Attribute represents a compile-time attribute like @packed, @section(".text"), or @drop_hook(.drop)
 type Attribute struct {
 	baseToken
@@ -255,6 +262,8 @@ type Entry struct {
 	Declaration   *Declaration              `parser:"| @@"`
 	Foreign     *Foreign     `parser:"| @@"`
 	Enum        *Enum        `parser:"| @@"`
+	// @unsafe { ... } must precede Intrinsic so `@unsafe {` is not read as `@unsafe(`
+	UnsafeBlock *UnsafeBlock `parser:"| @@"`
 	// Intrinsic must come before declarations
 	Intrinsic *Intrinsic `parser:"| @@"`
 	// IncDec must come before ExprStmt to avoid i++ being parsed as expression i followed by unexpected ++
@@ -568,6 +577,49 @@ func (e *Expression) GetLambda() *Lambda {
 	return p.Literal.Lambda
 }
 
+// GetUnsafeBlock returns the UnsafeBlock if this expression is (or bottoms out
+// in) an `@unsafe with ... { }` block, or nil otherwise. Used to detect the block
+// in its expression positions (`let r = @unsafe ...` initializer and `r = @unsafe ...`
+// reassignment) so it can be lowered as a statement that yields a Result.
+func (e *Expression) GetUnsafeBlock() *UnsafeBlock {
+	if e == nil || e.Cond == nil || e.Cond.LogicalOr == nil || e.Cond.LogicalOr.LogicalOr == nil {
+		return nil
+	}
+	lo := e.Cond.LogicalOr.LogicalOr
+	if lo.Next != nil || lo.Op != "" {
+		return nil
+	}
+	la := lo.LogicalAnd
+	if la == nil || la.Next != nil || la.Op != "" {
+		return nil
+	}
+	eq := la.Equality
+	if eq == nil || eq.Next != nil || eq.Op != "" {
+		return nil
+	}
+	c := eq.Comparison
+	if c == nil || c.Next != nil || c.Op != "" {
+		return nil
+	}
+	a := c.Addition
+	if a == nil || a.Next != nil || a.Op != "" {
+		return nil
+	}
+	m := a.Multiplication
+	if m == nil || m.Next != nil || m.Op != "" {
+		return nil
+	}
+	u := m.Unary
+	if u == nil || u.Cast != nil || u.Unary != nil {
+		return nil
+	}
+	p := u.Primary
+	if p == nil {
+		return nil
+	}
+	return p.UnsafeBlock
+}
+
 // OrExpression handles the 'or' keyword for default values: expr or default
 type OrExpression struct {
 	baseToken
@@ -644,7 +696,35 @@ type Primary struct {
 	// String        string      `parser:" | @String"`
 	// Symbol        string      `parser:" | @Ident"`
 	// Number        string      `parser:" | @Number"`
+	// UnsafeBlock lets `@unsafe with ... { }` be used as an expression that yields
+	// a Result<T, E> (e.g. `let r = @unsafe with h { ... }` or `r = @unsafe ...`).
+	UnsafeBlock *UnsafeBlock `parser:"| @@"`
 	SubExpression *Expression `parser:" | '(' @@ ')'"`
+}
+
+// ToExpression wraps a Primary into a full Expression so it can be lowered
+// through the normal expression pipeline (used for `@unsafe with` handlers,
+// which are parsed as Primaries to keep `&` a handler separator).
+func (p *Primary) ToExpression() *Expression {
+	return &Expression{
+		Cond: &ConditionalExpr{
+			LogicalOr: &OrExpression{
+				LogicalOr: &LogicalOr{
+					LogicalAnd: &LogicalAnd{
+						Equality: &Equality{
+							Comparison: &Comparison{
+								Addition: &Addition{
+									Multiplication: &Multiplication{
+										Unary: &Unary{Primary: p},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 // GetBareIdentifier returns the bare identifier if the primary is just a simple symbol, or "" otherwise.
@@ -687,10 +767,11 @@ func (t *Trait) AllParents() []string {
 
 type Implementation struct {
 	baseToken
-	DocComment []string        `parser:"{ @DocComment }"`
-	Visibility string          `parser:"[ @'private' | @'public' | @'protected' ]"`
-	Default    bool            `parser:"[ @'default' ]"`
-	Generic    *GenericImpl    `parser:"'impl' ( @@"`
+	DocComment []string     `parser:"{ @DocComment }"`
+	Visibility string        `parser:"[ @'private' | @'public' | @'protected' ]"`
+	Default    bool          `parser:"[ @'default' ]"`
+	Attributes []*Attribute  `parser:"{ @@ }"`
+	Generic    *GenericImpl  `parser:"'impl' ( @@"`
 	NonGeneric *NonGenericImpl `parser:"       | @@ )"`
 }
 
@@ -762,6 +843,12 @@ func (i *Implementation) GetForTypeArgs() []*TypeRef {
 		return i.NonGeneric.ForTypeArgs
 	}
 	return nil
+}
+
+// GetAttributes returns the compile-time attributes attached to the impl
+// (e.g. @attach_handler), used to register unsafe-handler coverage globally.
+func (i *Implementation) GetAttributes() []*Attribute {
+	return i.Attributes
 }
 
 func (i *Implementation) GetFields() []*ImplementationField {
@@ -905,7 +992,9 @@ type TypeRef struct {
 	Type     string     `parser:"     @Ident ) | @Ident)"`
 	TypeArgs []*TypeRef `parser:"[ '<' @@ { ',' @@ } '>' ]"`
 	Trait    string     `parser:"[ 'is' @Ident ]"`
-	Const    bool       `parser:"[ @'!' ]"`
+	// Const is the readonly type qualifier: `T readonly` / `T readonly*`.
+	// Distinct from binding `const` (Mutability); strips only via as! in @unsafe.
+	Const    bool       `parser:"[ @'readonly' ]"`
 	Volatile bool       `parser:"[ @'volatile' ]"`
 	Pointer  bool       `parser:"[ @'*']"`
 	NonNull  bool       `parser:"[ @'!' ]"` // T*! = non-nullable pointer
@@ -966,6 +1055,24 @@ func (c *ChainAccess) IsMethodCall() bool {
 func (c *ChainAccess) GetArgs() []*Argument {
 	return c.Args
 }
+
+// UnsafeBlock is an explicit unsafe region: `@unsafe { ... }` or
+// `@unsafe with H1 & H2 { ... }`. The `with` form activates unsafe handler
+// instances that guard the intrinsics used inside the block.
+type UnsafeBlock struct {
+	baseToken
+	// Handlers are parsed as Primary expressions (not full Expressions) so the
+	// composing `&` is treated as a handler separator, not a bitwise-AND.
+	Handlers []*Primary `parser:"'@' 'unsafe' [ 'with' @@ { '&' @@ } ]"`
+	Body []*Entry   `parser:"'{' @@* '}'"`
+}
+
+// UnsafeBlockBindNames maps an `@unsafe with ...` block to the variable name it
+// is yielded into (`let r = @unsafe ...` or `r = @unsafe ...`). It is a
+// package-level map rather than a parsed field because participle's LL(1) builder
+// rejects an ignored field here; the binder is set programmatically by the
+// analyzer/codegen, never parsed from source (there is no `as name` syntax).
+var UnsafeBlockBindNames = map[*UnsafeBlock]string{}
 
 // Intrinsic represents a compiler intrinsic call: @name(args) or @name<T>(args)
 type Intrinsic struct {

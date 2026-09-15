@@ -450,6 +450,9 @@ func TypeRefString(t *tokens.TypeRef) string {
 	if t.Volatile {
 		name += " volatile"
 	}
+	if t.Const {
+		name += " readonly"
+	}
 	if t.Pointer {
 		name += "*"
 	}

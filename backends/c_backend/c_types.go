@@ -48,6 +48,25 @@ type CScopeInformation struct {
 	TypeState             *ast.TypeState // Flow-sensitive type state for this scope
 	DeferStack            []string       // Deferred C code expressions to emit at scope exit
 	ClosureCaptures       *ClosureCaptureContext // Active closure capture context for lambda compilation
+	InUnsafe              bool           // True inside @unsafe functions or @unsafe { ... } blocks
+	// ActiveUnsafeHandlers is the stack of unsafe-handler instances active in
+	// the current scope (pushed by `@unsafe with`, popped on block exit). Each
+	// intrinsic call consults these to run guard/catch before executing.
+	ActiveUnsafeHandlers []*UnsafeHandlerInstance
+}
+
+// UnsafeHandlerInstance records one active unsafe-handler value in scope:
+// VarName is its C variable, TypeName is the handler type (used to look up
+// which intrinsics it covers via the global UnsafeHandlerCoverage map).
+// FailFlag/FailIdx are the shared C variable names (one per @unsafe block) that
+// record whether any guard failed and which handler failed first; they are only
+// populated for @unsafe blocks used as expressions (so the Result can be built).
+type UnsafeHandlerInstance struct {
+	VarName  string
+	TypeName string
+	Index    int
+	FailFlag string
+	FailIdx  string
 }
 
 // ClosureCaptureContext tracks captured variables during lambda compilation
@@ -342,7 +361,10 @@ func TypeRefToCType(t *tokens.TypeRef, scope *ast.Ast) string {
 		}
 	}
 
-	// Add volatile qualifier before the pointer
+	// Qualifiers apply to the pointee / value (C: const/volatile T*).
+	if t.Const {
+		base = "const " + base
+	}
 	if t.Volatile {
 		base = "volatile " + base
 	}

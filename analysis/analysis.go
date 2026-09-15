@@ -144,7 +144,7 @@ func (ctx *AnalysisContext) registerFileSymbols(file *tokens.File, scope *ast.As
 					classScope.Variables[field.Field.Name] = ast.Variable{
 						Name:      field.Field.Name,
 						IsPointer: field.Field.Type != nil && field.Field.Type.Pointer,
-						IsConst:   field.Field.Type != nil && field.Field.Type.Const,
+						IsConst:   field.Field.Mutability == "const" || (field.Field.Type != nil && field.Field.Type.Const && !field.Field.Type.Pointer),
 						Parent:    classScope,
 					}
 				}
@@ -154,6 +154,7 @@ func (ctx *AnalysisContext) registerFileSymbols(file *tokens.File, scope *ast.As
 						Visibility: field.Method.Visibility,
 						Parent:     classScope,
 						Type:       getReturnType(field.Method.Type),
+						Unsafe:     tokens.HasAttribute(field.Method.Attributes, "unsafe"),
 					}
 				}
 			}
@@ -179,6 +180,7 @@ func (ctx *AnalysisContext) registerFileSymbols(file *tokens.File, scope *ast.As
 				Visibility: entry.Method.Visibility,
 				Parent:     scope,
 				Type:       getReturnType(entry.Method.Type),
+				Unsafe:     tokens.HasAttribute(entry.Method.Attributes, "unsafe"),
 			}
 		}
 

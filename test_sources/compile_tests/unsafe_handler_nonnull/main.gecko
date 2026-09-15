@@ -1,0 +1,12 @@
+package main
+
+import std.unsafe use { NonNull }
+
+external func main(): int32 {
+    let x: int32 = 0
+    let p: int32* = &x
+    @unsafe with NonNull::handler(p as void*) {
+        @write_volatile(p, 42)
+    }
+    return x
+}

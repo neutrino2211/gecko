@@ -1,0 +1,11 @@
+// spec: spec/attributes.md, spec/pointers.md, spec/operators.md
+
+package main
+
+func main(): int32 {
+    let x: int32 = 1
+    let p: int32* = &x
+    // @write_volatile is an unsafe intrinsic and must be inside @unsafe
+    @write_volatile(p, 2)
+    return 0
+}

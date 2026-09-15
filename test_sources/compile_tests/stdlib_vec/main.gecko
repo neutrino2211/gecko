@@ -42,7 +42,9 @@ class Vec<T> {
     func set(self, index: uint64, value: T) {
         let elem_size: uint64 = @size_of<T>()
         let ptr: T* = (self.data + index * elem_size) as T*
-        @write_volatile(ptr, value)
+        @unsafe {
+            @write_volatile(ptr, value)
+        }
     }
 
     func reserve(self, additional: uint64) {
@@ -64,7 +66,9 @@ class Vec<T> {
         self.reserve(1)
         let elem_size: uint64 = @size_of<T>()
         let ptr: T* = (self.data + self.len * elem_size) as T*
-        @write_volatile(ptr, value)
+        @unsafe {
+            @write_volatile(ptr, value)
+        }
         self.len = self.len + 1
     }
 

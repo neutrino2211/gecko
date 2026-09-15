@@ -43,6 +43,14 @@ var compileTests = []compileTest{
 	// Intrinsics tests
 	{"intrinsics_basic", "test_sources/compile_tests/intrinsics/basic.gecko", 17, false},
 
+	// Unsafe handler tests
+	{"unsafe_handler_catch", "test_sources/compile_tests/unsafe_handler_catch/main.gecko", 0, false},
+	{"unsafe_handler_nonnull", "test_sources/compile_tests/unsafe_handler_nonnull/main.gecko", 42, false},
+	{"unsafe_handler_result_expr", "test_sources/compile_tests/unsafe_handler_result_expr/main.gecko", 99, false},
+	{"unsafe_handler_result_err_expr", "test_sources/compile_tests/unsafe_handler_result_err_expr/main.gecko", 1, false},
+	{"unsafe_handler_result_reassign", "test_sources/compile_tests/unsafe_handler_result_reassign/main.gecko", 20, false},
+	{"unsafe_handler_group_expr", "test_sources/compile_tests/unsafe_handler_group_expr/main.gecko", 1, false},
+
 	// Builtin traits tests
 	{"builtin_traits_pointer", "test_sources/compile_tests/builtin_traits/pointer.gecko", 43, false},
 	{"builtin_traits_nonnull", "test_sources/compile_tests/builtin_traits/nonnull.gecko", 40, false},
@@ -206,6 +214,8 @@ var compileTests = []compileTest{
 	{"import_alias", "test_sources/compile_tests/import_alias/main.gecko", 0, false},
 	{"destructuring", "test_sources/compile_tests/destructuring/main.gecko", 0, false},
 	{"where_clause", "test_sources/compile_tests/where_clause/main.gecko", 0, false},
+	{"slice_api", "test_sources/compile_tests/slice/main.gecko", 0, false},
+	{"readonly_qualifier", "test_sources/compile_tests/readonly/main.gecko", 0, false},
 
 	// TODO: Fix these tests
 	// {"integers", "test_sources/compile_tests/ints/int.gecko", 0, false}, // printf declaration issues
@@ -603,6 +613,18 @@ func TestTypeCheckingErrors(t *testing.T) {
 			expectedMsg:   "cannot add inherent impl for foreign type",
 		},
 		{
+			name:          "readonly_discard_requires_as_bang",
+			file:          "test_sources/compile_tests/readonly/discard_requires_unsafe.gecko",
+			expectedError: "Unsafe Cast Required",
+			expectedMsg:   "discarding readonly",
+		},
+		{
+			name:          "as_bang_requires_unsafe",
+			file:          "test_sources/compile_tests/readonly/as_bang_requires_unsafe.gecko",
+			expectedError: "Unsafe Required",
+			expectedMsg:   "as! is only allowed inside @unsafe",
+		},
+		{
 			name:          "coherence_trait_impl_foreign_foreign",
 			file:          "test_sources/compile_tests/coherence/trait_impl_foreign_foreign_error.gecko",
 			expectedError: "Coherence Error",
@@ -715,6 +737,18 @@ func TestTypeCheckingErrors(t *testing.T) {
 			file:          "test_sources/compile_tests/circular_deps/three_way_cycle.gecko",
 			expectedError: "Circular Type Dependency",
 			expectedMsg:   "infinite size",
+		},
+		{
+			name:          "intrinsic_requires_unsafe",
+			file:          "test_sources/compile_tests/unsafe/intrinsic_requires_unsafe.gecko",
+			expectedError: "Unsafe Required",
+			expectedMsg:   "@write_volatile is only allowed",
+		},
+		{
+			name:          "call_unsafe_requires_unsafe",
+			file:          "test_sources/compile_tests/unsafe/call_unsafe_requires_unsafe.gecko",
+			expectedError: "Unsafe Required",
+			expectedMsg:   "call to @unsafe function",
 		},
 	}
 

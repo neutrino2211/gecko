@@ -1,0 +1,36 @@
+// spec: spec/types.md, spec/attributes.md, spec/operators.md, spec/pointers.md
+
+package main
+
+declare external variardic func printf(fmt: string): int32
+
+func read_only(p: int32 readonly*): int32 {
+    return @deref(p)
+}
+
+@unsafe
+func strip_readonly(p: int32 readonly*): int32* {
+    return p as! int32*
+}
+
+external func main(): int32 {
+    let x: int32 = 7
+    let p: int32* = &x
+    let rp: int32 readonly* = p
+
+    if (read_only(rp) != 7) {
+        return 1
+    }
+
+    @unsafe {
+        let q: int32* = strip_readonly(rp)
+        @write_volatile(q, 9)
+    }
+
+    if (x != 9) {
+        return 2
+    }
+
+    printf("readonly ok\n")
+    return 0
+}

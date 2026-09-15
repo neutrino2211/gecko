@@ -1,0 +1,100 @@
+// spec: spec/types.md, spec/traits.md, spec/modules.md, spec/pointers.md, spec/memory.md, spec/stdlib.md
+
+package unsafe
+
+/// UnsafeOp describes a single unsafe operation handed to a handler's
+/// `guard`/`catch`. `ptr` is the pointer the operation touches (0 for
+/// control-flow intrinsics like @trap), `size` is the covered byte count.
+public class UnsafeOp {
+    let ptr: void*
+    let size: uint64
+}
+
+/// UnsafeHandler is the open trait every unsafe handler implements.
+///
+/// - `guard` returns true if the operation is permitted given the handler's
+///   borrowed state. It is called around every intrinsic the handler covers.
+/// - `catch` runs when `guard` returns false, AFTER which the intrinsic is
+///   SKIPPED (never executed). A handler's `catch` decides the failure policy
+///   and MUST pick exactly one:
+///     * recover  - record the failure and resume (e.g. set a flag). The
+///       surrounding `@unsafe with ...` expression then yields `Err` and
+///       execution continues normally.
+///     * trap     - abort the program (e.g. `@trap`). This is a HARD ABORT:
+///       the process stops and NO `Result` is produced, so `catch` cannot be
+///       used together with the `let`/assignment result form. Trapping handlers
+///       (NonNull, Bounds, Assume below) are useful as "this must never happen"
+///       assertions where continuing would be unsafe.
+public trait UnsafeHandler {
+    func guard(self, op: UnsafeOp): bool
+    func catch(self, op: UnsafeOp): void
+}
+
+/// NonNull: asserts the borrowed pointer is non-null for the covered intrinsics.
+/// This is the basic "don't deref a null pointer" guard.
+///
+/// NOTE: its `catch` TRAPS (hard-aborts the process) on a null pointer. It is
+/// meant as a fatal assertion, not a recoverable error - pair it with a
+/// recovering handler (one whose `catch` records the failure) if you need an
+/// `Err` value instead of a crash.
+public class NonNull {
+    let ptr: void*
+    public func handler(a: void*): NonNull {
+        let h: NonNull
+        h.ptr = a
+        return h
+    }
+}
+@attach_handler("write_volatile", "read_volatile", "ptr_add", "ptr_sub", "copy", "zero")
+impl UnsafeHandler for NonNull {
+    func guard(self, op: UnsafeOp): bool {
+        return self.ptr != null
+    }
+    func catch(self, op: UnsafeOp): void {
+        @trap("null pointer in unsafe operation")
+    }
+}
+
+/// Bounds: asserts the operation stays within [base, base + len).
+public class Bounds {
+    let base: void*
+    let len: uint64
+    public func handler(b: void*, n: uint64): Bounds {
+        let h: Bounds
+        h.base = b
+        h.len = n
+        return h
+    }
+}
+@attach_handler("write_volatile", "read_volatile", "ptr_add", "ptr_sub", "copy", "zero")
+impl UnsafeHandler for Bounds {
+    func guard(self, op: UnsafeOp): bool {
+        let start = self.base as uint64
+        let end = start + self.len
+        let p = op.ptr as uint64
+        return p >= start && p + op.size <= end
+    }
+    func catch(self, op: UnsafeOp): void {
+        @trap("out-of-bounds unsafe operation")
+    }
+}
+
+/// Assume: asserts a precondition. Used to guard @trap / @unreachable, i.e.
+/// "this branch is unreachable IF `cond` holds".
+public class Assume {
+    let cond: bool
+    public func handler(c: bool): Assume {
+        let h: Assume
+        h.cond = c
+        return h
+    }
+}
+@attach_handler("trap", "unreachable")
+impl UnsafeHandler for Assume {
+    func guard(self, op: UnsafeOp): bool {
+        return self.cond
+    }
+    func catch(self, op: UnsafeOp): void {
+        @trap("assumption failed in unsafe operation")
+    }
+}

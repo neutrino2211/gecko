@@ -1,0 +1,39 @@
+import std.unsafe use { UnsafeHandler, UnsafeOp }
+import std.result use { Result }
+
+// Recovering handler: when the guard fails, catch records the violation on the
+// handler instance (it does NOT trap), so the `@unsafe with ...` expression can
+// yield an Err value the caller inspects via Result.is_error().
+class Tracked {
+    let ptr: void*
+    let violated: bool
+    public func handler(p: void*): Tracked {
+        let h: Tracked
+        h.ptr = p
+        h.violated = false
+        return h
+    }
+}
+
+@attach_handler("write_volatile", "read_volatile")
+impl UnsafeHandler for Tracked {
+    func guard(self, op: UnsafeOp): bool {
+        return self.ptr != null
+    }
+    func catch(self, op: UnsafeOp): void {
+        self.violated = true
+    }
+}
+
+external func main(): int32 {
+    let p: int32* = null
+    let h = Tracked::handler(p as void*)
+    let r = @unsafe with h {
+        @write_volatile(p, 42)
+        7
+    }
+    if (r.is_error()) {
+        return 1
+    }
+    return 0
+}

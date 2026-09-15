@@ -23,6 +23,9 @@ func (t *TypeRef) ToCString(scope *ast.Ast) string {
 		base += t.Size.Type.ToCString(scope) + "[" + t.Size.Size + "]"
 	}
 
+	if t.Const {
+		base += " readonly"
+	}
 	if t.Volatile {
 		base += " volatile"
 	}
@@ -30,8 +33,28 @@ func (t *TypeRef) ToCString(scope *ast.Ast) string {
 	if t.Pointer {
 		base += "*"
 	}
+	if t.NonNull {
+		base += "!"
+	}
 
 	return base
+}
+
+// IsReadonly returns true if this type carries the readonly qualifier.
+func (t *TypeRef) IsReadonly() bool {
+	if t == nil {
+		return false
+	}
+	if t.Const {
+		return true
+	}
+	if t.Array != nil {
+		return t.Array.IsReadonly()
+	}
+	if t.Size != nil && t.Size.Type != nil {
+		return t.Size.Type.IsReadonly()
+	}
+	return false
 }
 
 // IsVolatile returns true if this type or any nested array type is volatile

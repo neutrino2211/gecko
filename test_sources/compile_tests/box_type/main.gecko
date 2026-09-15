@@ -15,7 +15,9 @@ class Box<T> {
         let mem: void* = malloc(size)
         let addr: uint64 = mem as uint64
         let dest: T* = addr as T*
-        @write_volatile(dest, value)
+        @unsafe {
+            @write_volatile(dest, value)
+        }
         let b: Box<T>
         b.ptr = addr
         return b
@@ -38,7 +40,9 @@ class Box<T> {
 
     func set(self, value: T) {
         let p: T* = self.ptr as T*
-        @write_volatile(p, value)
+        @unsafe {
+            @write_volatile(p, value)
+        }
     }
 
     func as_raw(self): uint64 {

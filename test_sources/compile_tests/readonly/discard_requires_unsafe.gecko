@@ -1,0 +1,11 @@
+// spec: spec/types.md, spec/attributes.md, spec/operators.md, spec/pointers.md
+
+package main
+
+external func main(): int32 {
+    let x: int32 = 1
+    let p: int32 readonly* = &x
+    // Discarding readonly without as! must fail
+    let q: int32* = p as int32*
+    return 0
+}

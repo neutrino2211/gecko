@@ -15,6 +15,7 @@ type Method struct {
 	Type           string
 	ExternalSymbol string
 	Throws         string // Error type this method can throw (empty if none)
+	Unsafe         bool   // Carries the @unsafe attribute; callers must be in an @unsafe region
 }
 
 func (m *Method) GetFullName() string {

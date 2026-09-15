@@ -347,7 +347,7 @@ func (impls *CBackendImplementation) NewExternalVariable(scope *ast.Ast, f *toke
 	// Register the variable in AST
 	fieldVariable := ast.Variable{
 		Name:       f.Name,
-		IsConst:    f.Type != nil && f.Type.Const,
+		IsConst:    bindingIsConst(f),
 		IsVolatile: f.Type != nil && f.Type.Volatile,
 		IsPointer:  f.Type != nil && f.Type.Pointer,
 		IsExternal: true,
@@ -446,6 +446,7 @@ func (impls *CBackendImplementation) registerExternalMethod(symbolScope *ast.Ast
 		Parent:         symbolScope,
 		Type:           geckoReturnType,
 		ExternalSymbol: map[bool]string{true: symbolName, false: ""}[symbolName != m.Name],
+		Unsafe:         tokens.HasAttribute(m.Attributes, "unsafe"),
 	}
 
 	for _, arg := range m.Arguments {
@@ -521,7 +522,7 @@ func (impls *CBackendImplementation) NewClass(scope *ast.Ast, c *tokens.Class) {
 			fieldVariable := ast.Variable{
 				Name:      f.Field.Name,
 				IsPointer: f.Field.Type != nil && f.Field.Type.Pointer,
-				IsConst:   f.Field.Type != nil && f.Field.Type.Const,
+				IsConst:   bindingIsConst(f.Field),
 				Parent:    classAst,
 			}
 			classAst.Variables[f.Field.Name] = fieldVariable
@@ -546,6 +547,7 @@ func (impls *CBackendImplementation) NewClass(scope *ast.Ast, c *tokens.Class) {
 				Type:       returnType,
 				Visibility: f.Method.Visibility,
 				Parent:     classAst,
+				Unsafe:     tokens.HasAttribute(f.Method.Attributes, "unsafe"),
 			}
 		}
 	}
@@ -652,7 +654,7 @@ func (impls *CBackendImplementation) GenerateClassDef(scope *ast.Ast, c *tokens.
 			fieldVariable := ast.Variable{
 				Name:      f.Field.Name,
 				IsPointer: f.Field.Type != nil && f.Field.Type.Pointer,
-				IsConst:   f.Field.Type != nil && f.Field.Type.Const,
+				IsConst:   bindingIsConst(f.Field),
 				Parent:    classAst,
 			}
 			classAst.Variables[f.Field.Name] = fieldVariable
@@ -678,6 +680,21 @@ func (impls *CBackendImplementation) GenerateClassDef(scope *ast.Ast, c *tokens.
 	})
 }
 
+// stripTypeQualifiers removes leading const/volatile qualifiers from a C type string
+// (e.g. "const volatile Rectangle*" -> "Rectangle*").
+func stripTypeQualifiers(cType string) string {
+	cleanType := strings.TrimSpace(cType)
+	for {
+		trimmed := strings.TrimPrefix(cleanType, "volatile ")
+		trimmed = strings.TrimPrefix(trimmed, "const ")
+		if trimmed == cleanType {
+			break
+		}
+		cleanType = trimmed
+	}
+	return cleanType
+}
+
 // extractDependencyType extracts a type name from a C type string that we depend on.
 // Returns empty string for primitives. Strips pointer suffixes since typedefs need to exist.
 func extractDependencyType(cType string) string {
@@ -688,8 +705,8 @@ func extractDependencyType(cType string) string {
 		"float": true, "double": true, "const char*": true, "char": true,
 	}
 
-	// Remove volatile qualifier
-	cleanType := strings.TrimPrefix(cType, "volatile ")
+	// Remove const/volatile qualifiers (they appear before the base type, e.g. "const Rectangle*")
+	cleanType := stripTypeQualifiers(cType)
 
 	// For pointers, extract the base type - typedefs require the typedef to exist
 	// even when used as a pointer (e.g., Rectangle* requires Rectangle typedef)
@@ -716,8 +733,8 @@ func extractValueDependencyType(cType string) string {
 		"float": true, "double": true, "const char*": true, "char": true,
 	}
 
-	// Remove volatile qualifier
-	cleanType := strings.TrimPrefix(cType, "volatile ")
+	// Remove const/volatile qualifiers
+	cleanType := stripTypeQualifiers(cType)
 
 	// Pointers don't create value dependencies (they have fixed size)
 	if strings.HasSuffix(cleanType, "*") {
@@ -781,7 +798,7 @@ func (impl *CBackendImplementation) GenerateMethodDef(scope *ast.Ast, m *tokens.
 		argVariable := ast.Variable{
 			Name:       arg.Name,
 			IsPointer:  arg.Type != nil && arg.Type.Pointer,
-			IsConst:    arg.Type != nil && arg.Type.Const,
+			IsConst:    argBindingIsConst(arg.Type),
 			IsVolatile: arg.Type != nil && arg.Type.Volatile,
 			IsArgument: true,
 			Parent:     &methodScope,
@@ -798,6 +815,7 @@ func (impl *CBackendImplementation) GenerateMethodDef(scope *ast.Ast, m *tokens.
 	mthInfo.Init()
 	mthInfo.CurrentFunc = name
 	mthInfo.CurrentFuncReturnType = m.Type // Track return type for validation
+	markMethodScopeUnsafe(m, mthInfo)
 	(*CScopeDataMap)[methodScope.GetFullName()] = mthInfo
 
 	// Process method body
@@ -947,7 +965,7 @@ func (impl *CBackendImplementation) GenerateClassMethodDef(scope *ast.Ast, class
 		argVariable := ast.Variable{
 			Name:       paramName,
 			IsPointer:  paramName == "self" || (arg.Type != nil && arg.Type.Pointer),
-			IsConst:    arg.Type != nil && arg.Type.Const,
+			IsConst:    argBindingIsConst(arg.Type),
 			IsVolatile: arg.Type != nil && arg.Type.Volatile,
 			IsArgument: true,
 			Parent:     &methodScope,
@@ -963,6 +981,7 @@ func (impl *CBackendImplementation) GenerateClassMethodDef(scope *ast.Ast, class
 	astMth := &ast.Method{
 		Name:   m.Name,
 		Parent: scope,
+		Unsafe: tokens.HasAttribute(m.Attributes, "unsafe"),
 	}
 	// Register under the instantiated class
 	classAst, ok := scope.Classes[className]
@@ -975,6 +994,7 @@ func (impl *CBackendImplementation) GenerateClassMethodDef(scope *ast.Ast, class
 	mthInfo.Init()
 	mthInfo.CurrentFunc = methodName
 	mthInfo.CurrentFuncReturnType = m.Type // Track return type for validation
+	markMethodScopeUnsafe(m, mthInfo)
 	(*CScopeDataMap)[methodScope.GetFullName()] = mthInfo
 
 	// Process method body
@@ -1043,6 +1063,22 @@ func (impl *CBackendImplementation) MethodCall(scope *ast.Ast, m *tokens.MethodC
 
 // NewImplementation handles implementations (trait impls, inherent impls, arch impls)
 func (impl *CBackendImplementation) NewImplementation(scope *ast.Ast, i *tokens.Implementation) {
+	// Register unsafe-handler coverage from `@attach_handler(...)` attributes.
+	// `impl UnsafeHandler for X` declares (globally) which intrinsics X guards;
+	// the `@unsafe with` lowering consults this to wrap intrinsics with guards.
+		if i.GetName() == "UnsafeHandler" && i.GetFor() != "" {
+		for _, attr := range i.GetAttributes() {
+			if attr.Name == "attach_handler" {
+				handler := normalizeHandlerTypeName(i.GetFor())
+				for _, arg := range attr.Args {
+					intr := strings.TrimSpace(stripAttributeString(arg.String))
+					if intr != "" {
+						UnsafeHandlerCoverage[handler] = append(UnsafeHandlerCoverage[handler], intr)
+					}
+				}
+			}
+		}
+	}
 	if i.GetFor() != "" {
 		// `impl Trait for Class` - trait implementation
 		impl.CImplementationForClass(scope, i)
@@ -1350,7 +1386,7 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 		argVariable := ast.Variable{
 			Name:       paramName,
 			IsPointer:  paramName == "self" || (arg.Type != nil && arg.Type.Pointer),
-			IsConst:    arg.Type != nil && arg.Type.Const,
+			IsConst:    argBindingIsConst(arg.Type),
 			IsVolatile: arg.Type != nil && arg.Type.Volatile,
 			IsArgument: true,
 			Parent:     &methodScope,
@@ -1385,6 +1421,7 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 		Visibility: "external",
 		Parent:     scope,
 		Type:       geckoReturnType,
+		Unsafe:     tokens.HasAttribute(m.Attributes, "unsafe"),
 	}
 
 	if len(m.Value) == 0 {
@@ -1407,6 +1444,13 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 	mthInfo.Init()
 	mthInfo.CurrentFunc = mangledName
 	mthInfo.CurrentFuncReturnType = m.Type // Track return type for validation
+	markMethodScopeUnsafe(m, mthInfo)
+	// guard/catch of an UnsafeHandler are themselves the unsafe boundary, so
+	// their bodies may use the unsafe intrinsics (e.g. @trap) without an
+	// explicit @unsafe block.
+	if strings.Contains(mangledName, "__UnsafeHandler__guard") || strings.Contains(mangledName, "__UnsafeHandler__catch") {
+		mthInfo.InUnsafe = true
+	}
 	(*CScopeDataMap)[methodScope.GetFullName()] = mthInfo
 
 	// Process method body
@@ -1469,6 +1513,7 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 			Visibility: m.Visibility,
 			Parent:     scope,
 			Type:       "generic",
+			Unsafe:     tokens.HasAttribute(m.Attributes, "unsafe"),
 		}
 		scope.Methods[m.Name] = astMth
 		Methods[scope.FullScopeName()+"#"+m.Name] = astMth
@@ -1547,7 +1592,7 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 		argVariable := ast.Variable{
 			Name:       arg.Name,
 			IsPointer:  (paramName == "self" && isClassMethod) || (arg.Type != nil && arg.Type.Pointer),
-			IsConst:    arg.Type != nil && arg.Type.Const,
+			IsConst:    argBindingIsConst(arg.Type),
 			IsVolatile: arg.Type != nil && arg.Type.Volatile,
 			IsArgument: true,
 			Parent:     &methodScope,
@@ -1577,6 +1622,7 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 		Visibility: m.Visibility,
 		Parent:     scope,
 		Type:       geckoReturnType,
+		Unsafe:     tokens.HasAttribute(m.Attributes, "unsafe"),
 	}
 
 	if len(m.Value) == 0 {
@@ -1597,6 +1643,7 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 	mthInfo.Init()
 	mthInfo.CurrentFunc = m.Name
 	mthInfo.CurrentFuncReturnType = m.Type // Track return type for validation
+	markMethodScopeUnsafe(m, mthInfo)
 	(*CScopeDataMap)[methodScope.GetFullName()] = mthInfo
 
 	// Process method body
@@ -1700,6 +1747,16 @@ func (impl *CBackendImplementation) NewMethod(scope *ast.Ast, m *tokens.Method) 
 func (impl *CBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field) {
 	info := CGetScopeInformation(scope)
 
+	// `@unsafe with ... { }` as an initializer: lower the block as a statement
+	// that yields its Result<T, E> into `f.Name` (e.g. `let r = @unsafe ...`).
+	// The block itself declares and assigns the variable, so we skip the normal
+	// `let` emission.
+	if ub := f.Value.GetUnsafeBlock(); ub != nil {
+		tokens.UnsafeBlockBindNames[ub] = f.Name
+		impl.NewUnsafeBlock(scope, ub)
+		return
+	}
+
 	// Track whether type was explicit or inferred
 	typeWasExplicit := f.Type != nil
 
@@ -1756,8 +1813,7 @@ func (impl *CBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field)
 		impl.CheckVariableInitType(f, scope)
 	}
 
-	// Check for const - either from Type.Const or from Mutability == "const"
-	isConst := (f.Type != nil && f.Type.Const) || f.Mutability == "const"
+	isConst := bindingIsConst(f)
 
 	if f.Value == nil && isConst {
 		scope.ErrorScope.NewCompileTimeError("Uninitialized Constant", "Constant must be initialized with a value", f.Pos)
@@ -1818,11 +1874,7 @@ func (impl *CBackendImplementation) NewGlobalVariable(scope *ast.Ast, f *tokens.
 
 	// Handle const modifier - either from Type.Const, from Mutability == "const",
 	// or from the inner type's Const for sized arrays
-	isConst := (f.Type != nil && f.Type.Const) || f.Mutability == "const"
-	// For sized arrays, also check the inner type's const flag
-	if f.Type != nil && f.Type.Size != nil && f.Type.Size.Type != nil && f.Type.Size.Type.Const {
-		isConst = true
-	}
+	isConst := emitBindingConstPrefix(f)
 	typeDecl := cType
 	if isConst {
 		typeDecl = "const " + typeDecl
@@ -1872,8 +1924,8 @@ func (impl *CBackendImplementation) NewLocalVariable(scope *ast.Ast, f *tokens.F
 		}
 	}
 
-	// Handle const modifier - either from Type.Const or from Mutability == "const"
-	isConst := (f.Type != nil && f.Type.Const) || f.Mutability == "const"
+	// Binding const / non-pointer readonly; type-level readonly* is emitted via TypeRefToCType
+	isConst := emitBindingConstPrefix(f)
 	typeDecl := cType
 	if isConst {
 		typeDecl = "const " + typeDecl
@@ -2281,6 +2333,7 @@ func (impl *CBackendImplementation) GenerateGenericTraitImpl(scope *ast.Ast, cla
 			Visibility: m.Visibility,
 			Parent:     class,
 			Type:       geckoReturnType,
+			Unsafe:     tokens.HasAttribute(m.Attributes, "unsafe"),
 		}
 		scope.Methods[mangledName] = astMth
 		mthdList = append(mthdList, astMth)
@@ -2325,6 +2378,7 @@ func (impl *CBackendImplementation) CInherentImplementation(scope *ast.Ast, i *t
 			Visibility: m.Visibility,
 			Parent:     class,
 			Type:       geckoReturnType,
+			Unsafe:     tokens.HasAttribute(m.Attributes, "unsafe"),
 		}
 		class.Methods[m.Name] = astMth
 	}
@@ -3151,6 +3205,18 @@ func (impl *CBackendImplementation) NewAssignment(scope *ast.Ast, a *tokens.Assi
 		}
 	}
 
+	// `@unsafe with ... { }` used as the RHS of an assignment reuses an already
+	// declared variable: emit the block with a fresh temp Result holder, then
+	// assign that temp into the target (so the variable is not redeclared).
+	if ub := a.Value.GetUnsafeBlock(); ub != nil {
+		unsafeBlockCounter++
+		tmpName := fmt.Sprintf("__gecko_unsafe_res%d", unsafeBlockCounter)
+		tokens.UnsafeBlockBindNames[ub] = tmpName
+		impl.NewUnsafeBlock(scope, ub)
+		info.Code += "    " + varName + " = " + tmpName + ";\n"
+		return
+	}
+
 	value := impl.ExpressionToCString(a.Value, scope)
 
 	// Check if we're assigning a lambda with captures - emit capture initialization
@@ -3425,5 +3491,7 @@ func (impl *CBackendImplementation) processEntry(scope *ast.Ast, entry *tokens.E
 		impl.ExprStatement(scope, entry.ExprStmt)
 	} else if entry.IncDec != nil {
 		impl.NewIncDec(scope, entry.IncDec)
+	} else if entry.UnsafeBlock != nil {
+		impl.NewUnsafeBlock(scope, entry.UnsafeBlock)
 	}
 }

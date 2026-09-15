@@ -120,6 +120,12 @@ func (d *featureDetector) analyzeEntry(entry *tokens.Entry) {
 	if entry.Intrinsic != nil {
 		d.analyzeIntrinsic(entry.Intrinsic)
 	}
+
+	if entry.UnsafeBlock != nil {
+		for _, nested := range entry.UnsafeBlock.Body {
+			d.analyzeEntry(nested)
+		}
+	}
 }
 
 func (d *featureDetector) analyzeMethod(method *tokens.Method) {

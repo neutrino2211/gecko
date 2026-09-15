@@ -13,11 +13,13 @@ import (
 func (impl *CBackendImplementation) IntrinsicStatement(scope *ast.Ast, i *tokens.Intrinsic) {
 	info := CGetScopeInformation(scope)
 	code := impl.IntrinsicToCString(i, scope)
+	code = impl.wrapUnsafeGuards(scope, i, code)
 	info.Code += "    " + code + ";\n"
 }
 
 // IntrinsicToCString converts an intrinsic call to C code
 func (impl *CBackendImplementation) IntrinsicToCString(i *tokens.Intrinsic, scope *ast.Ast) string {
+	requireUnsafeIntrinsic(i.Name, scope, i.Pos)
 	switch i.Name {
 	case "deref":
 		return impl.intrinsicDeref(i, scope)
@@ -203,6 +205,8 @@ func (impl *CBackendImplementation) intrinsicWriteVolatile(i *tokens.Intrinsic, 
 		scope.ErrorScope.NewCompileTimeError("Intrinsic Error", "@write_volatile requires exactly 2 arguments (ptr, value)", i.Pos)
 		return "0"
 	}
+	ptrType := impl.GetTypeOfExpression(i.Args[0], scope)
+	CheckReadonlyStore(ptrType, scope, i.Pos)
 	ptr := impl.ExpressionToCString(i.Args[0], scope)
 	value := impl.ExpressionToCString(i.Args[1], scope)
 	return fmt.Sprintf("(*(volatile typeof(*%s)*)(%s) = (%s))", ptr, ptr, value)

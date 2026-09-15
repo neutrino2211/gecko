@@ -111,7 +111,7 @@ func sum_areas<T is Area>(shapes: Slice<T>): int {
     let total: int = 0
     let i: uint64 = 0
     while i < shapes.len() {
-        let shape: T = shapes.get(i)
+        let shape: T = shapes.get_unchecked(i)
         total = total + shape.area()
         i = i + 1
     }

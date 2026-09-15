@@ -47,6 +47,28 @@ func panic(msg: string): void {
 
 Allows compiler to optimize callers.
 
+### @unsafe
+
+Marks a function (or `@unsafe { ... }` block) as an explicit unsafe region.
+`as!` and other trusted operations are only allowed inside `@unsafe`:
+
+```gecko
+@unsafe
+func map_reg(addr: uint64): uint32 readonly* {
+    return addr as! uint32 readonly*
+}
+
+func use(p: int32*): void {
+    @unsafe {
+        let q = p as! int32*
+        @write_volatile(q, 1)
+    }
+}
+```
+
+Safe code re-enters trust by returning values typed with safe APIs
+(`readonly` pointers, `ConstSlice`, checked constructors).
+
 ### @section
 
 Place function in specific ELF section:

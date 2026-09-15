@@ -2,8 +2,12 @@
 
 package slice
 
-import std.core.traits use { Clone, Index }
+import std.core.traits use { Clone, Index, IndexMut }
+import std.option use { Option }
 
+/// Slice<T> is a non-owning borrowed view over contiguous elements: `{ptr, len}`.
+/// The caller guarantees the backing memory outlives the slice. No hidden
+/// allocations; construct and subslice explicitly.
 public class Slice<T> {
     let data: T*
     let len: uint64
@@ -21,26 +25,144 @@ impl<T> Slice<T> {
         return self.len
     }
 
-    func get(self, index: uint64): T {
-        let ptr: T* = @ptr_add(self.data, index) as T*
-        return @deref(ptr)
+    func is_empty(self): bool {
+        return self.len == 0
+    }
+
+    func as_ptr(self): T* {
+        return self.data
+    }
+
+    /// Bounds-checked read. Returns none when out of bounds.
+    func get(self, index: uint64): Option<T> {
+        if (index >= self.len) {
+            return Option<T>::none()
+        }
+        @unsafe {
+            let ptr: T* = @ptr_add(self.data, index) as T*
+            return Option<T>::some(@deref(ptr))
+        }
+    }
+
+    /// Bounds-checked write. Returns false when out of bounds.
+    func set(self, index: uint64, value: T): bool {
+        if (index >= self.len) {
+            return false
+        }
+        @unsafe {
+            let ptr: T* = @ptr_add(self.data, index) as T*
+            @write_volatile(ptr, value)
+        }
+        return true
+    }
+
+    /// Unchecked read for hot paths. Caller must ensure index < len.
+    func get_unchecked(self, index: uint64): T {
+        @unsafe {
+            let ptr: T* = @ptr_add(self.data, index) as T*
+            return @deref(ptr)
+        }
+    }
+
+    /// Unchecked write for hot paths. Caller must ensure index < len.
+    func set_unchecked(self, index: uint64, value: T): void {
+        @unsafe {
+            let ptr: T* = @ptr_add(self.data, index) as T*
+            @write_volatile(ptr, value)
+        }
+    }
+
+    /// Explicit sub-slice. No allocation. Caller must ensure start+length <= len.
+    func subslice(self, start: uint64, length: uint64): Slice<T> {
+        @unsafe {
+            let ptr: T* = @ptr_add(self.data, start) as T*
+            return Slice<T>::from_raw(ptr, length)
+        }
+    }
+
+    /// Read-only view of the same memory.
+    func as_const(self): ConstSlice<T> {
+        return ConstSlice<T>::from_raw(self.data, self.len)
     }
 }
 
-// Trait implementations for Slice<T>
-
 impl<T> Clone for Slice<T> {
     func clone(self): Slice<T> {
-        let s: Slice<T>
-        s.data = self.data
-        s.len = self.len
-        return s
+        return Slice<T>::from_raw(self.data, self.len)
     }
 }
 
 impl<T> Index<uint64, T> for Slice<T> {
     func index(self, idx: uint64): T {
-        let ptr: T* = @ptr_add(self.data, idx) as T*
-        return @deref(ptr)
+        return self.get_unchecked(idx)
+    }
+}
+
+impl<T> IndexMut<uint64, T> for Slice<T> {
+    func index_mut(self, idx: uint64, value: T): void {
+        self.set_unchecked(idx, value)
+    }
+}
+
+/// ConstSlice<T> is a non-owning read-only view: `{const T*, len}`.
+public class ConstSlice<T> {
+    let data: T readonly*
+    let len: uint64
+}
+
+impl<T> ConstSlice<T> {
+    func from_raw(ptr: T*, length: uint64): ConstSlice<T> {
+        let s: ConstSlice<T>
+        s.data = ptr
+        s.len = length
+        return s
+    }
+
+    func len(self): uint64 {
+        return self.len
+    }
+
+    func is_empty(self): bool {
+        return self.len == 0
+    }
+
+    func as_ptr(self): T readonly* {
+        return self.data
+    }
+
+    func get(self, index: uint64): Option<T> {
+        if (index >= self.len) {
+            return Option<T>::none()
+        }
+        @unsafe {
+            let ptr: T readonly* = @ptr_add(self.data, index) as T readonly*
+            return Option<T>::some(@deref(ptr))
+        }
+    }
+
+    func get_unchecked(self, index: uint64): T {
+        @unsafe {
+            let ptr: T readonly* = @ptr_add(self.data, index) as T readonly*
+            return @deref(ptr)
+        }
+    }
+
+    func subslice(self, start: uint64, length: uint64): ConstSlice<T> {
+        @unsafe {
+            let ptr: T readonly* = @ptr_add(self.data, start) as T readonly*
+            return ConstSlice<T>::from_raw(ptr, length)
+        }
+    }
+}
+
+impl<T> Clone for ConstSlice<T> {
+    func clone(self): ConstSlice<T> {
+        return ConstSlice<T>::from_raw(self.data, self.len)
+    }
+}
+
+impl<T> Index<uint64, T> for ConstSlice<T> {
+    func index(self, idx: uint64): T {
+        return self.get_unchecked(idx)
     }
 }

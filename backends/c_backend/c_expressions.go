@@ -407,6 +407,8 @@ func (impl *CBackendImplementation) UnaryToCString(u *tokens.Unary, scope *ast.A
 		if u.Cast.Type != nil {
 			u.Cast.Type.Check(scope)
 		}
+		sourceType := impl.GetTypeOfUnaryWithoutCast(u, scope)
+		impl.CheckCast(sourceType, u.Cast.Type, u.Cast.Trusted, scope, u.Cast.Pos)
 		cType := TypeRefToCType(u.Cast.Type, scope)
 		// C does not allow scalar-style casts into aggregates (e.g., (Pair)(0)).
 		// Lower `0 as T` for aggregate T as a zero-initialized compound literal.
@@ -418,6 +420,23 @@ func (impl *CBackendImplementation) UnaryToCString(u *tokens.Unary, scope *ast.A
 	}
 
 	return base
+}
+
+// GetTypeOfUnaryWithoutCast returns the operand type before an applied cast.
+func (impl *CBackendImplementation) GetTypeOfUnaryWithoutCast(u *tokens.Unary, scope *ast.Ast) *tokens.TypeRef {
+	if u == nil {
+		return nil
+	}
+	if u.Op != "" {
+		return &tokens.TypeRef{Type: "bool"}
+	}
+	if u.Unary != nil {
+		return impl.GetTypeOfUnary(u.Unary, scope)
+	}
+	if u.Primary != nil {
+		return impl.GetTypeOfPrimary(u.Primary, scope)
+	}
+	return nil
 }
 
 func isZeroLiteralUnary(u *tokens.Unary) bool {
@@ -509,7 +528,7 @@ func geckoTypeRefToString(t *tokens.TypeRef) string {
 		base += " is " + t.Trait
 	}
 	if t.Const {
-		base += "!"
+		base += " readonly"
 	}
 	if t.Volatile {
 		base += " volatile"
@@ -1232,6 +1251,7 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 				funcName := moduleName + "__" + chain.Name
 				if moduleScope != nil {
 					if method := moduleScope.ResolveMethod(chain.Name); !method.IsNil() {
+						requireUnsafeCall(method.Unwrap(), scope, chain.Pos)
 						funcName = method.Unwrap().CIdentifier()
 					}
 				}
@@ -1343,6 +1363,8 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 				resolution := resolver.ResolveMethod(currentType, chain.Name, scope)
 
 				if resolution.Found {
+					// Calling an @unsafe method requires an @unsafe region at the call site.
+					requireUnsafeCall(resolution.Method, scope, chain.Pos)
 					// Check method visibility for cross-module calls
 					if resolution.Method != nil {
 						if visErr := resolution.Method.CheckVisibility(scope); visErr != "" {
@@ -1543,6 +1565,8 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 
 					// First check for direct class method
 					if method, ok := class.Methods[f.Function]; ok {
+						// Calling an @unsafe method requires an @unsafe region at the call site.
+						requireUnsafeCall(method, scope, f.Pos)
 						// Check method visibility for cross-module calls
 						if visErr := method.CheckVisibility(scope); visErr != "" {
 							scope.ErrorScope.NewCompileTimeError(
@@ -1563,6 +1587,8 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 								// Check if this trait has a method with matching name
 								expectedName := typeName + "__" + traitName + "__" + f.Function
 								if method.Name == expectedName {
+									// Calling an @unsafe method requires an @unsafe region at the call site.
+									requireUnsafeCall(method, scope, f.Pos)
 									// Check method visibility for cross-module calls
 									if visErr := method.CheckVisibility(scope); visErr != "" {
 										scope.ErrorScope.NewCompileTimeError(
@@ -1629,6 +1655,8 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 				if baseFuncName == "" {
 					resolution := resolver.ResolveMethod(valueInfo.GeckoType, f.Function, scope)
 					if resolution.Found {
+						// Calling an @unsafe method requires an @unsafe region at the call site.
+						requireUnsafeCall(resolution.Method, scope, f.Pos)
 						// Check method visibility for cross-module calls
 						if resolution.Method != nil {
 							if visErr := resolution.Method.CheckVisibility(scope); visErr != "" {
@@ -1663,6 +1691,7 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 			if importedModule, ok := rootScope.Children[f.Module]; ok {
 				mth := importedModule.ResolveMethod(f.Function)
 				if !mth.IsNil() {
+					requireUnsafeCall(mth.Unwrap(), scope, f.Pos)
 					baseFuncName = mth.Unwrap().CIdentifier()
 				} else {
 					baseFuncName = f.Module + "__" + f.Function
@@ -1675,6 +1704,7 @@ func (impl *CBackendImplementation) FuncCallToCString(f *tokens.FuncCall, scope 
 		// Local function call
 		mth := scope.ResolveMethod(f.Function)
 		if !mth.IsNil() {
+			requireUnsafeCall(mth.Unwrap(), scope, f.Pos)
 			baseFuncName = mth.Unwrap().CIdentifier()
 		} else {
 			baseFuncName = f.Function

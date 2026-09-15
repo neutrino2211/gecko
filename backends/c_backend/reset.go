@@ -25,4 +25,11 @@ func ResetState() {
 	Methods = make(map[string]*ast.Method)
 
 	ResetGenerics()
+	ResetUnsafeHandlerCoverage()
+
+	// Unique-id counters for synthesized @unsafe blocks/handlers. Reset so ids
+	// start deterministically at 1 each compilation (avoids unbounded growth and
+	// keeps generated names stable across runs).
+	unsafeBlockCounter = 0
+	unsafeHandlerCounter = 0
 }

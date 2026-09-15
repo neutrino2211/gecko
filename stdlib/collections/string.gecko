@@ -4,6 +4,7 @@ package string
 
 import std.core.traits use { Drop, Clone, Index, Iterator }
 import std.ffi.libc use { malloc, realloc, free, memcpy, strlen }
+import std.collections.slice use { Slice, ConstSlice }
 
 /// Add<T> - Trait for the `+` operator.
 @add_hook(.add)
@@ -71,7 +72,9 @@ public class String {
 
         // Write null terminator
         let ptr: uint8* = addr as uint8*
-        @write_volatile(ptr, 0)
+        @unsafe {
+            @write_volatile(ptr, 0)
+        }
 
         let s: String
         s.data = addr
@@ -87,7 +90,9 @@ public class String {
         let addr: uint64 = mem as uint64
 
         let ptr: uint8* = addr as uint8*
-        @write_volatile(ptr, 0)
+        @unsafe {
+            @write_volatile(ptr, 0)
+        }
 
         let s: String
         s.data = addr
@@ -133,13 +138,25 @@ public class String {
         return self.data as string
     }
 
+    /// Borrowed byte view of the string contents. Non-owning.
+    func as_slice(self): Slice<uint8> {
+        return Slice<uint8>::from_raw(self.data as uint8*, self.len)
+    }
+
+    /// Borrowed read-only byte view. Non-owning.
+    func as_const_slice(self): ConstSlice<uint8> {
+        return ConstSlice<uint8>::from_raw(self.data as uint8*, self.len)
+    }
+
     /// Returns the byte at the given index.
     func char_at(self, index: uint64): uint8 {
         if (index >= self.len) {
             return 0 as uint8
         }
-        let ptr: uint8* = (self.data + index) as uint8*
-        return @deref(ptr)
+        @unsafe {
+            let ptr: uint8* = (self.data + index) as uint8*
+            return @deref(ptr)
+        }
     }
 
     /// Ensures the string has at least the specified capacity.
@@ -164,14 +181,18 @@ public class String {
     func push(self, c: uint8) {
         self.reserve(1)
 
-        let ptr: uint8* = (self.data + self.len) as uint8*
-        @write_volatile(ptr, c)
+        @unsafe {
+            let ptr: uint8* = (self.data + self.len) as uint8*
+            @write_volatile(ptr, c)
+        }
 
         self.len = self.len + 1
 
         // Write null terminator
-        let term_ptr: uint8* = (self.data + self.len) as uint8*
-        @write_volatile(term_ptr, 0)
+        @unsafe {
+            let term_ptr: uint8* = (self.data + self.len) as uint8*
+            @write_volatile(term_ptr, 0)
+        }
     }
 
     /// Appends a string literal to the string.
@@ -189,8 +210,10 @@ public class String {
         self.len = self.len + s_len
 
         // Write null terminator
-        let term_ptr: uint8* = (self.data + self.len) as uint8*
-        @write_volatile(term_ptr, 0)
+        @unsafe {
+            let term_ptr: uint8* = (self.data + self.len) as uint8*
+            @write_volatile(term_ptr, 0)
+        }
     }
 
     /// Appends another String to this string.
@@ -206,15 +229,19 @@ public class String {
 
         self.len = self.len + other.len
 
-        let term_ptr: uint8* = (self.data + self.len) as uint8*
-        @write_volatile(term_ptr, 0)
+        @unsafe {
+            let term_ptr: uint8* = (self.data + self.len) as uint8*
+            @write_volatile(term_ptr, 0)
+        }
     }
 
     /// Clears the string, setting length to 0 but keeping capacity.
     func clear(self) {
         self.len = 0
         let ptr: uint8* = self.data as uint8*
-        @write_volatile(ptr, 0)
+        @unsafe {
+            @write_volatile(ptr, 0)
+        }
     }
 
     /// Creates a copy of this string.
@@ -301,8 +328,10 @@ impl Add<String> for String {
         }
 
         // Write null terminator
-        let term_ptr: uint8* = (result.data + result.len) as uint8*
-        @write_volatile(term_ptr, 0)
+        @unsafe {
+            let term_ptr: uint8* = (result.data + result.len) as uint8*
+            @write_volatile(term_ptr, 0)
+        }
 
         return result
     }
@@ -374,8 +403,10 @@ public class StringBuilder {
             return false
         }
 
-        let dest: uint8* = @ptr_add(self.buffer, self.length) as uint8*
-        @write_volatile(dest, byte)
+        @unsafe {
+            let dest: uint8* = @ptr_add(self.buffer, self.length) as uint8*
+            @write_volatile(dest, byte)
+        }
         self.length = self.length + 1
         return true
     }
@@ -392,8 +423,10 @@ public class StringBuilder {
             return false
         }
 
-        let dest: uint8* = @ptr_add(self.buffer, self.length) as uint8*
-        @copy(dest as void*, data as void*, len)
+        @unsafe {
+            let dest: uint8* = @ptr_add(self.buffer, self.length) as uint8*
+            @copy(dest as void*, data as void*, len)
+        }
         self.length = self.length + len
         return true
     }
@@ -427,8 +460,10 @@ public class StringBuilder {
         if (index >= self.length) {
             return 0 as uint8
         }
-        let ptr: uint8* = @ptr_add(self.buffer, index) as uint8*
-        return @deref(ptr)
+        @unsafe {
+            let ptr: uint8* = @ptr_add(self.buffer, index) as uint8*
+            return @deref(ptr)
+        }
     }
 }
 
@@ -450,8 +485,10 @@ impl Index<uint64, uint8> for StringBuilder {
         if (idx >= self.length) {
             return 0 as uint8
         }
-        let ptr: uint8* = @ptr_add(self.buffer, idx) as uint8*
-        return @deref(ptr)
+        @unsafe {
+            let ptr: uint8* = @ptr_add(self.buffer, idx) as uint8*
+            return @deref(ptr)
+        }
     }
 }
 
@@ -511,8 +548,10 @@ public func streq(a: string, b: string): bool {
         if (@deref(pa) != @deref(pb)) {
             return false
         }
-        pa = @ptr_add(pa, 1) as uint8*
-        pb = @ptr_add(pb, 1) as uint8*
+        @unsafe {
+            pa = @ptr_add(pa, 1) as uint8*
+            pb = @ptr_add(pb, 1) as uint8*
+        }
         i = i + 1
     }
     return true

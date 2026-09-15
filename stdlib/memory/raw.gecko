@@ -74,7 +74,9 @@ public class Raw<T> {
     /// Does not perform null checking - caller must ensure pointer is valid.
     func write(self, value: T) {
         let ptr: T* = self.addr as T*
-        @write_volatile(ptr, value)
+        @unsafe {
+            @write_volatile(ptr, value)
+        }
     }
 
     /// Returns a new pointer offset by `n` elements forward.
@@ -102,13 +104,17 @@ public class Raw<T> {
     /// Copies `count` elements from source pointer to this pointer.
     func copy_from(self, src: Raw<T>, count: uint64) {
         let size: uint64 = count * @size_of<T>()
-        @copy(self.addr as void*, src.addr as void*, size)
+        @unsafe {
+            @copy(self.addr as void*, src.addr as void*, size)
+        }
     }
 
     /// Sets `count` elements at this pointer to zero.
     func zero(self, count: uint64) {
         let size: uint64 = count * @size_of<T>()
-        @zero(self.addr as void*, size)
+        @unsafe {
+            @zero(self.addr as void*, size)
+        }
     }
 }
 

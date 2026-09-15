@@ -291,7 +291,7 @@ func typeRefSignature(t *tokens.TypeRef) string {
 		b.WriteString(t.Trait)
 	}
 	if t.Const {
-		b.WriteString("!")
+		b.WriteString(" readonly")
 	}
 	if t.Volatile {
 		b.WriteString(" volatile")

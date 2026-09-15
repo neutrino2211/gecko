@@ -24,7 +24,9 @@ class String {
         let mem: void* = malloc(initial_cap)
         let addr: uint64 = mem as uint64
         let ptr: uint8* = addr as uint8*
-        @write_volatile(ptr, 0)
+        @unsafe {
+            @write_volatile(ptr, 0)
+        }
 
         let s: String
         s.data = addr
@@ -38,7 +40,9 @@ class String {
         let mem: void* = malloc(actual_cap)
         let addr: uint64 = mem as uint64
         let ptr: uint8* = addr as uint8*
-        @write_volatile(ptr, 0)
+        @unsafe {
+            @write_volatile(ptr, 0)
+        }
 
         let s: String
         s.data = addr
@@ -98,10 +102,14 @@ class String {
     func push(self, c: uint8) {
         self.reserve(1)
         let ptr: uint8* = (self.data + self.len) as uint8*
-        @write_volatile(ptr, c)
+        @unsafe {
+            @write_volatile(ptr, c)
+        }
         self.len = self.len + 1
         let term_ptr: uint8* = (self.data + self.len) as uint8*
-        @write_volatile(term_ptr, 0)
+        @unsafe {
+            @write_volatile(term_ptr, 0)
+        }
     }
 
     func push_str(self, s: string) {
@@ -114,13 +122,17 @@ class String {
         memcpy(dest, s as void*, s_len)
         self.len = self.len + s_len
         let term_ptr: uint8* = (self.data + self.len) as uint8*
-        @write_volatile(term_ptr, 0)
+        @unsafe {
+            @write_volatile(term_ptr, 0)
+        }
     }
 
     func clear(self) {
         self.len = 0
         let ptr: uint8* = self.data as uint8*
-        @write_volatile(ptr, 0)
+        @unsafe {
+            @write_volatile(ptr, 0)
+        }
     }
 
     func clone(self): String {
@@ -181,7 +193,9 @@ impl Add<String> for String {
         }
 
         let term_ptr: uint8* = (result.data + result.len) as uint8*
-        @write_volatile(term_ptr, 0)
+        @unsafe {
+            @write_volatile(term_ptr, 0)
+        }
 
         return result
     }

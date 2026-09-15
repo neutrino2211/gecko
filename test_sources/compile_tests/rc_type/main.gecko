@@ -20,14 +20,20 @@ class Rc<T> {
 
         // Initialize refcounts
         let strong_ptr: uint64* = addr as uint64*
-        @write_volatile(strong_ptr, 1)
+        @unsafe {
+            @write_volatile(strong_ptr, 1)
+        }
 
         let weak_ptr: uint64* = (addr + 8) as uint64*
-        @write_volatile(weak_ptr, 1)
+        @unsafe {
+            @write_volatile(weak_ptr, 1)
+        }
 
         // Write value at offset 16
         let value_ptr: T* = (addr + 16) as T*
-        @write_volatile(value_ptr, value)
+        @unsafe {
+            @write_volatile(value_ptr, value)
+        }
 
         let r: Rc<T>
         r.ptr = addr
@@ -55,7 +61,9 @@ class Rc<T> {
         if (self.ptr != 0) {
             let strong_ptr: uint64* = self.ptr as uint64*
             let count: uint64 = @deref(strong_ptr)
-            @write_volatile(strong_ptr, count + 1)
+            @unsafe {
+                @write_volatile(strong_ptr, count + 1)
+            }
         }
 
         let r: Rc<T>
@@ -75,7 +83,9 @@ class Rc<T> {
             free(self.ptr as void*)
             self.ptr = 0
         } else {
-            @write_volatile(strong_ptr, count - 1)
+            @unsafe {
+                @write_volatile(strong_ptr, count - 1)
+            }
         }
     }
 }

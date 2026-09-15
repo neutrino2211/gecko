@@ -37,7 +37,9 @@ class Raw<T> {
 
     func write(self, value: T) {
         let ptr: T* = self.addr as T*
-        @write_volatile(ptr, value)
+        @unsafe {
+            @write_volatile(ptr, value)
+        }
     }
 
     func add(self, n: uint64): Raw<T> {
@@ -50,7 +52,9 @@ class Raw<T> {
 
     func zero(self, count: uint64) {
         let size: uint64 = count * @size_of<T>()
-        @zero(self.addr as void*, size)
+        @unsafe {
+            @zero(self.addr as void*, size)
+        }
     }
 }
 

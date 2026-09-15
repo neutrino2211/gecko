@@ -5,6 +5,7 @@ package vec
 import std.core.traits use { Drop, Clone, Index, IndexMut }
 import std.option use { Option }
 import std.ffi.libc use { malloc, realloc, free, memcpy }
+import std.collections.slice use { Slice, ConstSlice }
 
 /// Vec<T> - A growable, heap-allocated array.
 ///
@@ -115,7 +116,9 @@ public class Vec<T> {
     func set(self, index: uint64, value: T) {
         let elem_size: uint64 = @size_of<T>()
         let ptr: T* = (self.data + index * elem_size) as T*
-        @write_volatile(ptr, value)
+        @unsafe {
+            @write_volatile(ptr, value)
+        }
     }
 
     /// Ensures the vector has at least the specified additional capacity.
@@ -142,7 +145,9 @@ public class Vec<T> {
 
         let elem_size: uint64 = @size_of<T>()
         let ptr: T* = (self.data + self.len * elem_size) as T*
-        @write_volatile(ptr, value)
+        @unsafe {
+            @write_volatile(ptr, value)
+        }
 
         self.len = self.len + 1
     }
@@ -200,6 +205,16 @@ public class Vec<T> {
         return self.data as T*
     }
 
+    /// Borrowed mutable view of the vector contents. Non-owning.
+    func as_slice(self): Slice<T> {
+        return Slice<T>::from_raw(self.data as T*, self.len)
+    }
+
+    /// Borrowed read-only view of the vector contents. Non-owning.
+    func as_const_slice(self): ConstSlice<T> {
+        return ConstSlice<T>::from_raw(self.data as T*, self.len)
+    }
+
     /// Frees the memory owned by this vector.
     func drop(self) {
         if (self.data != 0) {
@@ -250,6 +265,8 @@ impl<T> IndexMut<uint64, T> for Vec<T> {
     func index_mut(self, idx: uint64, value: T): void {
         let elem_size: uint64 = @size_of<T>()
         let ptr: T* = (self.data + idx * elem_size) as T*
-        @write_volatile(ptr, value)
+        @unsafe {
+            @write_volatile(ptr, value)
+        }
     }
 }

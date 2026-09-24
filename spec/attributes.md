@@ -125,11 +125,11 @@ let boot_stack: [4096]uint8
 Specify compilation backend:
 
 ```gecko
-@backend("llvm")
+@backend("c")
 package mymodule
 ```
 
-Values: `"c"` (default), `"llvm"`
+`"c"` is the supported backend and the default. `"llvm"` is deprecated and unavailable in the current compiler.
 
 ## Trait Hook Attributes
 
@@ -250,6 +250,5 @@ func kernel_entry(): void {
 
 Attributes map to:
 - GCC/Clang `__attribute__` extensions
-- LLVM IR attributes
 - Linker section directives
 - Compiler code generation hooks

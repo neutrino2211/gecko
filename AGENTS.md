@@ -13,6 +13,7 @@ Code hygiene instructions for the Gecko compiler codebase.
 - Match existing code style exactly (indentation, naming, comment style)
 - Prefer editing existing files over creating new ones
 - Keep functions focused on a single responsibility
+- Keep maintained source, tests, and documentation files at 500 lines or fewer; generated artifacts, dependency lockfiles, and legal notices are exempt
 - Avoid deep nesting — extract helpers when logic branches exceed 3 levels
 - Never introduce commented-out code
 - Never add comments unless explicitly asked
@@ -25,6 +26,7 @@ Code hygiene instructions for the Gecko compiler codebase.
 3. Run `go vet ./...` for static analysis
 4. If you modified parser/lexer code, run `go test ./tests/... -run TestCompileAndRun -v` to verify end-to-end behavior
 5. Check that generated C output looks correct: `go run . compile --print-ir --ir-only <modified_test_file>`
+6. Run `go run ./tools/file_size` to verify the 500-line file limit
 
 ## Error Handling
 
@@ -37,7 +39,7 @@ Code hygiene instructions for the Gecko compiler codebase.
 
 - Add a test for every behavioral change
 - Tests go in `test_sources/compile_tests/<feature_name>/main.gecko`
-- Register new tests in `tests/compiler_test.go` in the `compileTests` array
+- Register new tests in `tests/compiler_cases_test.go` in the `compileTests` array
 - Tests should exercise both the happy path and error cases
 - Keep test files self-contained (no external dependencies unless necessary)
 

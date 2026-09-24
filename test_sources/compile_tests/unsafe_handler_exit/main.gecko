@@ -1,0 +1,31 @@
+package main
+import std.unsafe use { UnsafeHandler, UnsafeOp }
+import std.result use { Result }
+import std.core.traits use { Drop }
+class Reject { let catches: int32* }
+@attach_handler("deref")
+impl UnsafeHandler for Reject {
+ func guard(self, op: UnsafeOp): bool { return false }
+ func catch(self, op: UnsafeOp): void { @unsafe { @deref(self.catches) = @deref(self.catches) + 1 } }
+}
+class Resource { let cleaned: int32* }
+impl Drop for Resource {
+ func drop(self): void { @unsafe { @deref(self.cleaned) = @deref(self.cleaned) + 1 } }
+}
+func cleanup(count: int32*): void { @unsafe { @deref(count) = @deref(count) + 2 } }
+external func main(): int32 {
+ let catches: int32 = 0
+ let cleaned: int32 = 0
+ let effects: int32 = 0
+ let handler: Reject = Reject { catches: &catches }
+ let result = @unsafe with handler {
+   let value: Resource = Resource { cleaned: &cleaned }
+   defer cleanup(&cleaned)
+   let pointer: Resource* = null
+   let rejected: Resource = @deref(pointer)
+   effects = 1
+   9
+ }
+ if (!result.is_error() || catches != 1 || cleaned != 3 || effects != 0) { return 1 }
+ return 0
+}

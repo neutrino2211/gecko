@@ -1,0 +1,52 @@
+package string_storage
+
+import std.ffi.libc use { malloc, realloc }
+
+public func empty_buffer(capacity: uint64): uint64 {
+    let mem: void* = malloc(capacity)
+    let addr: uint64 = mem as uint64
+    let ptr: uint8* = addr as uint8*
+    @unsafe {
+        @write_volatile(ptr, 0)
+    }
+    return addr
+}
+
+public func resize_buffer(buffer: uint8*, capacity: uint64): uint8* {
+    if (buffer.is_null()) {
+        return malloc(capacity) as uint8*
+    }
+    return realloc(buffer as void*, capacity) as uint8*
+}
+
+public func bytes_equal(a: uint64, b: uint64, len: uint64): bool {
+    let i: uint64 = 0
+    while i < len {
+        @unsafe {
+            let pa: uint8* = (a + i) as uint8*
+            let pb: uint8* = (b + i) as uint8*
+            if (@deref(pa) != @deref(pb)) {
+                return false
+            }
+        }
+        i = i + 1
+    }
+    return true
+}
+
+public func grown_capacity(current: uint64, required: uint64, minimum: uint64): uint64 {
+    let capacity: uint64 = current * 2
+    if (capacity < required) {
+        capacity = required
+    }
+    if (capacity < minimum) {
+        capacity = minimum
+    }
+    return capacity
+}
+
+public func read_byte(address: uint64): uint8 {
+    @unsafe {
+        return @deref(address as uint8*)
+    }
+}

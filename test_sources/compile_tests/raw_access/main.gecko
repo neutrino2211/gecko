@@ -1,0 +1,19 @@
+class Value {
+    let value: int32
+}
+external func main(): int32 {
+    let x: int32 = 1
+    let p: int32* = &x
+    let value: Value = Value { value: 1 }
+    let vp: Value* = &value
+    @unsafe {
+        @deref(p) = 7
+        if (@deref(p) != 7) { return 1 }
+        p[0] = 8
+        if (p[0] != 8) { return 2 }
+        if (p.deref() != 8) { return 3 }
+        vp.value = 9
+        if (vp.value != 9) { return 4 }
+    }
+    return 0
+}

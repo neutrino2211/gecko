@@ -8,6 +8,17 @@ Tracking implementation of the new module system per specs in `spec/modules.md`,
 
 ### Recently Completed
 
+- Memory model follow-up (2026-09-24): raw access requires unsafe; Box/Rc/Weak
+  destruction corrected; cleanup follows lexical scope and reverse declaration
+  order; `--no-auto-drop` supports explicit management. By-value Drop arguments
+  transfer ownership, Option/Result drop active payloads, and `--print-expanded`
+  exposes the generated C ownership operations.
+- `BorrowCell<T is Copy>`, `Ref<T>`, and `RefMut<T>` implement runtime checked
+  shared/exclusive access with borrow hooks and retained allocation lifetimes.
+- Guard rejection exits both forms of handled unsafe blocks with cleanup.
+- Stdlib tests import shipped modules; CI runs all Go packages and vet.
+
+
 - Trait inheritance: `trait Child: Parent` (implemented 2026-06-03)
 - Compile test directory enablement for `array_index/`, `asm/`, `attributes/`, `casts/`,
   `comprehensive/`, `globals/`, `imports/`, `loops/`, `strings/`, `volatile/` (compile-only coverage)
@@ -24,7 +35,7 @@ Tracking implementation of the new module system per specs in `spec/modules.md`,
 - [x] **Dot notation imports** - `import std.collections.vec`
   - Updated `Import` struct to use `Path []string` instead of `Package string`
   - Added `Package()` and `ModuleName()` helper methods
-  - Updated `compiler/compiler.go` to resolve dot-separated paths
+  - Updated import resolution (now in `compiler/imports.go`) to resolve dot-separated paths
 
 - [x] **`public` visibility modifier** (already existed, just documented)
   - Visibility options: `private`, `public`, `protected`, `external`
@@ -95,7 +106,9 @@ Tracking implementation of the new module system per specs in `spec/modules.md`,
 - [x] **Copy/clone hooks** - REMOVED BY DESIGN
   - Clone works as a regular trait - call `.clone()` explicitly when needed
   - Copy is a marker trait only (no hook) - Gecko uses C-style implicit bitwise copy
-  - Move semantics not planned - explicit memory management is the intended model
+  - Direct local moves and explicit `@move(local)` transfer cleanup responsibility.
+  - General aggregate, temporary, and closure ownership remain incomplete;
+    by-value calls transfer tracked Drop locals but nested expressions still need work.
 
 ## Phase 3: Stdlib Consolidation ✅ COMPLETE
 
@@ -123,8 +136,8 @@ Tracking implementation of the new module system per specs in `spec/modules.md`,
 
 - [x] **Added hook attributes to core traits**
   - `@drop_hook(.drop)` on Drop trait
-  - `@clone_hook(.clone)` on Clone trait
-  - `@copy_hook(.copy)` on Copy trait
+  - `@borrow_hook(.borrow)` on Borrow and `@borrow_mut_hook(.borrow_mut)` on BorrowMut
+  - Clone is explicit; Copy is a marker without a hook
   - `@iterator_hook(.next, .has_next)` on Iterator trait
   - `@into_iterator_hook(.iter)` on IntoIterator trait
   - `@index_hook(.index)` on Index trait
@@ -170,16 +183,16 @@ Comprehensive audit of the codebase for inconsistencies and gaps before adding n
 These issues allowed incorrect code to compile silently:
 
 - [x] **Trait constraint validation** - `T is Area` constraints now validated
-  - Location: `backends/c_backend/c_typecheck.go:350-375`
+  - Location: `backends/c_backend/c_call_check.go:CheckFunctionCallTypes`
   - Fix: Added `TypeImplementsTrait()` check during generic function calls
   - MethodSignature now stores full `[]*tokens.TypeParam` with constraints
 
 - [x] **Struct literal field type checking** - Fields now validated
-  - Location: `backends/c_backend/c_expressions.go:295`, `c_typecheck.go:608-663`
+  - Location: `backends/c_backend/c_literals.go:LiteralToCString`, `backends/c_backend/c_class_check.go:CheckStructLiteralTypes`
   - Fix: Added `CheckStructLiteralTypes()` called during struct literal code gen
 
 - [x] **Generic class type arg validation** - Type args now checked against constraints
-  - Location: `backends/c_backend/c_expressions.go:630-633, 657`
+  - Location: `backends/c_backend/c_calls.go:FuncCallToCString`, `backends/c_backend/c_class_check.go:ValidateClassTypeArgs`
   - Fix: Added `ValidateClassTypeArgs()` for static method calls on generic classes
 
 - [x] **Silent type checking failures** - Now emit ERRORS instead of silent skips ✅ FIXED
@@ -194,13 +207,13 @@ These issues allowed incorrect code to compile silently:
 ### P1 - High (Grammar & Testing)
 
 - [x] **Implement `Enum`** - Basic C-style enums for FFI ✅
-  - Location: `backends/c_backend/c_backend.go:NewEnum`
+  - Location: `backends/c_backend/c_trait_declarations.go:NewEnum`
   - Syntax: `enum Color { Red Green Blue }`
   - Value access: `Color.Red` -> `enums__Color_Red`
   - Generates C typedef enum for direct C interop
 
 - [x] **Implement `CImport`** - Now generates `#include` directives in C backend ✅
-  - Location: `backends/c_backend/c_backend.go:NewCImport`
+  - Location: `backends/c_backend/c_external.go:NewCImport`
   - Syntax: `cimport "<stdio.h>"` for system headers, `cimport "local.h"` for local
   - Supports `withobject` and `withlibrary` for linking (stored in token for build stage)
 
@@ -234,7 +247,7 @@ These issues allowed incorrect code to compile silently:
   - Fixed: "Cannot Reassign Constant" → "Constant Reassignment"
 
 - [x] **Default impl validation** ✅ (already implemented)
-  - Location: `c_backend.go:1393-1421`
+  - Location: `backends/c_backend/c_implementations.go:CImplementationForClass`
   - Required methods (no body in trait) must exist on class
   - Error: "Missing Required Method: Class 'X' cannot implement trait 'Y'"
 

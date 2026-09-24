@@ -1,63 +1,12 @@
-// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/control-flow.md, spec/pointers.md, spec/memory.md
-
 package main
+
+import std.memory.raw use { Raw }
 
 declare external func malloc(size: uint64): void*
 declare external func free(ptr: void*): void
 declare external func printf(fmt: string): int
 
-// Raw<T> inline for testing
-class Raw<T> {
-    let addr: uint64
-
-    func init(self, address: uint64) {
-        self.addr = address
-    }
-
-    func init_null(self) {
-        self.addr = 0
-    }
-
-    func to_address(self): uint64 {
-        return self.addr
-    }
-
-    func is_null(self): bool {
-        return self.addr == 0
-    }
-
-    func is_valid(self): bool {
-        return self.addr != 0
-    }
-
-    func read(self): T {
-        let ptr: T* = self.addr as T*
-        return @deref(ptr)
-    }
-
-    func write(self, value: T) {
-        let ptr: T* = self.addr as T*
-        @unsafe {
-            @write_volatile(ptr, value)
-        }
-    }
-
-    func add(self, n: uint64): Raw<T> {
-        let element_size: uint64 = @size_of<T>()
-        let new_addr: uint64 = self.addr + n * element_size
-        let result: Raw<T>
-        result.init(new_addr)
-        return result
-    }
-
-    func zero(self, count: uint64) {
-        let size: uint64 = count * @size_of<T>()
-        @unsafe {
-            @zero(self.addr as void*, size)
-        }
-    }
-}
-
+@unsafe
 external func main(): int32 {
     let mem: void* = malloc(16)
     if (@is_null(mem)) {

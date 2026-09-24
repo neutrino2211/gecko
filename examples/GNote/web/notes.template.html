@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GNote</title>
+  <style>
+{{STYLES}}
+  </style>
+</head>
+<body class="grain">
+  <div class="app">
+    <section class="topbar">
+      <div class="brand">
+        <h1>GNote Atlas</h1>
+        <p>Capture ideas fast. Edit deeply. Keep everything on-device.</p>
+      </div>
+      <div class="toolbar">
+        <div class="search">
+          <input id="searchInput" type="text" placeholder="Search title or body">
+        </div>
+        <div class="chip"><strong id="noteCount">0</strong> notes</div>
+        <div class="chip">Updated <strong id="updatedAt">now</strong></div>
+      </div>
+    </section>
+
+    <section class="board">
+      <div class="board-head">
+        <h2>Home</h2>
+        <div class="status" id="status"></div>
+      </div>
+      <div class="notes" id="notesGrid"></div>
+      <button class="fab" id="newNoteBtn" aria-label="New note">+</button>
+    </section>
+  </div>
+
+  <div class="overlay" id="overlay"></div>
+  <aside class="editor" id="editor">
+    <div class="editor-head">
+      <h3 id="editorTitle">New Note</h3>
+      <button id="closeEditorBtn">Close</button>
+    </div>
+    <div class="editor-body">
+      <div class="field">
+        <label for="noteTitle">Title</label>
+        <input id="noteTitle" type="text" placeholder="A bold title">
+      </div>
+      <div class="field">
+        <label for="noteBody">Body</label>
+        <textarea id="noteBody" placeholder="Write your note..."></textarea>
+      </div>
+      <div class="editor-actions">
+        <button class="btn danger" id="deleteBtn" style="display:none">Delete</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn ghost" id="cancelBtn">Cancel</button>
+          <button class="btn primary" id="saveBtn">Save</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <script>
+{{SCRIPT}}
+  </script>
+</body>
+</html>

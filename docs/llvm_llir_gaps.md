@@ -1,5 +1,7 @@
 # LLVM `llir` Gap Register
 
+This is a historical record. The LLVM backend is deprecated and unavailable in the current compiler; use the C backend for active projects.
+
 This file tracks places where Gecko backend work needs functionality that is not directly available as a high-level `llir/llvm` convenience API.  
 Policy: keep emitting valid pure llir IR (no ad-hoc text IR templates), and document the workaround here.
 

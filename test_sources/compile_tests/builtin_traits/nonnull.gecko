@@ -12,7 +12,9 @@ func process_safe(d: Data*!): int {
     if (d.is_null()) {
         always_false = 100
     }
-    return d.x + d.y + always_false
+    @unsafe {
+        return d.x + d.y + always_false
+    }
 }
 
 external func main(): int32 {

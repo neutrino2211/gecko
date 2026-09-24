@@ -7,6 +7,7 @@ import std.collections.string
 declare external variardic func printf(fmt: string): int
 declare external func putchar(c: int): int
 
+@unsafe
 func print_builder(sb: string.StringBuilder*): void {
     let i: uint64 = 0
     while i < sb.len() {
@@ -16,22 +17,27 @@ func print_builder(sb: string.StringBuilder*): void {
     }
 }
 
+@unsafe
 func build_greeting(sb: string.StringBuilder*, name: string): void {
     let hello: string = "Hello, "
     let ptr: uint8* = hello as uint8*
 
-    while @deref(ptr) != 0 {
-        sb.push_byte(@deref(ptr))
-        @unsafe {
-            ptr = @ptr_add(ptr, 1) as uint8*
+    @unsafe {
+        while @deref(ptr) != 0 {
+            sb.push_byte(@deref(ptr))
+            @unsafe {
+                ptr = @ptr_add(ptr, 1) as uint8*
+            }
         }
     }
 
     let name_ptr: uint8* = name as uint8*
-    while @deref(name_ptr) != 0 {
-        sb.push_byte(@deref(name_ptr))
-        @unsafe {
-            name_ptr = @ptr_add(name_ptr, 1) as uint8*
+    @unsafe {
+        while @deref(name_ptr) != 0 {
+            sb.push_byte(@deref(name_ptr))
+            @unsafe {
+                name_ptr = @ptr_add(name_ptr, 1) as uint8*
+            }
         }
     }
 
@@ -39,6 +45,7 @@ func build_greeting(sb: string.StringBuilder*, name: string): void {
     sb.push_byte(10)
 }
 
+@unsafe
 func build_countdown(sb: string.StringBuilder*): void {
     let i: int = 5
     while i >= 0 {
@@ -52,14 +59,17 @@ func build_countdown(sb: string.StringBuilder*): void {
 
     let liftoff: string = " Liftoff!\n"
     let ptr: uint8* = liftoff as uint8*
-    while @deref(ptr) != 0 {
-        sb.push_byte(@deref(ptr))
-        @unsafe {
-            ptr = @ptr_add(ptr, 1) as uint8*
+    @unsafe {
+        while @deref(ptr) != 0 {
+            sb.push_byte(@deref(ptr))
+            @unsafe {
+                ptr = @ptr_add(ptr, 1) as uint8*
+            }
         }
     }
 }
 
+@unsafe
 func build_box(sb: string.StringBuilder*, width: int): void {
     let i: int = 0
     while i < width {
@@ -85,6 +95,7 @@ func build_box(sb: string.StringBuilder*, width: int): void {
     sb.push_byte(10)
 }
 
+@unsafe
 external func main(): int32 {
     let sb: string.StringBuilder
     sb.init()

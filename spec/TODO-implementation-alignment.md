@@ -2,6 +2,8 @@
 
 This document tracks implementation work needed to align compiler/LSP behavior with the language spec in `spec/`.
 
+LLVM entries below are historical. The LLVM backend is deprecated and unavailable in the current compiler.
+
 ## 1) Coherence Enforcement (Traits/Inherent Impl)
 
 Spec reference: `spec/traits.md` (Coherence Rules + Coherence Diagnostics)
@@ -14,9 +16,11 @@ Spec reference: `spec/traits.md` (Coherence Rules + Coherence Diagnostics)
 
 Primary code paths:
 
-- `backends/c_backend/c_backend.go`
+- `backends/c_backend/c_trait_declarations.go`
   - `NewImplementation(...)`
+- `backends/c_backend/c_implementations.go`
   - `CImplementationForClass(...)`
+- `backends/c_backend/c_generic_impl.go`
   - `CInherentImplementation(...)`
 - Resolution metadata:
   - `ast/ast.go` (`OriginModule`, package checks)
@@ -42,7 +46,8 @@ Add compile tests under `test_sources/compile_tests/coherence/`:
 
 And test assertions in:
 
-- [x] `tests/compiler_test.go` (expected error substrings + runtime success cases)
+- [x] `tests/compiler_errors_test.go` (expected error substrings)
+- [x] `tests/compiler_cases_test.go` (runtime success cases)
 
 ## 4) LSP Behavior
 
@@ -96,3 +101,20 @@ Initial high-value mapping targets:
 - Tests cover all legal/illegal coherence combinations.
 - LSP reflects same constraints.
 - Spec-tag audit passes for all tracked source files.
+
+## Memory ownership follow-ups
+
+Implemented: raw unsafe boundaries, corrected Box/Rc/Weak destruction, lexical
+Drop cleanup and manual mode, runtime Ref/RefMut borrows, unified guarded exits,
+tracked Drop arguments, Option/Result active-payload cleanup, and generated C
+inspection with `--print-expanded`.
+
+- [ ] Complete ownership transfer through nested call arguments and aggregate fields.
+- [ ] Drop owned temporaries and captured resources, including escaping closures.
+- [x] Make Option/Result own active payloads and define consuming extraction.
+- [ ] Provide safe copy and borrow APIs for Box/Rc/Weak payload access.
+- [ ] Extend borrow views beyond Copy payloads without duplicating ownership.
+- [ ] Emit recompilable Gecko source for ownership expansion; the current flag
+  prints exact generated C.
+
+These remain explicit limits; the runtime borrow types are not a static borrow checker.

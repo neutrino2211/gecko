@@ -17,21 +17,31 @@ class Rectangle {
 }
 
 func squared_distance(p1: Point*, p2: Point*): int32 {
-    let dx: int32 = p2.x - p1.x
-    let dy: int32 = p2.y - p1.y
+    @unsafe {
+        let dx: int32 = p2.x - p1.x
+    }
+    @unsafe {
+        let dy: int32 = p2.y - p1.y
+    }
     return dx * dx + dy * dy
 }
 
 func print_point(name: string, p: Point*): void {
-    stdio.printf("  %s: (%d, %d)\n", name, p.x, p.y)
+    @unsafe {
+        stdio.printf("  %s: (%d, %d)\n", name, p.x, p.y)
+    }
 }
 
 func area(r: Rectangle*): int32 {
-    return r.width * r.height
+    @unsafe {
+        return r.width * r.height
+    }
 }
 
 func perimeter(r: Rectangle*): int32 {
-    return 2 * (r.width + r.height)
+    @unsafe {
+        return 2 * (r.width + r.height)
+    }
 }
 
 external func main(): int32 {

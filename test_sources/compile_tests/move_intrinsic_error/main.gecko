@@ -1,0 +1,8 @@
+package main
+import std.memory.borrow_cell use { BorrowCell }
+external func main(): int32 {
+ let cell: BorrowCell<int32> = BorrowCell<int32>::new(1)
+ let moved = @move(cell)
+ let reader = cell.borrow()
+ return 0
+}

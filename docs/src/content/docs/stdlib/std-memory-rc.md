@@ -13,4 +13,4 @@ Reference-counted shared ownership module.
 ## Types
 
 - [`Rc<T>`](/stdlib/rc-rc/)
-- [`RcInner<T>`](/stdlib/rc-rcinner/)
+The internal control block lives in `std.memory.rc_storage`.

@@ -1,0 +1,7 @@
+package main
+
+external func main(): int32 {
+    @unsafe [ptr = @alloc(1.5, 8)] {
+    }
+    return 0
+}

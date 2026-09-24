@@ -1,0 +1,82 @@
+package borrow_cell
+
+import std.core.traits use { Drop, Copy, Borrow, BorrowMut }
+import std.memory.borrow_storage use { BorrowStorage }
+import std.memory.ref use { Ref }
+import std.memory.ref_mut use { RefMut }
+import std.unsafe use { NonNull }
+
+public class BorrowCell<T is Copy> {
+    let ptr: uint64
+
+    func new(value: T): BorrowCell<T> {
+        @unsafe [
+            inner: BorrowStorage<T>* = @alloc(@size_of<BorrowStorage<T>>(), @align_of<BorrowStorage<T>>()) as BorrowStorage<T>*
+        ] with NonNull::handle(inner as void*) {
+            inner.refs = 1
+            inner.readers = 0
+            inner.writer = false
+            inner.value = value
+            return BorrowCell<T> { ptr: inner as uint64 }
+        }
+    }
+
+    func can_borrow(self): bool {
+        if (self.ptr == 0) { return false }
+        @unsafe {
+            let inner: BorrowStorage<T>* = self.ptr as BorrowStorage<T>*
+            return !inner.writer
+        }
+    }
+
+    func can_borrow_mut(self): bool {
+        if (self.ptr == 0) { return false }
+        @unsafe {
+            let inner: BorrowStorage<T>* = self.ptr as BorrowStorage<T>*
+            return !inner.writer && inner.readers == 0
+        }
+    }
+
+    func borrow(self): Ref<T> {
+        @unsafe {
+            if (!self.can_borrow()) { @trap() }
+            let inner: BorrowStorage<T>* = self.ptr as BorrowStorage<T>*
+            inner.refs = inner.refs + 1
+            inner.readers = inner.readers + 1
+            return Ref<T>::from_storage(self.ptr)
+        }
+    }
+
+    func borrow_mut(self): RefMut<T> {
+        @unsafe {
+            if (!self.can_borrow_mut()) { @trap() }
+            let inner: BorrowStorage<T>* = self.ptr as BorrowStorage<T>*
+            inner.refs = inner.refs + 1
+            inner.writer = true
+            return RefMut<T>::from_storage(self.ptr)
+        }
+    }
+
+    func release(self): void {
+        if (self.ptr == 0) { return }
+        let address: uint64 = self.ptr
+        self.ptr = 0
+        @unsafe {
+            let inner: BorrowStorage<T>* = address as BorrowStorage<T>*
+            inner.refs = inner.refs - 1
+            if (inner.refs == 0) { @free(inner as void*) }
+        }
+    }
+
+    func drop(self): void { self.release() }
+}
+
+impl<T> Drop for BorrowCell<T> {
+    func drop(self): void { self.release() }
+}
+impl<T> Borrow<Ref<T>> for BorrowCell<T> {
+    func borrow(self): Ref<T> { return self.borrow() }
+}
+impl<T> BorrowMut<RefMut<T>> for BorrowCell<T> {
+    func borrow_mut(self): RefMut<T> { return self.borrow_mut() }
+}

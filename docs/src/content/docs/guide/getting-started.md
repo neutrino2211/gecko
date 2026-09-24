@@ -102,10 +102,12 @@ gecko build hello.gecko -o hello
 |------|-------------|
 | `--print-ir` | Print generated IR |
 | `--ir-only` | Only generate IR, don't compile |
-| `--backend llvm` | Use LLVM backend |
+| `--backend c` | Use the supported C backend (default) |
 | `--target-arch` | Target architecture (amd64, arm64) |
 | `--target-platform` | Target platform (linux, darwin) |
 | `--log-level debug` | Enable debug logging |
+
+The LLVM backend is deprecated and unavailable in the current compiler. Existing projects should set `backend = "c"` in `gecko.toml`.
 
 ## Project Structure
 

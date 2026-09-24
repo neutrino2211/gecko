@@ -1,129 +1,82 @@
-// spec: spec/types.md, spec/traits.md, spec/modules.md, spec/operators.md, spec/pointers.md, spec/memory.md, spec/stdlib.md
-
 package box
 
 import std.core.traits use { Drop }
 import std.option use { Option }
-import std.ffi.libc use { malloc, free }
+import std.unsafe use { NonNull }
 
-/// Box<T> - Unique ownership smart pointer.
-///
-/// Provides single-owner heap allocation with automatic cleanup.
-/// When a `Box<T>` goes out of scope, the memory is freed.
-///
-/// Unlike `Rc<T>`, `Box<T>` cannot be cloned - ownership must be
-/// transferred (moved) rather than shared.
-///
-/// Example:
-/// ```
-/// let b: Box<int32> = Box<int32>::new(42)
-/// let val: int32 = b.get()
-/// b.drop()  // Manual cleanup (automatic in future)
-/// ```
 public class Box<T> {
-    /// Internal pointer to heap-allocated memory.
     let ptr: uint64
 
-    /// Allocates memory and stores a value, returning a new `Box<T>`.
-    ///
-    /// The value is copied to heap-allocated memory. The `Box<T>`
-    /// becomes the sole owner of this memory.
     func new(value: T): Box<T> {
-        let size: uint64 = @size_of<T>()
-        let mem: void* = malloc(size)
-        let addr: uint64 = mem as uint64
-
-        // Write value to allocated memory
-        let dest: T* = addr as T*
-        @unsafe {
-            @write_volatile(dest, value)
+        @unsafe [
+            ptr: T* = @alloc(@size_of<T>(), @align_of<T>()) as T*
+        ] with NonNull::handle(ptr as void*) {
+            @deref(ptr) = @move(value)
+            let b: Box<T>
+            b.ptr = ptr as uint64
+            return b
         }
-
-        let b: Box<T>
-        b.ptr = addr
-        return b
     }
 
-    /// Takes ownership of memory from a raw pointer.
-    ///
-    /// The caller must ensure the pointer was allocated with `malloc`
-    /// and is of the correct type. After this call, the `Box<T>` owns
-    /// the memory and will free it when dropped.
+    @unsafe
     func from_raw(raw_ptr: uint64): Box<T> {
         let b: Box<T>
         b.ptr = raw_ptr
         return b
     }
 
-    /// Creates a Box from a raw pointer with runtime validation.
-    ///
-    /// FFI-facing invariant checks:
-    /// - pointer must be non-null
+    @unsafe
     func from_raw_checked(raw_ptr: uint64): Option<Box<T>> {
-        if (raw_ptr == 0) {
-            return Option<Box<T>>::none()
-        }
-        let b: Box<T>
-        b.ptr = raw_ptr
-        return Option<Box<T>>::some(b)
+        if (raw_ptr == 0) { return Option<Box<T>>::none() }
+        return Option<Box<T>>::some(Box<T>::from_raw(raw_ptr))
     }
 
-    /// Returns true if this Box contains valid (non-null) memory.
-    func is_valid(self): bool {
-        return self.ptr != 0
-    }
+    func is_valid(self): bool { return self.ptr != 0 }
 
-    /// Returns the value stored in the Box.
+    @unsafe
     func get(self): T {
-        let p: T* = self.ptr as T*
-        return @deref(p)
+        @unsafe { return @deref(self.ptr as T*) }
     }
 
-    /// Overwrites the value stored in the Box.
-    func set(self, value: T) {
-        let p: T* = self.ptr as T*
+    func into_inner(self): T {
+        if (self.ptr == 0) { @unsafe { @trap() } }
+        let address: uint64 = self.ptr
+        self.ptr = 0
         @unsafe {
-            @write_volatile(p, value)
+            let value: T = @deref(address as T*)
+            @free(address as void*)
+            return value
         }
     }
 
-    /// Returns the raw pointer without giving up ownership.
-    ///
-    /// The Box still owns the memory after this call.
-    func as_raw(self): uint64 {
-        return self.ptr
+    func set(self, value: T): void {
+        @unsafe {
+            @drop_in_place(self.ptr as T*)
+            @deref(self.ptr as T*) = @move(value)
+        }
     }
 
-    /// Gives up ownership and returns the raw pointer.
-    ///
-    /// After this call, the Box is invalidated and the caller
-    /// is responsible for freeing the memory.
+    func as_raw(self): uint64 { return self.ptr }
+
     func into_raw(self): uint64 {
-        let addr: uint64 = self.ptr
-        self.ptr = 0  // Invalidate box
-        return addr
+        let address: uint64 = self.ptr
+        self.ptr = 0
+        return address
     }
 
-    /// Frees the memory owned by this Box.
-    ///
-    /// After calling drop, the Box is invalidated.
-    /// In the future, this will be called automatically when
-    /// the Box goes out of scope.
-    func drop(self) {
-        if (self.ptr != 0) {
-            free(self.ptr as void*)
-            self.ptr = 0
+    func release(self): void {
+        if (self.ptr == 0) { return }
+        let address: uint64 = self.ptr
+        self.ptr = 0
+        @unsafe {
+            @drop_in_place(address as T*)
+            @free(address as void*)
         }
     }
+
+    func drop(self): void { self.release() }
 }
 
-// Trait implementations for Box<T>
-
 impl<T> Drop for Box<T> {
-    func drop(self): void {
-        if (self.ptr != 0) {
-            free(self.ptr as void*)
-            self.ptr = 0
-        }
-    }
+    func drop(self): void { self.release() }
 }

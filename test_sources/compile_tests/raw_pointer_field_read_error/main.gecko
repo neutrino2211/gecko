@@ -1,0 +1,8 @@
+class Value {
+    let value: int32
+}
+external func main(): int32 {
+    let v: Value = Value { value: 7 }
+    let p: Value* = &v
+    return p.value
+}

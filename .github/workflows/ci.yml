@@ -43,11 +43,22 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Check maintained file sizes
+        run: go run ./tools/file_size
+
+      - name: Check GNote web bundle
+        run: |
+          sh examples/GNote/scripts/build_web.sh
+          git diff --exit-code -- examples/GNote/web/notes.html
+
       - name: Run LLVM-lite contract tests
         run: go test ./tests/... -v -run "TestLLVMLite"
 
       - name: Run tests
-        run: go test ./tests/... -v
+        run: go test ./... -v -timeout 120s
+
+      - name: Static analysis
+        run: go vet ./...
 
   build:
     name: Build (${{ matrix.os }}-${{ matrix.arch }})

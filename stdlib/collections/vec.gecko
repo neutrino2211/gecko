@@ -74,15 +74,11 @@ public class Vec<T> {
     ///
     /// If validation fails, returns None.
     func from_raw_checked(data_ptr: uint64, length: uint64, capacity: uint64): Option<Vec<T>> {
-        let v: Vec<T>
         if (!Vec<T>::validate_raw_parts(data_ptr, length, capacity)) {
             return Option<Vec<T>>::none()
         }
 
-        v.data = data_ptr
-        v.len = length
-        v.cap = capacity
-        return Option<Vec<T>>::some(v)
+        return Option<Vec<T>>::some(Vec<T> { data: data_ptr, len: length, cap: capacity })
     }
 
     /// Returns true if this Vec instance satisfies raw memory invariants.
@@ -109,7 +105,9 @@ public class Vec<T> {
     func get(self, index: uint64): T {
         let elem_size: uint64 = @size_of<T>()
         let ptr: T* = (self.data + index * elem_size) as T*
-        return @deref(ptr)
+        @unsafe {
+            return @deref(ptr)
+        }
     }
 
     /// Sets the element at the given index.
@@ -163,7 +161,9 @@ public class Vec<T> {
 
         let elem_size: uint64 = @size_of<T>()
         let ptr: T* = (self.data + self.len * elem_size) as T*
-        return @deref(ptr)
+        @unsafe {
+            return @deref(ptr)
+        }
     }
 
     /// Returns the first element, or default if empty.
@@ -257,7 +257,9 @@ impl<T> Index<uint64, T> for Vec<T> {
     func index(self, idx: uint64): T {
         let elem_size: uint64 = @size_of<T>()
         let ptr: T* = (self.data + idx * elem_size) as T*
-        return @deref(ptr)
+        @unsafe {
+            return @deref(ptr)
+        }
     }
 }
 

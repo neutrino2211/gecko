@@ -1,0 +1,33 @@
+package main
+
+import std.collections.string use { String, StringBuilder, streq }
+
+external func main(): int32 {
+    let empty = String::new()
+    let small = String::with_capacity(0)
+    if !streq(empty.as_ptr(), "") || !streq(small.as_ptr(), "") {
+        return 1
+    }
+    if !streq("same", "same") || streq("same", "sand") || streq("a", "ab") {
+        return 2
+    }
+    let builder: StringBuilder
+    builder.init()
+    if !builder.push_bytes("abc" as uint8*, 3) {
+        return 3
+    }
+    if builder.len() != 3 || builder.cap() < 16 || builder.get(1) != 98 {
+        return 4
+    }
+    if !builder.grow(40) || builder.cap() != 40 || builder.get(2) != 99 {
+        return 5
+    }
+    if !builder.push_byte(100 as uint8) || builder.get(3) != 100 {
+        return 6
+    }
+    if builder.push_bytes(null as uint8*, 1) {
+        return 7
+    }
+    builder.destroy()
+    return 0
+}

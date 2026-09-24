@@ -1,0 +1,49 @@
+package ref
+
+import std.core.traits use { Drop, Copy }
+import std.memory.borrow_storage use { BorrowStorage }
+
+public class Ref<T is Copy> {
+    let ptr: uint64
+
+    @unsafe
+    func from_storage(ptr: uint64): Ref<T> {
+        return Ref<T> { ptr: ptr }
+    }
+
+    func get(self): T {
+        @unsafe {
+            if (self.ptr == 0) { @trap() }
+            let inner: BorrowStorage<T>* = self.ptr as BorrowStorage<T>*
+            return inner.value
+        }
+    }
+
+    func clone(self): Ref<T> {
+        @unsafe {
+            if (self.ptr == 0) { @trap() }
+            let inner: BorrowStorage<T>* = self.ptr as BorrowStorage<T>*
+            inner.refs = inner.refs + 1
+            inner.readers = inner.readers + 1
+            return Ref<T> { ptr: self.ptr }
+        }
+    }
+
+    func release(self): void {
+        if (self.ptr == 0) { return }
+        let address: uint64 = self.ptr
+        self.ptr = 0
+        @unsafe {
+            let inner: BorrowStorage<T>* = address as BorrowStorage<T>*
+            inner.readers = inner.readers - 1
+            inner.refs = inner.refs - 1
+            if (inner.refs == 0) { @free(inner as void*) }
+        }
+    }
+
+    func drop(self): void { self.release() }
+}
+
+impl<T> Drop for Ref<T> {
+    func drop(self): void { self.release() }
+}

@@ -41,7 +41,7 @@ Configure build settings:
 
 ```toml
 [build]
-backend = "c"                           # "c" or "llvm"
+backend = "c"                           # Supported backend; "llvm" is deprecated and unavailable
 treeshake = true                        # Optional; defaults to true when omitted
 default_target = "x86_64-apple-darwin"  # Default target triple
 ```

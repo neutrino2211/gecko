@@ -46,7 +46,8 @@ func return_ok(id: string, payload: string): void {
     webview_return(g_webview_handle, id, 0, payload)
 }
 
-func prepare_req_stmt(db: Sqlite, req: string, sql: string): Option<SqliteStmt> {
+func prepare_req_stmt(db_handle: void*, req: string, sql: string): Option<SqliteStmt> {
+    let db: Sqlite = try Sqlite::from_raw_handle(db_handle)
     let stmt: SqliteStmt = try db.prepare(sql)
 
     let bind_rc: int32 = stmt.bind_text(1, req)
@@ -97,7 +98,7 @@ func on_notes_list(id: string, req: string, _arg: void*): void {
     }
 
     let db: Sqlite = db_opt.unwrap()
-    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db, req, REQ_LIST_SQL)
+    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db.raw() as void*, req, REQ_LIST_SQL)
     if (args_opt.is_none()) {
         return_error(id)
         return
@@ -108,7 +109,7 @@ func on_notes_list(id: string, req: string, _arg: void*): void {
     let offset: int64 = args.column_int64(1)
     args.finalize()
 
-    return_json_stmt(id, queries.prepare_list_notes_json(db, limit, offset))
+    return_json_stmt(id, queries.prepare_list_notes_json(db.raw() as void*, limit, offset))
 }
 
 func on_notes_get(id: string, req: string, _arg: void*): void {
@@ -119,7 +120,7 @@ func on_notes_get(id: string, req: string, _arg: void*): void {
     }
 
     let db: Sqlite = db_opt.unwrap()
-    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db, req, REQ_ID_SQL)
+    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db.raw() as void*, req, REQ_ID_SQL)
     if (args_opt.is_none()) {
         return_error(id)
         return
@@ -129,7 +130,7 @@ func on_notes_get(id: string, req: string, _arg: void*): void {
     let note_id: int64 = args.column_int64(0)
     args.finalize()
 
-    return_json_stmt(id, queries.prepare_get_note_json(db, note_id))
+    return_json_stmt(id, queries.prepare_get_note_json(db.raw() as void*, note_id))
 }
 
 func on_notes_search(id: string, req: string, _arg: void*): void {
@@ -140,7 +141,7 @@ func on_notes_search(id: string, req: string, _arg: void*): void {
     }
 
     let db: Sqlite = db_opt.unwrap()
-    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db, req, REQ_SEARCH_SQL)
+    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db.raw() as void*, req, REQ_SEARCH_SQL)
     if (args_opt.is_none()) {
         return_error(id)
         return
@@ -152,7 +153,7 @@ func on_notes_search(id: string, req: string, _arg: void*): void {
     let offset: int64 = args.column_int64(2)
     args.finalize()
 
-    return_json_stmt(id, queries.prepare_search_notes_json(db, term, limit, offset))
+    return_json_stmt(id, queries.prepare_search_notes_json(db.raw() as void*, term, limit, offset))
 }
 
 func on_notes_create(id: string, req: string, _arg: void*): void {
@@ -163,7 +164,7 @@ func on_notes_create(id: string, req: string, _arg: void*): void {
     }
 
     let db: Sqlite = db_opt.unwrap()
-    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db, req, REQ_CREATE_SQL)
+    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db.raw() as void*, req, REQ_CREATE_SQL)
     if (args_opt.is_none()) {
         return_error(id)
         return
@@ -173,7 +174,7 @@ func on_notes_create(id: string, req: string, _arg: void*): void {
     let title: string = args.column_text(0)
     let body: string = args.column_text(1)
 
-    let create_rc: int32 = queries.create_note(db, title, body)
+    let create_rc: int32 = queries.create_note(db.raw() as void*, title, body)
     args.finalize()
     if (create_rc != SQLITE_OK) {
         return_error(id)
@@ -214,7 +215,7 @@ func on_notes_update(id: string, req: string, _arg: void*): void {
     }
 
     let db: Sqlite = db_opt.unwrap()
-    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db, req, REQ_UPDATE_SQL)
+    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db.raw() as void*, req, REQ_UPDATE_SQL)
     if (args_opt.is_none()) {
         return_error(id)
         return
@@ -225,7 +226,7 @@ func on_notes_update(id: string, req: string, _arg: void*): void {
     let title: string = args.column_text(1)
     let body: string = args.column_text(2)
 
-    let update_rc: int32 = queries.update_note(db, note_id, title, body)
+    let update_rc: int32 = queries.update_note(db.raw() as void*, note_id, title, body)
     args.finalize()
     if (update_rc != SQLITE_OK) {
         return_error(id)
@@ -243,7 +244,7 @@ func on_notes_delete(id: string, req: string, _arg: void*): void {
     }
 
     let db: Sqlite = db_opt.unwrap()
-    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db, req, REQ_ID_SQL)
+    let args_opt: Option<SqliteStmt> = prepare_req_stmt(db.raw() as void*, req, REQ_ID_SQL)
     if (args_opt.is_none()) {
         return_error(id)
         return
@@ -253,7 +254,7 @@ func on_notes_delete(id: string, req: string, _arg: void*): void {
     let note_id: int64 = args.column_int64(0)
     args.finalize()
 
-    let delete_rc: int32 = queries.delete_note(db, note_id)
+    let delete_rc: int32 = queries.delete_note(db.raw() as void*, note_id)
     if (delete_rc != SQLITE_OK) {
         return_error(id)
         return

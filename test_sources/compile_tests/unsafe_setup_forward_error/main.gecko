@@ -1,0 +1,7 @@
+package main
+
+external func main(): int32 {
+    @unsafe [first: int32 = later, later = 1] {
+    }
+    return 0
+}

@@ -1,0 +1,43 @@
+package main
+
+import std.unsafe use { NonNull, Bounds }
+import std.result use { Result }
+
+let cleaned: int32 = 0
+
+func cleanup(): void {
+    global cleaned += 1
+}
+
+external func main(): int32 {
+    let ptr: int32 = 7
+    let allocation = @unsafe [
+        size = @size_of<int32>(),
+        ptr: int32* = @alloc(size, @align_of<int32>()) as int32*
+    ] with NonNull::handle(ptr as void*) & Bounds::handle(ptr as void*, size) {
+        defer cleanup()
+        @deref(ptr) = 42
+        let read: int32 = @deref(ptr)
+        @free(ptr)
+        read
+    }
+    if allocation.is_error() {
+        return 1
+    }
+    if ptr != 7 {
+        return 2
+    }
+    if allocation.unwrap() != 42 {
+        return 3
+    }
+    @unsafe [ptr = ptr + 1] {
+        if ptr != 8 {
+            return 5
+        }
+        defer cleanup()
+    }
+    if cleaned != 2 {
+        return 4
+    }
+    return 0
+}

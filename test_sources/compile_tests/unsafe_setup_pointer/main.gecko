@@ -1,0 +1,25 @@
+package main
+
+import std.unsafe use { NonNull }
+import std.result use { Result }
+
+external func main(): int32 {
+    let allocation = @unsafe [ptr = @alloc(3, 64) as uint8*] with NonNull::handle(ptr as void*) {
+        @deref(ptr) = 42 as uint8
+        ptr
+    }
+    if allocation.is_error() {
+        return 1
+    }
+    let ptr: uint8* = allocation.unwrap()
+    let aligned: bool = ((ptr as uint64) & 63) == 0
+    let value: uint8 = 0
+    @unsafe {
+        value = @deref(ptr)
+        @free(ptr)
+    }
+    if !aligned || value != 42 {
+        return 2
+    }
+    return 0
+}

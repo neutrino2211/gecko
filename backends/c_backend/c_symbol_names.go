@@ -11,6 +11,9 @@ func CVariableIdentifier(variable *ast.Variable) string {
 	if variable == nil {
 		return ""
 	}
+	if variable.CName != "" {
+		return variable.CName
+	}
 	if variable.IsGlobal || variable.IsExternal {
 		return variable.GetFullName()
 	}

@@ -1,0 +1,59 @@
+package main
+
+import std.unsafe use { UnsafeHandler, UnsafeOp }
+import std.result use { Result }
+
+let caught: int32 = 0
+let ran: int32 = 0
+
+public class RecoverNull {
+    let ptr: void*
+    public func handle(ptr: void*): RecoverNull {
+        return RecoverNull { ptr: ptr }
+    }
+}
+
+@attach_handler("alloc", "deref")
+impl UnsafeHandler for RecoverNull {
+    func guard(self, op: UnsafeOp): bool {
+        return self.ptr != null
+    }
+    func catch(self, op: UnsafeOp): void {
+        global caught += 1
+    }
+}
+
+func successValue(): int32 {
+    global ran += 1
+    return 99
+}
+
+external func main(): int32 {
+    let allocation = @unsafe [ptr = @alloc(8, 3)] with RecoverNull::handle(ptr) {
+        global ran += 1
+        successValue()
+    }
+    if !allocation.is_error() {
+        return 1
+    }
+    if caught != 1 {
+        return 2
+    }
+    if ran != 0 {
+        return 3
+    }
+    allocation = @unsafe [ptr = @alloc(8, 3)] with RecoverNull::handle(ptr) {
+        successValue()
+    }
+    if !allocation.is_error() || caught != 2 || ran != 0 {
+        return 4
+    }
+    let trailing = @unsafe [ptr = null as int32*] with RecoverNull::handle(ptr as void*) {
+        defer successValue()
+        @deref(ptr)
+    }
+    if !trailing.is_error() || caught != 3 || ran != 1 {
+        return 5
+    }
+    return 0
+}

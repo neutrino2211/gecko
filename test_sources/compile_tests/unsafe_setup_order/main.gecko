@@ -1,0 +1,54 @@
+package main
+
+import std.unsafe use { UnsafeHandler, UnsafeOp }
+import std.result use { Result }
+
+let events: int32 = 0
+let checks: int32 = 0
+let caught: int32 = 0
+
+func size(): uint64 {
+    global events = events * 10 + 1
+    return 8
+}
+
+func alignment(): uint64 {
+    global events = events * 10 + 2
+    return 8
+}
+
+public class Once {
+    let ptr: void*
+    public func handle(ptr: void*): Once {
+        global events = events * 10 + 3
+        return Once { ptr: ptr }
+    }
+}
+
+@attach_handler("alloc", "deref")
+impl UnsafeHandler for Once {
+    func guard(self, op: UnsafeOp): bool {
+        global checks += 1
+        return self.ptr != null && checks == 1
+    }
+    func catch(self, op: UnsafeOp): void {
+        global caught += 1
+        @unsafe {
+            @free(self.ptr)
+        }
+    }
+}
+
+external func main(): int32 {
+    let result = @unsafe [ptr = @alloc(size(), alignment()) as int32*] with Once::handle(ptr as void*) {
+        if true {
+            @deref(ptr) = 99
+            global events = 999
+        }
+        77
+    }
+    if !result.is_error() || events != 123 || checks != 2 || caught != 1 {
+        return 1
+    }
+    return 0
+}

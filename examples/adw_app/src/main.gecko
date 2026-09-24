@@ -17,25 +17,27 @@ class Counter {
 
 @static
 func update_label(c: Counter*): void {
-    let text: string = g_strdup_printf("%d", c.value)
-    gtk_label_set_text(GTK_LABEL(c.label), text)
+    @unsafe {
+        let text: string = g_strdup_printf("%d", c.value)
+        gtk_label_set_text(GTK_LABEL(c.label), text)
+    }
 }
 
 @static
 func on_inc(btn: G_Button*, c: Counter*): void {
-    c.value = c.value + 1
+    @unsafe { c.value = c.value + 1 }
     update_label(c)
 }
 
 @static
 func on_dec(btn: G_Button*, c: Counter*): void {
-    c.value = c.value - 1
+    @unsafe { c.value = c.value - 1 }
     update_label(c)
 }
 
 @static
 func reset_count(btn: G_Button*, c: Counter*): void {
-    c.value = 0
+    @unsafe { c.value = 0 }
     update_label(c)
 }
 
@@ -66,9 +68,11 @@ func activate_callback(app: G_Application*): void {
     gtk_widget_set_margin_top(content, 24)
     gtk_box_append(GTK_BOX(box), content)
 
-    counter.label = gtk_label_new("0") as Widget*
-    gtk_widget_add_css_class(counter.label, "title-1")
-    gtk_box_append(GTK_BOX(content), counter.label)
+    @unsafe {
+        counter.label = gtk_label_new("0") as Widget*
+        gtk_widget_add_css_class(counter.label, "title-1")
+        gtk_box_append(GTK_BOX(content), counter.label)
+    }
 
     let btn_box: Widget* = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12)
     gtk_widget_set_halign(btn_box, GTK_ALIGN_CENTER)

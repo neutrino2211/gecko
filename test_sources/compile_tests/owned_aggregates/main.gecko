@@ -1,0 +1,145 @@
+package main
+
+import std.core.traits use { Drop }
+import std.memory.box use { Box }
+import std.option use { Option }
+import std.result use { Result }
+
+class Tracked { let count: int32* }
+
+impl Drop for Tracked {
+    func drop(self): void {
+        @unsafe { @deref(self.count) = @deref(self.count) + 1 }
+    }
+}
+
+class Sink {
+    let marker: int32
+    func take(self, value: Tracked): void { let entered: int32 = self.marker }
+}
+
+func consume(value: Tracked): void { let entered: int32 = 1 }
+
+func take_arguments(count: int32*): void {
+    let first: Tracked = Tracked { count: count }
+    consume(first)
+    let sink: Sink = Sink { marker: 0 }
+    let second: Tracked = Tracked { count: count }
+    sink.take(second)
+}
+
+func drop_option(count: int32*): void {
+    let value: Tracked = Tracked { count: count }
+    let optional: Option<Tracked> = Option<Tracked>::some(value)
+}
+
+func take_option(count: int32*): void {
+    let optional: Option<Tracked> = Option<Tracked>::some(Tracked { count: count })
+    let value: Tracked = optional.unwrap()
+    if (optional.is_some()) { @unsafe { @trap() } }
+    value.drop()
+}
+
+func drop_result_ok(count: int32*): void {
+    let result: Result<Tracked, Tracked> = Result<Tracked, Tracked>::ok(Tracked { count: count })
+}
+
+func drop_result_err(count: int32*): void {
+    let result: Result<Tracked, Tracked> = Result<Tracked, Tracked>::err(Tracked { count: count })
+}
+
+func take_result(count: int32*): void {
+    let result: Result<Tracked, Tracked> = Result<Tracked, Tracked>::ok(Tracked { count: count })
+    let value: Tracked = result.unwrap()
+    value.drop()
+}
+
+func take_box(count: int32*): void {
+    let owner: Box<Tracked> = Box<Tracked>::new(Tracked { count: count })
+    let value: Tracked = owner.into_inner()
+    if (owner.is_valid()) { @unsafe { @trap() } }
+    value.drop()
+}
+
+func take_try_option(count: int32*): Option<Tracked> {
+    let optional: Option<Tracked> = Option<Tracked>::some(Tracked { count: count })
+    let value: Tracked = try optional
+    return Option<Tracked>::some(value)
+}
+
+func take_or_option(count: int32*): void {
+    let optional: Option<Tracked> = Option<Tracked>::some(Tracked { count: count })
+    let value: Tracked = optional or Tracked { count: count }
+    value.drop()
+}
+
+func take_or_result(count: int32*): void {
+    let result: Result<Tracked, Tracked> = Result<Tracked, Tracked>::err(Tracked { count: count })
+    let value: Tracked = result or Tracked { count: count }
+    value.drop()
+}
+
+func take_or_named(count: int32*): void {
+    let result: Result<Tracked, Tracked> = Result<Tracked, Tracked>::err(Tracked { count: count })
+    let fallback: Tracked = Tracked { count: count }
+    let value: Tracked = result or fallback
+    value.drop()
+}
+
+func take_or_unused(count: int32*): void {
+    let optional: Option<Tracked> = Option<Tracked>::some(Tracked { count: count })
+    let fallback: Tracked = Tracked { count: count }
+    let value: Tracked = optional or fallback
+    value.drop()
+}
+
+func propagate_result(count: int32*): Result<Tracked, Tracked> {
+    let result: Result<Tracked, Tracked> = Result<Tracked, Tracked>::err(Tracked { count: count })
+    let value: Tracked = try result
+    return Result<Tracked, Tracked>::ok(value)
+}
+
+func propagate_with_cleanup(count: int32*): Result<Tracked, Tracked> {
+    let spare: Tracked = Tracked { count: count }
+    let result: Result<Tracked, Tracked> = Result<Tracked, Tracked>::err(Tracked { count: count })
+    let value: Tracked = try result
+    return Result<Tracked, Tracked>::ok(value)
+}
+
+external func main(): int32 {
+    let count: int32 = 0
+    drop_option(&count)
+    if (count != 1) { return 1 }
+    take_option(&count)
+    if (count != 2) { return 2 }
+    drop_result_ok(&count)
+    if (count != 3) { return 3 }
+    drop_result_err(&count)
+    if (count != 4) { return 4 }
+    take_result(&count)
+    if (count != 5) { return 5 }
+    take_box(&count)
+    if (count != 6) { return 6 }
+    take_arguments(&count)
+    if (count != 8) { return 7 }
+    let from_try: Option<Tracked> = take_try_option(&count)
+    from_try.drop()
+    if (count != 9) { return 8 }
+    take_or_option(&count)
+    if (count != 10) { return 9 }
+    take_or_result(&count)
+    if (count != 12) { return 10 }
+    let propagated: Result<Tracked, Tracked> = propagate_result(&count)
+    let error: Tracked = propagated.unwrap_err()
+    error.drop()
+    if (count != 13) { return 11 }
+    take_or_named(&count)
+    if (count != 15) { return 12 }
+    take_or_unused(&count)
+    if (count != 17) { return 13 }
+    let early: Result<Tracked, Tracked> = propagate_with_cleanup(&count)
+    let early_error: Tracked = early.unwrap_err()
+    early_error.drop()
+    if (count != 19) { return 14 }
+    return 0
+}

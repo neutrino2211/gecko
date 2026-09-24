@@ -2,7 +2,7 @@
 
 package result
 
-import std.core.traits use { Tryable, Orable }
+import std.core.traits use { Tryable, Orable, Drop }
 import std.errors
 
 /// Result<T, E> - Represents either a success (Ok) or failure (Err).
@@ -31,49 +31,59 @@ public class Result<T, E> {
     let value: T
     let error: E
     let is_ok: bool
+    let active: bool
 
     /// Creates a success Result containing a value.
     public func ok(val: T): Result<T, E> {
         let res: Result<T, E>
-        res.value = val
+        res.value = @move(val)
         res.is_ok = true
+        res.active = true
         return res
     }
 
     /// Creates an error Result containing an error.
     public func err(e: E): Result<T, E> {
         let res: Result<T, E>
-        res.error = e
+        res.error = @move(e)
         res.is_ok = false
+        res.active = true
         return res
     }
 
     /// Returns true if this Result is Ok.
     public func is_success(self): bool {
+        if (!self.active) { @unsafe { @trap() } }
         return self.is_ok
     }
 
     /// Returns true if this Result is Err.
     public func is_error(self): bool {
+        if (!self.active) { @unsafe { @trap() } }
         return !self.is_ok
     }
 
     /// Returns the contained value.
-    /// Behavior is undefined if the Result is Err.
     public func unwrap(self): T {
-        return self.value
+        if (!self.active || !self.is_ok) { @unsafe { @trap() } }
+        let value: T = self.value
+        self.active = false
+        return value
     }
 
     /// Returns the contained error.
-    /// Behavior is undefined if the Result is Ok.
     public func unwrap_err(self): E {
-        return self.error
+        if (!self.active || self.is_ok) { @unsafe { @trap() } }
+        let error: E = self.error
+        self.active = false
+        return error
     }
 
     /// Returns the contained value, or a default if Err.
     public func unwrap_or(self, default_val: T): T {
+        if (!self.active) { @unsafe { @trap() } }
         if (self.is_ok) {
-            return self.value
+            return self.unwrap()
         }
         return default_val
     }
@@ -82,12 +92,16 @@ public class Result<T, E> {
     /// Note: method-level generic parameters are not yet supported in all backends.
     /// This variant maps T -> T to keep Result usable across toolchains.
     public func map(self, mapper: func(T): T): Result<T, E> {
+        if (!self.active) { @unsafe { @trap() } }
         if (self.is_ok) {
-            return Result<T, E>::ok(mapper(self.value))
+            let value: T = self.unwrap()
+            return Result<T, E>::ok(mapper(@move(value)))
         }
         let res: Result<T, E>
         res.error = self.error
         res.is_ok = false
+        res.active = true
+        self.active = false
         return res
     }
 
@@ -95,32 +109,54 @@ public class Result<T, E> {
     /// Note: method-level generic parameters are not yet supported in all backends.
     /// This variant maps E -> E to keep Result usable across toolchains.
     public func map_err(self, mapper: func(E): E): Result<T, E> {
+        if (!self.active) { @unsafe { @trap() } }
         if (!self.is_ok) {
-            return Result<T, E>::err(mapper(self.error))
+            let error: E = self.unwrap_err()
+            return Result<T, E>::err(mapper(@move(error)))
         }
         let res: Result<T, E>
         res.value = self.value
         res.is_ok = true
+        res.active = true
+        self.active = false
         return res
     }
+
+    public func drop(self): void {
+        if (!self.active) { return }
+        self.active = false
+        @unsafe {
+            if (self.is_ok) {
+                @drop_in_place(&self.value)
+            } else {
+                @drop_in_place(&self.error)
+            }
+        }
+    }
+}
+
+impl<T, E> Drop for Result<T, E> {
+    func drop(self): void { self.drop() }
 }
 
 /// Implement Tryable for Result - enables `try result_expr`
 impl<T, E> Tryable<T> for Result<T, E> {
     public func has_value(self): bool {
+        if (!self.active) { @unsafe { @trap() } }
         return self.is_ok
     }
 
     public func try_unwrap(self): T {
-        return self.value
+        return self.unwrap()
     }
 }
 
 /// Implement Orable for Result - enables `result_expr or default`
 impl<T, E> Orable<T> for Result<T, E> {
     public func unwrap_or(self, default_val: T): T {
+        if (!self.active) { @unsafe { @trap() } }
         if (self.is_ok) {
-            return self.value
+            return self.unwrap()
         }
         return default_val
     }

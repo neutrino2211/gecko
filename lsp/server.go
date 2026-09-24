@@ -99,6 +99,9 @@ func (s *Server) handleDidOpen(ctx context.Context, reply jsonrpc2.Replier, req 
 	content := params.TextDocument.Text
 
 	s.documents.Open(uri, content)
+	if doc, ok := s.documents.Get(uri); ok {
+		doc.RebuildAnalysis()
+	}
 	s.publishDiagnostics(ctx, uri)
 
 	return reply(ctx, nil, nil)
@@ -118,6 +121,9 @@ func (s *Server) handleDidChange(ctx context.Context, reply jsonrpc2.Replier, re
 		content := params.ContentChanges[0].Text
 		log.Printf("Content length: %d bytes", len(content))
 		s.documents.Update(uri, content)
+		if doc, ok := s.documents.Get(uri); ok {
+			doc.RebuildAnalysis()
+		}
 		s.publishDiagnostics(ctx, uri)
 	} else {
 		log.Printf("No content changes received")
@@ -146,6 +152,9 @@ func (s *Server) handleDidSave(ctx context.Context, reply jsonrpc2.Replier, req 
 	if params.Text != "" {
 		s.documents.Update(uri, params.Text)
 	}
+	if doc, ok := s.documents.Get(uri); ok {
+		doc.RebuildAnalysis()
+	}
 	s.publishDiagnostics(ctx, uri)
 
 	return reply(ctx, nil, nil)
@@ -170,7 +179,7 @@ func (s *Server) handleHover(ctx context.Context, reply jsonrpc2.Replier, req js
 		return reply(ctx, nil, nil)
 	}
 
-	info := GetHoverInfo(doc.Content, line, col)
+	info := GetHoverInfo(doc.Analysis, doc.Content, line, col)
 	if info == nil {
 		log.Printf("No symbol found at position")
 		return reply(ctx, nil, nil)
@@ -215,7 +224,7 @@ func (s *Server) handleDefinition(ctx context.Context, reply jsonrpc2.Replier, r
 		return reply(ctx, nil, nil)
 	}
 
-	location := GetDefinitionLocation(doc.Content, line, col, string(uri))
+	location := GetDefinitionLocation(doc.Analysis, doc.Content, line, col, string(uri))
 	if location == nil {
 		log.Printf("No definition found")
 		return reply(ctx, nil, nil)
@@ -244,7 +253,7 @@ func (s *Server) handleCompletion(ctx context.Context, reply jsonrpc2.Replier, r
 		return reply(ctx, nil, nil)
 	}
 
-	items := GetCompletions(doc.Content, uriToPath(string(uri)), line, col)
+	items := GetCompletions(doc.Analysis, doc.Content, uriToPath(string(uri)), line, col)
 	log.Printf("Found %d completion items", len(items))
 
 	return reply(ctx, items, nil)
@@ -301,7 +310,7 @@ func (s *Server) handleSignatureHelp(ctx context.Context, reply jsonrpc2.Replier
 		return reply(ctx, nil, nil)
 	}
 
-	result := GetSignatureHelp(doc.Content, uriToPath(string(uri)), line, col)
+	result := GetSignatureHelp(doc.Analysis, doc.Content, uriToPath(string(uri)), line, col)
 	if result == nil {
 		log.Printf("No signature help found")
 		return reply(ctx, nil, nil)

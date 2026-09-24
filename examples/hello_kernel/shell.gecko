@@ -110,24 +110,28 @@ impl Shell {
         } else {
             self.con.set_color(console.LIGHT_RED, console.BLACK)
             self.con.print_str("Unknown command: ")
-            self.con.print(&self.input_buf[0], self.input_len)
+            self.con.print((&self.input_buf[0]) as uint8*, self.input_len)
             self.con.print_str("\n")
             self.con.set_color(console.LIGHT_GRAY, console.BLACK)
         }
     }
 
-    func str_eq(self, cmd: uint8*): bool {
+    func str_eq(self, cmd: string): bool {
+        let ptr: uint8* = cmd as uint8*
+        let input_ptr: uint8* = (&self.input_buf[0]) as uint8*
         let i: int = 0
-        while cmd[i] != 0 {
-            if i >= self.input_len {
-                return false
+        @unsafe {
+            while ptr[i] != 0 {
+                if i >= self.input_len {
+                    return false
+                }
+                if input_ptr[i] != ptr[i] {
+                    return false
+                }
+                i = i + 1
             }
-            if self.input_buf[i] != cmd[i] {
-                return false
-            }
-            i = i + 1
+            return i == self.input_len || input_ptr[i] == 32
         }
-        return i == self.input_len || self.input_buf[i] == 32
     }
 
     func cmd_help(self): void {
@@ -164,9 +168,10 @@ impl Shell {
     }
 
     func cmd_echo(self): void {
+        let input_ptr: uint8* = (&self.input_buf[0]) as uint8*
         let i: int = 5
         while i < self.input_len {
-            self.con.putchar(self.input_buf[i])
+            @unsafe { self.con.putchar(input_ptr[i]) }
             i = i + 1
         }
         self.con.putchar(10)

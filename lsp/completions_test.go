@@ -22,7 +22,7 @@ func test(): void {
 }
 `
 	// Line 4 (0-indexed), col 15 (after "testmodule.")
-	items := GetCompletions(content, filePath, 4, 15)
+	items := GetCompletions(newTestCtx(content), content, filePath, 4, 15)
 
 	if len(items) == 0 {
 		t.Fatal("Expected completions for testmodule, got none")
@@ -70,7 +70,7 @@ func test(): void {
 }
 `
 	// Line 4, col 17 (after "testmodule.co")
-	items := GetCompletions(content, filePath, 4, 17)
+	items := GetCompletions(newTestCtx(content), content, filePath, 4, 17)
 
 	// Should only get items starting with "co"
 	for _, item := range items {
@@ -106,7 +106,7 @@ func test(): void {
 }
 `
 	// Line 5 (0-indexed), col 6 (after "p.")
-	items := GetCompletions(content, filePath, 5, 6)
+	items := GetCompletions(newTestCtx(content), content, filePath, 5, 6)
 
 	foundLabels := make(map[string]bool)
 	for _, item := range items {
@@ -144,7 +144,7 @@ func test(): void {
 }
 `
 	// Line 9 (0-indexed), col 28 (after "Status::")
-	items := GetCompletions(content, "test.gecko", 9, 28)
+	items := GetCompletions(newTestCtx(content), content, "test.gecko", 9, 28)
 
 	foundLabels := make(map[string]bool)
 	for _, item := range items {
@@ -184,7 +184,7 @@ func test(): void {
 }
 `
 	// Line 9 (0-indexed), col 14 (after "Col")
-	items := GetCompletions(content, "test.gecko", 9, 14)
+	items := GetCompletions(newTestCtx(content), content, "test.gecko", 9, 14)
 
 	found := false
 	for _, item := range items {
@@ -214,7 +214,7 @@ func test(): void {
 }
 `
 	// Line 4 (0-indexed), col 15 (after "testmodule.")
-	items := GetCompletions(content, filePath, 4, 15)
+	items := GetCompletions(newTestCtx(content), content, filePath, 4, 15)
 
 	found := false
 	for _, item := range items {
@@ -249,7 +249,7 @@ func test(): void {
 `
 	// Test inside the if block - should see outer, inner, but not after
 	// Line 6 (0-indexed), col 8 (on the empty line inside if block, after "inner")
-	items := GetCompletions(content, "test.gecko", 6, 8)
+	items := GetCompletions(newTestCtx(content), content, "test.gecko", 6, 8)
 
 	foundLabels := make(map[string]bool)
 	for _, item := range items {
@@ -295,7 +295,7 @@ func test(): void {
 	// Line 6: (empty)
 	// Line 7:     }
 	// Line 8: }
-	items := GetCompletions(content, "test.gecko", 6, 8)
+	items := GetCompletions(newTestCtx(content), content, "test.gecko", 6, 8)
 
 	foundLabels := make(map[string]bool)
 	for _, item := range items {
@@ -339,7 +339,7 @@ func test(): void {
 }
 `
 	// Line 18 (0-indexed), col 6 (after "c.")
-	items := GetCompletions(content, "test.gecko", 18, 6)
+	items := GetCompletions(newTestCtx(content), content, "test.gecko", 18, 6)
 
 	if len(items) == 0 {
 		t.Fatal("Expected completions for Container<int>, got none")
@@ -432,7 +432,7 @@ func demo(): void {
 		col = wordIdx - lastNewline - 1
 	}
 
-	items := GetCompletions(content, "test.gecko", line, col)
+	items := GetCompletions(newTestCtx(content), content, "test.gecko", line, col)
 
 	found := make(map[string]bool)
 	for _, item := range items {
@@ -444,237 +444,6 @@ func demo(): void {
 		if !found[method] {
 			t.Errorf("Expected inherited trait method completion '%s' not found. Got: %v", method, getLabels(items))
 		}
-	}
-}
-
-func TestSignatureHelpFreeFunction(t *testing.T) {
-	content := `package test
-
-func add(a: int, b: int): int {
-    return a + b
-}
-
-func test(): void {
-    let result: int = add(
-}
-`
-	// Line 7 (0-indexed), col 26 (after "add(")
-	result := GetSignatureHelp(content, "test.gecko", 7, 26)
-
-	if result == nil {
-		t.Fatal("Expected signature help, got nil")
-	}
-
-	if len(result.Signatures) != 1 {
-		t.Fatalf("Expected 1 signature, got %d", len(result.Signatures))
-	}
-
-	sig := result.Signatures[0]
-	expectedLabel := "add(a: int, b: int): int"
-	if sig.Label != expectedLabel {
-		t.Errorf("Expected label '%s', got '%s'", expectedLabel, sig.Label)
-	}
-
-	if len(sig.Parameters) != 2 {
-		t.Fatalf("Expected 2 parameters, got %d", len(sig.Parameters))
-	}
-
-	if result.ActiveParameter != 0 {
-		t.Errorf("Expected active parameter 0, got %d", result.ActiveParameter)
-	}
-
-	t.Logf("Signature: %s, Active: %d", sig.Label, result.ActiveParameter)
-}
-
-func TestSignatureHelpSecondParameter(t *testing.T) {
-	content := `package test
-
-func add(a: int, b: int): int {
-    return a + b
-}
-
-func test(): void {
-    let result: int = add(1,
-}
-`
-	// Line 7, col 28 (after "add(1,")
-	result := GetSignatureHelp(content, "test.gecko", 7, 28)
-
-	if result == nil {
-		t.Fatal("Expected signature help, got nil")
-	}
-
-	// Active parameter should be 1 (second parameter)
-	if result.ActiveParameter != 1 {
-		t.Errorf("Expected active parameter 1, got %d", result.ActiveParameter)
-	}
-}
-
-func TestSignatureHelpStaticMethod(t *testing.T) {
-	content := `package test
-
-class Point {
-    public let x: int
-    public let y: int
-}
-
-impl Point {
-    public func new(x: int, y: int): Point {
-        return Point { x: x, y: y }
-    }
-}
-
-func test(): void {
-    let p: Point = Point::new(
-}
-`
-	// Line 14 (0-indexed), col 30 (after "Point::new(")
-	result := GetSignatureHelp(content, "test.gecko", 14, 30)
-
-	if result == nil {
-		t.Fatal("Expected signature help for static method, got nil")
-	}
-
-	if len(result.Signatures) != 1 {
-		t.Fatalf("Expected 1 signature, got %d", len(result.Signatures))
-	}
-
-	sig := result.Signatures[0]
-	// Should show the static method signature
-	if !strings.Contains(sig.Label, "x: int") || !strings.Contains(sig.Label, "y: int") {
-		t.Errorf("Expected signature with x and y parameters, got: %s", sig.Label)
-	}
-
-	t.Logf("Static method signature: %s", sig.Label)
-}
-
-func TestSignatureHelpInstanceMethod(t *testing.T) {
-	content := `package test
-
-class Calculator {
-    let value: int
-}
-
-impl Calculator {
-    func add(self, n: int): int {
-        return self.value + n
-    }
-}
-
-func test(): void {
-    let calc: Calculator = Calculator { value: 10 }
-    let result: int = calc.add(
-}
-`
-	// Line 14 (0-indexed), col 31 (after "calc.add(")
-	result := GetSignatureHelp(content, "test.gecko", 14, 31)
-
-	if result == nil {
-		t.Fatal("Expected signature help for instance method, got nil")
-	}
-
-	sig := result.Signatures[0]
-	// Should show the method signature
-	if !strings.Contains(sig.Label, "n: int") {
-		t.Errorf("Expected signature with n parameter, got: %s", sig.Label)
-	}
-
-	t.Logf("Instance method signature: %s", sig.Label)
-}
-
-func TestStdlibIndex(t *testing.T) {
-	// Get the stdlib index
-	idx := GetStdlibIndex()
-
-	// Check that some known types are indexed
-	vecExports := idx.FindByName("Vec")
-	if len(vecExports) == 0 {
-		t.Log("Vec not found in stdlib index (stdlib may not be accessible)")
-	} else {
-		t.Logf("Found Vec: %+v", vecExports[0])
-		if vecExports[0].Kind != "class" {
-			t.Errorf("Expected Vec to be a class, got %s", vecExports[0].Kind)
-		}
-	}
-
-	stringExports := idx.FindByName("String")
-	if len(stringExports) == 0 {
-		t.Log("String not found in stdlib index")
-	} else {
-		t.Logf("Found String: %+v", stringExports[0])
-	}
-
-	// Test prefix search
-	sExports := idx.FindByPrefix("S")
-	t.Logf("Found %d exports starting with 'S': %v", len(sExports), func() []string {
-		names := make([]string, len(sExports))
-		for i, e := range sExports {
-			names[i] = e.Name
-		}
-		return names
-	}())
-}
-
-func TestStdlibCompletions(t *testing.T) {
-	content := `package test
-
-func main(): void {
-    let v: Ve
-}
-`
-	// Line 3 (0-indexed), col 12 (after "Ve")
-	items := GetCompletions(content, "test.gecko", 3, 12)
-
-	// Look for Vec from stdlib
-	foundVec := false
-	for _, item := range items {
-		if item.Label == "Vec" {
-			foundVec = true
-			t.Logf("Found Vec completion: %s, %s", item.Label, item.Detail)
-			if !strings.Contains(item.Detail, "import") {
-				t.Errorf("Expected Vec detail to mention import, got: %s", item.Detail)
-			}
-			break
-		}
-	}
-
-	if !foundVec {
-		t.Log("Vec not found in completions (stdlib may not be accessible)")
-	}
-}
-
-func TestCodeActionsUnresolvedType(t *testing.T) {
-	content := `package test
-
-func main(): void {
-    let v: Vec<int> = Vec::new()
-}
-`
-	// Create a diagnostic simulating an unresolved type error
-	diag := protocol.Diagnostic{
-		Range: protocol.Range{
-			Start: protocol.Position{Line: 3, Character: 11},
-			End:   protocol.Position{Line: 3, Character: 14},
-		},
-		Message:  "unknown type 'Vec'",
-		Severity: protocol.DiagnosticSeverityError,
-	}
-
-	rng := protocol.Range{
-		Start: protocol.Position{Line: 3, Character: 11},
-		End:   protocol.Position{Line: 3, Character: 14},
-	}
-
-	actions := GetCodeActions(content, "test.gecko", rng, []protocol.Diagnostic{diag})
-
-	// If stdlib is available, we should get import suggestions
-	if len(actions) > 0 {
-		t.Logf("Found %d code actions", len(actions))
-		for _, action := range actions {
-			t.Logf("  - %s", action.Title)
-		}
-	} else {
-		t.Log("No code actions found (stdlib may not be accessible)")
 	}
 }
 

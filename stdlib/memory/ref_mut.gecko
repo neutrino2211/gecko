@@ -1,0 +1,47 @@
+package ref_mut
+
+import std.core.traits use { Drop, Copy }
+import std.memory.borrow_storage use { BorrowStorage }
+
+public class RefMut<T is Copy> {
+    let ptr: uint64
+
+    @unsafe
+    func from_storage(ptr: uint64): RefMut<T> {
+        return RefMut<T> { ptr: ptr }
+    }
+
+    func get(self): T {
+        @unsafe {
+            if (self.ptr == 0) { @trap() }
+            let inner: BorrowStorage<T>* = self.ptr as BorrowStorage<T>*
+            return inner.value
+        }
+    }
+
+    func set(self, value: T): void {
+        @unsafe {
+            if (self.ptr == 0) { @trap() }
+            let inner: BorrowStorage<T>* = self.ptr as BorrowStorage<T>*
+            inner.value = value
+        }
+    }
+
+    func release(self): void {
+        if (self.ptr == 0) { return }
+        let address: uint64 = self.ptr
+        self.ptr = 0
+        @unsafe {
+            let inner: BorrowStorage<T>* = address as BorrowStorage<T>*
+            inner.writer = false
+            inner.refs = inner.refs - 1
+            if (inner.refs == 0) { @free(inner as void*) }
+        }
+    }
+
+    func drop(self): void { self.release() }
+}
+
+impl<T> Drop for RefMut<T> {
+    func drop(self): void { self.release() }
+}

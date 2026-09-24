@@ -1,0 +1,6 @@
+package main
+import std.memory.ref use { Ref }
+external func main(): int32 {
+ let reader: Ref<int32> = Ref<int32>::from_storage(0)
+ return 0
+}

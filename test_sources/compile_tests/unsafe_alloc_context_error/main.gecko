@@ -1,0 +1,4 @@
+external func main(): int32 {
+    let ptr = @alloc(8, 8)
+    return 0
+}

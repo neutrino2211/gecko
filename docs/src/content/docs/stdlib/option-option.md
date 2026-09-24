@@ -120,8 +120,7 @@ Returns true if this Option is empty.
 func unwrap(self: void): T
 ```
 
-Returns the contained value.
-Behavior is undefined if the Option is None.
+Moves out the contained value and clears `has_value`. Calling it on None traps.
 
 **Arguments:**
 
@@ -130,6 +129,9 @@ Behavior is undefined if the Option is None.
 | `self` | `void` |
 
 **Returns:** `T`
+
+The Drop hook calls `@drop_in_place(&self.value)` only while `has_value` is true.
+The implementation is visible in `stdlib/option.gecko`.
 
 ### unwrap_or
 

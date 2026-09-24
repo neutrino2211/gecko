@@ -1,0 +1,18 @@
+package main
+
+import std.core.traits use { Drop }
+
+class Token { let id: int32 }
+
+impl Drop for Token {
+    func drop(self): void { let observed: int32 = self.id }
+}
+
+func consume(value: Token): void { let entered: int32 = 1 }
+
+external func main(): int32 {
+    let token: Token = Token { id: 1 }
+    consume(token)
+    token.drop()
+    return 0
+}

@@ -1,0 +1,8 @@
+package rc_storage
+
+public class RcInner<T> {
+    let strong: uint64
+    let weak: uint64
+    let value: T
+}
+

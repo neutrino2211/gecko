@@ -16,7 +16,9 @@ type HookType string
 
 const (
 	// Lifecycle hooks
-	HookDrop HookType = "drop_hook"
+	HookDrop      HookType = "drop_hook"
+	HookBorrow    HookType = "borrow_hook"
+	HookBorrowMut HookType = "borrow_mut_hook"
 
 	// Arithmetic operator hooks
 	HookAdd HookType = "add_hook"
@@ -65,7 +67,9 @@ type HookSignature struct {
 // Known hook signatures
 var hookSignatures = map[HookType]HookSignature{
 	// Lifecycle
-	HookDrop: {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "void"},
+	HookDrop:      {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "void"},
+	HookBorrow:    {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "T"},
+	HookBorrowMut: {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "T"},
 
 	// Arithmetic (binary operators return T, unary returns Self)
 	HookAdd: {MethodCount: 1, HasSelf: true, ParamCount: 1, ReturnType: "T"},

@@ -18,8 +18,7 @@ transferred (moved) rather than shared.
 Example:
 ```
 let b: Box<int32> = Box<int32>::new(42)
-let val: int32 = b.get()
-b.drop()  // Manual cleanup (automatic in future)
+let val: int32 = b.into_inner()
 ```
 
 ## Type Parameters
@@ -46,8 +45,7 @@ func new(value: T): Box<T>
 
 Allocates memory and stores a value, returning a new `Box<T>`.
 
-The value is copied to heap-allocated memory. The `Box<T>`
-becomes the sole owner of this memory.
+The value is moved into heap-allocated memory. The `Box<T>` becomes its owner.
 
 **Arguments:**
 
@@ -60,13 +58,14 @@ becomes the sole owner of this memory.
 ### from_raw
 
 ```gecko
+@unsafe
 func from_raw(raw_ptr: uint64): Box<T>
 ```
 
 Takes ownership of memory from a raw pointer.
 
-The caller must ensure the pointer was allocated with `malloc`
-and is of the correct type. After this call, the `Box<T>` owns
+The caller must ensure the pointer owns initialized, correctly aligned storage
+compatible with `free`, and that no other owner will release it. After this call, the `Box<T>` owns
 the memory and will free it when dropped.
 
 **Arguments:**
@@ -80,6 +79,7 @@ the memory and will free it when dropped.
 ### from_raw_checked
 
 ```gecko
+@unsafe
 func from_raw_checked(raw_ptr: uint64): Option<Box<T>>
 ```
 
@@ -115,10 +115,12 @@ Returns true if this Box contains valid (non-null) memory.
 ### get
 
 ```gecko
+@unsafe
 func get(self: void): T
 ```
 
-Returns the value stored in the Box.
+Copies the contained value without transferring ownership. Calling it requires
+an unsafe context; copying a payload with Drop can duplicate ownership.
 
 **Arguments:**
 
@@ -128,13 +130,22 @@ Returns the value stored in the Box.
 
 **Returns:** `T`
 
+### into_inner
+
+```gecko
+func into_inner(self: void): T
+```
+
+Moves out the value, frees its storage, and invalidates the Box. The caller owns
+the returned value.
+
 ### set
 
 ```gecko
 func set(self: void, value: T)
 ```
 
-Overwrites the value stored in the Box.
+Drops the previous contained value, then stores the replacement.
 
 **Arguments:**
 
@@ -189,8 +200,8 @@ func drop(self: void)
 Frees the memory owned by this Box.
 
 After calling drop, the Box is invalidated.
-In the future, this will be called automatically when
-the Box goes out of scope.
+The Drop hook also runs automatically at scope exit unless `--no-auto-drop` is used.
+It drops the contained value before freeing storage.
 
 **Arguments:**
 

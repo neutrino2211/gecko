@@ -15,7 +15,7 @@ ldflags = ["-framework", "WebKit", "-framework", "Cocoa", "-lc++", "-ldl"]
 main = "src/main.gecko"
 
 [build.scripts]
-pre_build = ["sh scripts/build_vendor.sh"]
+pre_build = ["sh scripts/build_web.sh", "sh scripts/build_vendor.sh"]
 
 [build.profiles.debug]
 optimize = false

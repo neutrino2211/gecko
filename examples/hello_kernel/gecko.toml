@@ -4,6 +4,7 @@ version = "0.1.0"
 
 [build]
 backend = "c"
+treeshake = false
 default_target = "i386-none-elf"
 
 [build.entries]

@@ -3,18 +3,18 @@
 package main
 
 import (
-	"github.com/neutrino2211/gecko/parser"
+	"github.com/neutrino2211/gecko/analysis"
 	"github.com/neutrino2211/gecko/tokens"
 	"go.lsp.dev/protocol"
 )
 
-// GetDefinitionLocation returns the location of a symbol's definition
-func GetDefinitionLocation(content string, line, col int, uri string) *protocol.Location {
-	file, err := parser.Parser.ParseString("", content)
-	if err != nil {
+// GetDefinitionLocation returns the location of a symbol's definition. When ctx
+// is non-nil it provides the single shared semantic graph used by the compiler.
+func GetDefinitionLocation(ctx *analysis.AnalysisContext, content string, line, col int, uri string) *protocol.Location {
+	file := ctxFile(ctx, content)
+	if file == nil {
 		return nil
 	}
-	file.ComputeRanges()
 
 	word := getWordAt(content, line, col)
 	if word == "" {

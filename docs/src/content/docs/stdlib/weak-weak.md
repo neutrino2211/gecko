@@ -19,10 +19,10 @@ like graphs or trees with parent pointers.
 Example:
 ```
 let rc: Rc<int32> = Rc<int32>::new(42)
-let weak: Weak<int32> = Weak<int32>::from_rc_ptr(rc.inner_ptr())
+@unsafe { let weak: Weak<int32> = Weak<int32>::from_rc_ptr(rc.inner_ptr()) }
 
 if (weak.is_alive()) {
-    let val: int32 = weak.try_get()
+    @unsafe { let val: int32 = weak.try_get() }
 }
 ```
 
@@ -45,12 +45,14 @@ Internal pointer to the same allocation as the `Rc`.
 ### from_rc_ptr
 
 ```gecko
+@unsafe
 func from_rc_ptr(rc_ptr: uint64): Weak<T>
 ```
 
 Creates a weak reference from an `Rc`'s internal pointer.
 
-Increments the weak reference count.
+Requires a valid control block and increments its weak count. Weak handles retain
+the control block after the final strong handle drops the contained value.
 
 **Arguments:**
 
@@ -108,7 +110,8 @@ Returns the strong reference count of the underlying allocation.
 func weak_count(self: void): uint64
 ```
 
-Returns the weak reference count of the underlying allocation.
+Returns the weak count, including one implicit weak reference while strong
+handles exist.
 
 **Arguments:**
 
@@ -140,10 +143,12 @@ will return a default value.
 ### try_get
 
 ```gecko
+@unsafe
 func try_get(self: void): T
 ```
 
-Attempts to read the value, returning 0 if the Rc was dropped.
+Returns a value copy, or a zero-initialized value after expiration. Calling it
+requires an unsafe context; copying a payload with Drop can duplicate ownership.
 
 Check `is_alive()` first to know if the value is valid.
 In the future, this will return `Option<T>`.
@@ -155,6 +160,15 @@ In the future, this will return `Option<T>`.
 | `self` | `void` |
 
 **Returns:** `T`
+
+### upgrade
+
+```gecko
+func upgrade(self: void): Option<Rc<T>>
+```
+
+Returns a new strong handle while the value is alive, or None after the final
+strong handle is released. The returned Rc owns one strong reference.
 
 ### clone
 

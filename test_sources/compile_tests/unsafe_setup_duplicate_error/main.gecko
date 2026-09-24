@@ -1,0 +1,6 @@
+external func main(): int32 {
+    @unsafe [value = 1, value = 2] {
+        let local = value
+    }
+    return 0
+}

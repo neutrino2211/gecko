@@ -1,0 +1,7 @@
+package main
+import std.memory.raw use { Raw }
+external func main(): int32 {
+ let value: int32 = 1
+ @drop_in_place(&value)
+ return 0
+}

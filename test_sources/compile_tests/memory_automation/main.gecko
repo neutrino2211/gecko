@@ -1,0 +1,21 @@
+package main
+import std.core.traits use { Drop }
+class Counted { let count: int32* }
+impl Drop for Counted {
+ func drop(self): void { @unsafe { @deref(self.count) = @deref(self.count) + 1 } }
+}
+func bump(count: int32*): void { @unsafe { @deref(count) = @deref(count) + 2 } }
+func automatic(count: int32*): void {
+ let value: Counted = Counted { count: count }
+ defer bump(count)
+}
+func explicit(count: int32*): void {
+ let value: Counted = Counted { count: count }
+ value.drop()
+}
+external func main(): int32 {
+ let count: int32 = 0
+ automatic(&count)
+ explicit(&count)
+ return count
+}

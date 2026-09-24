@@ -1,0 +1,70 @@
+package main
+import std.core.traits use { Drop }
+
+class Tracked {
+    let trace: int32*
+    let id: int32
+}
+impl Drop for Tracked {
+    func drop(self): void {
+        @unsafe { @deref(self.trace) = @deref(self.trace) * 10 + self.id }
+    }
+}
+func record(trace: int32*, id: int32): void {
+    @unsafe { @deref(trace) = @deref(trace) * 10 + id }
+}
+func ordered(trace: int32*, early: bool): int32 {
+    let first: Tracked = Tracked { trace: trace, id: 1 }
+    defer record(trace, 4)
+    if (early) {
+        let first: Tracked = Tracked { trace: trace, id: 2 }
+        let last: Tracked = Tracked { trace: trace, id: 3 }
+        return 7
+    }
+    return 8
+}
+func loop_exit(trace: int32*): void {
+    let i: int32 = 0
+    while i < 2 {
+        let item: Tracked = Tracked { trace: trace, id: i + 1 }
+        i = i + 1
+        if (i == 1) { continue }
+        break
+    }
+}
+func manual(trace: int32*): void {
+    let item: Tracked = Tracked { trace: trace, id: 5 }
+    item.drop()
+}
+func replace(trace: int32*): void {
+    let item: Tracked = Tracked { trace: trace, id: 6 }
+    item = Tracked { trace: trace, id: 7 }
+    let transferred: Tracked = (item)
+    item = Tracked { trace: trace, id: 8 }
+}
+func match_exit(trace: int32*, choice: int32): void {
+    match choice {
+        1 => { let item: Tracked = Tracked { trace: trace, id: 1 } }
+        default => { let item: Tracked = Tracked { trace: trace, id: 2 } }
+    }
+}
+external func main(): int32 {
+    let trace: int32 = 0
+    if (ordered(&trace, true) != 7 || trace != 3241) { return 1 }
+    trace = 0
+    if (ordered(&trace, false) != 8 || trace != 41) { return 2 }
+    trace = 0
+    loop_exit(&trace)
+    if (trace != 12) { return 3 }
+    trace = 0
+    manual(&trace)
+    if (trace != 5) { return 4 }
+    trace = 0
+    replace(&trace)
+    if (trace != 678) { return 5 }
+    trace = 0
+    match_exit(&trace, 1)
+    match_exit(&trace, 2)
+    if (trace != 12) { return 6 }
+    return 0
+}

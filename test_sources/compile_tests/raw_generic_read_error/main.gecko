@@ -1,0 +1,7 @@
+package main
+import std.memory.raw use { Raw }
+external func main(): int32 {
+ let raw: Raw<int32> = Raw<int32>::null()
+ let value: int32 = raw.read()
+ return 0
+}

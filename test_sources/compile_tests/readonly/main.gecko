@@ -5,7 +5,9 @@ package main
 declare external variardic func printf(fmt: string): int32
 
 func read_only(p: int32 readonly*): int32 {
-    return @deref(p)
+    @unsafe {
+        return @deref(p)
+    }
 }
 
 @unsafe

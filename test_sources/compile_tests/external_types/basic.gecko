@@ -10,7 +10,9 @@ class Wrapper {
 }
 
 func get_id(w: Wrapper*!): int {
-    return w.id
+    @unsafe {
+        return w.id
+    }
 }
 
 external func main(): int32 {

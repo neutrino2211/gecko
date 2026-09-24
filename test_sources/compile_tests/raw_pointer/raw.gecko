@@ -37,7 +37,9 @@ class Raw<T> {
     // Read value at pointer (unchecked)
     func read(self): T {
         let ptr: T* = self.addr as T*
-        return @deref(ptr)
+        @unsafe {
+            return @deref(ptr)
+        }
     }
 
     // Write value at pointer (unchecked)

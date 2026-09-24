@@ -12,7 +12,6 @@ declare external func fread(ptr: void*, size: uint, count: uint, fp: FILE*): uin
 declare external func fwrite(ptr: void*, size: uint, count: uint, fp: FILE*): uint
 declare external func fseek(fp: FILE*, offset: int64, whence: int32): int32
 declare external func ftell(fp: FILE*): int64
-declare external func strlen(value: string): uint
 declare external func calloc(count: uint, size: uint): void*
 declare external func free(ptr: void*): void
 
@@ -60,11 +59,17 @@ impl File {
     }
 
     public func write_string(self, content: string): bool {
-        if (@is_null(self.internal_ptr as void*)) {
+        if (@is_null(self.internal_ptr as void*) || @is_null(content as void*)) {
             return false
         }
 
-        let size: uint = strlen(content)
+        let bytes: uint8* = content as uint8*
+        let size: uint = 0
+        @unsafe {
+            while bytes[size] != 0 {
+                size = size + 1
+            }
+        }
         if (size == 0) {
             return true
         }

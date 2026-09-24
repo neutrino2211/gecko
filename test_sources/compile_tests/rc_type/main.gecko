@@ -1,95 +1,10 @@
-// spec: spec/types.md, spec/functions.md, spec/modules.md, spec/control-flow.md, spec/memory.md, spec/stdlib.md
-
 package main
 
-declare external func malloc(size: uint64): void*
-declare external func free(ptr: void*): void
+import std.memory.rc use { Rc }
+
 declare external func printf(fmt: string): int
 
-// Rc<T> - Reference counted pointer
-// Layout: [strong:uint64][weak:uint64][value:T]
-class Rc<T> {
-    let ptr: uint64
-
-    func new(value: T): Rc<T> {
-        // Layout: 8 bytes strong + 8 bytes weak + sizeof(T) for value
-        let value_size: uint64 = @size_of<T>()
-        let total_size: uint64 = 16 + value_size
-        let mem: void* = malloc(total_size)
-        let addr: uint64 = mem as uint64
-
-        // Initialize refcounts
-        let strong_ptr: uint64* = addr as uint64*
-        @unsafe {
-            @write_volatile(strong_ptr, 1)
-        }
-
-        let weak_ptr: uint64* = (addr + 8) as uint64*
-        @unsafe {
-            @write_volatile(weak_ptr, 1)
-        }
-
-        // Write value at offset 16
-        let value_ptr: T* = (addr + 16) as T*
-        @unsafe {
-            @write_volatile(value_ptr, value)
-        }
-
-        let r: Rc<T>
-        r.ptr = addr
-        return r
-    }
-
-    func is_valid(self): bool {
-        return self.ptr != 0
-    }
-
-    func strong_count(self): uint64 {
-        if (self.ptr == 0) {
-            return 0
-        }
-        let strong_ptr: uint64* = self.ptr as uint64*
-        return @deref(strong_ptr)
-    }
-
-    func get(self): T {
-        let value_ptr: T* = (self.ptr + 16) as T*
-        return @deref(value_ptr)
-    }
-
-    func clone(self): Rc<T> {
-        if (self.ptr != 0) {
-            let strong_ptr: uint64* = self.ptr as uint64*
-            let count: uint64 = @deref(strong_ptr)
-            @unsafe {
-                @write_volatile(strong_ptr, count + 1)
-            }
-        }
-
-        let r: Rc<T>
-        r.ptr = self.ptr
-        return r
-    }
-
-    func drop(self) {
-        if (self.ptr == 0) {
-            return
-        }
-
-        let strong_ptr: uint64* = self.ptr as uint64*
-        let count: uint64 = @deref(strong_ptr)
-
-        if (count <= 1) {
-            free(self.ptr as void*)
-            self.ptr = 0
-        } else {
-            @unsafe {
-                @write_volatile(strong_ptr, count - 1)
-            }
-        }
-    }
-}
-
+@unsafe
 external func main(): int32 {
     printf("Testing Rc<T>...\n")
 

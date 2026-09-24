@@ -1,0 +1,4 @@
+external func main(): int32 {
+    @free(null)
+    return 0
+}

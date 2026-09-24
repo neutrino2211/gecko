@@ -20,7 +20,8 @@ public const NOTES_SELECT_LIST_JSON_SQL: string = "SELECT COALESCE(json_group_ar
 public const NOTES_SELECT_SEARCH_JSON_SQL: string = "SELECT COALESCE(json_group_array(json_object('id', id, 'title', title, 'body', body, 'created_at', created_at, 'updated_at', updated_at)), '[]') FROM (SELECT id, title, body, created_at, updated_at FROM notes WHERE title LIKE ('%' || ?1 || '%') OR body LIKE ('%' || ?1 || '%') ORDER BY updated_at DESC LIMIT ?2 OFFSET ?3)"
 public const NOTES_SELECT_BY_ID_JSON_SQL: string = "SELECT COALESCE((SELECT json_object('id', id, 'title', title, 'body', body, 'created_at', created_at, 'updated_at', updated_at) FROM notes WHERE id = ?1), 'null')"
 
-func run_statement_no_rows(db: Sqlite, sql: string): int32 {
+func run_statement_no_rows(db_handle: void*, sql: string): int32 {
+	let db: Sqlite = try Sqlite::from_raw_handle(db_handle)
 	let stmt: SqliteStmt = try db.prepare(sql)
 	let step_rc: int32 = stmt.step()
 	stmt.finalize()
@@ -30,15 +31,16 @@ func run_statement_no_rows(db: Sqlite, sql: string): int32 {
 	return step_rc
 }
 
-public func ensure_notes_schema(db: Sqlite): int32 {
-	let create_rc: int32 = run_statement_no_rows(db, NOTES_CREATE_TABLE_SQL)
+public func ensure_notes_schema(db_handle: void*): int32 {
+	let create_rc: int32 = run_statement_no_rows(db_handle, NOTES_CREATE_TABLE_SQL)
 	if (create_rc != SQLITE_OK) {
 		return create_rc
 	}
-	return run_statement_no_rows(db, NOTES_CREATE_UPDATED_INDEX_SQL)
+	return run_statement_no_rows(db_handle, NOTES_CREATE_UPDATED_INDEX_SQL)
 }
 
-public func create_note(db: Sqlite, title: string, body: string): int32 {
+public func create_note(db_handle: void*, title: string, body: string): int32 {
+	let db: Sqlite = try Sqlite::from_raw_handle(db_handle)
 	let stmt: SqliteStmt = try db.prepare(NOTES_INSERT_SQL)
 
 	let bind_title_rc: int32 = stmt.bind_text(1, title)
@@ -61,7 +63,8 @@ public func create_note(db: Sqlite, title: string, body: string): int32 {
 	return step_rc
 }
 
-public func update_note(db: Sqlite, id: int64, title: string, body: string): int32 {
+public func update_note(db_handle: void*, id: int64, title: string, body: string): int32 {
+	let db: Sqlite = try Sqlite::from_raw_handle(db_handle)
 	let stmt: SqliteStmt = try db.prepare(NOTES_UPDATE_SQL)
 
 	let bind_title_rc: int32 = stmt.bind_text(1, title)
@@ -90,7 +93,8 @@ public func update_note(db: Sqlite, id: int64, title: string, body: string): int
 	return step_rc
 }
 
-public func delete_note(db: Sqlite, id: int64): int32 {
+public func delete_note(db_handle: void*, id: int64): int32 {
+	let db: Sqlite = try Sqlite::from_raw_handle(db_handle)
 	let stmt: SqliteStmt = try db.prepare(NOTES_DELETE_SQL)
 
 	let bind_id_rc: int32 = stmt.bind_int64(1, id)
@@ -108,7 +112,8 @@ public func delete_note(db: Sqlite, id: int64): int32 {
 }
 
 // Read helpers return prepared statements so callers can step/read rows and then finalize.
-public func prepare_read_note_by_id(db: Sqlite, id: int64): Option<SqliteStmt> {
+public func prepare_read_note_by_id(db_handle: void*, id: int64): Option<SqliteStmt> {
+	let db: Sqlite = try Sqlite::from_raw_handle(db_handle)
 	let stmt: SqliteStmt = try db.prepare(NOTES_SELECT_BY_ID_SQL)
 	let bind_rc: int32 = stmt.bind_int64(1, id)
 	if (bind_rc != SQLITE_OK) {
@@ -118,7 +123,8 @@ public func prepare_read_note_by_id(db: Sqlite, id: int64): Option<SqliteStmt> {
     return Option<SqliteStmt>::some(stmt)
 }
 
-public func prepare_list_notes(db: Sqlite, limit: int64, offset: int64): Option<SqliteStmt> {
+public func prepare_list_notes(db_handle: void*, limit: int64, offset: int64): Option<SqliteStmt> {
+	let db: Sqlite = try Sqlite::from_raw_handle(db_handle)
 	let stmt: SqliteStmt = try db.prepare(NOTES_SELECT_LIST_SQL)
 
 	let bind_limit_rc: int32 = stmt.bind_int64(1, limit)
@@ -136,7 +142,8 @@ public func prepare_list_notes(db: Sqlite, limit: int64, offset: int64): Option<
     return Option<SqliteStmt>::some(stmt)
 }
 
-public func prepare_search_notes(db: Sqlite, like_pattern: string, limit: int64, offset: int64): Option<SqliteStmt> {
+public func prepare_search_notes(db_handle: void*, like_pattern: string, limit: int64, offset: int64): Option<SqliteStmt> {
+	let db: Sqlite = try Sqlite::from_raw_handle(db_handle)
 	let stmt: SqliteStmt = try db.prepare(NOTES_SELECT_SEARCH_SQL)
 
 	let bind_pattern_rc: int32 = stmt.bind_text(1, like_pattern)
@@ -160,7 +167,8 @@ public func prepare_search_notes(db: Sqlite, like_pattern: string, limit: int64,
     return Option<SqliteStmt>::some(stmt)
 }
 
-public func prepare_list_notes_json(db: Sqlite, limit: int64, offset: int64): Option<SqliteStmt> {
+public func prepare_list_notes_json(db_handle: void*, limit: int64, offset: int64): Option<SqliteStmt> {
+    let db: Sqlite = try Sqlite::from_raw_handle(db_handle)
     let stmt: SqliteStmt = try db.prepare(NOTES_SELECT_LIST_JSON_SQL)
 
     let bind_limit_rc: int32 = stmt.bind_int64(1, limit)
@@ -178,7 +186,8 @@ public func prepare_list_notes_json(db: Sqlite, limit: int64, offset: int64): Op
     return Option<SqliteStmt>::some(stmt)
 }
 
-public func prepare_search_notes_json(db: Sqlite, term: string, limit: int64, offset: int64): Option<SqliteStmt> {
+public func prepare_search_notes_json(db_handle: void*, term: string, limit: int64, offset: int64): Option<SqliteStmt> {
+    let db: Sqlite = try Sqlite::from_raw_handle(db_handle)
     let stmt: SqliteStmt = try db.prepare(NOTES_SELECT_SEARCH_JSON_SQL)
 
     let bind_term_rc: int32 = stmt.bind_text(1, term)
@@ -202,7 +211,8 @@ public func prepare_search_notes_json(db: Sqlite, term: string, limit: int64, of
     return Option<SqliteStmt>::some(stmt)
 }
 
-public func prepare_get_note_json(db: Sqlite, id: int64): Option<SqliteStmt> {
+public func prepare_get_note_json(db_handle: void*, id: int64): Option<SqliteStmt> {
+    let db: Sqlite = try Sqlite::from_raw_handle(db_handle)
     let stmt: SqliteStmt = try db.prepare(NOTES_SELECT_BY_ID_JSON_SQL)
     let bind_id_rc: int32 = stmt.bind_int64(1, id)
     if (bind_id_rc != SQLITE_OK) {

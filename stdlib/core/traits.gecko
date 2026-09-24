@@ -153,3 +153,13 @@ public trait Orable<T> {
     /// Returns the contained value, or the default if none.
     func unwrap_or(self, default_val: T): T
 }
+
+@borrow_hook(.borrow)
+public trait Borrow<R> {
+    func borrow(self): R
+}
+
+@borrow_mut_hook(.borrow_mut)
+public trait BorrowMut<R> {
+    func borrow_mut(self): R
+}

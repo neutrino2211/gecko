@@ -1,0 +1,5 @@
+external func main(): int32 {
+    let x: int32 = 7
+    let p: int32* = &x
+    return p.deref()
+}

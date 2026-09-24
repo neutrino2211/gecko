@@ -119,7 +119,6 @@ Gecko is a compiled systems programming language that combines TypeScript-like e
 Install go>=1.20
 * go
   Go to [the golang download page](https://go.dev/doc/install) and follow the instructions
-* LLVM
 * GCC
 
 ### Installation
@@ -185,6 +184,8 @@ Check out the `examples/` directory for complete projects:
 - `examples/hello_kernel/` - Bare-metal kernel development
 - `examples/c_interop/` - C library integration
 
+The LLVM backend is deprecated and unavailable in the current compiler. Use the C backend for new projects. `examples/llvm_kernel/` is retained as a historical example and does not build.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- ROADMAP -->
@@ -228,7 +229,7 @@ Check out the `examples/` directory for complete projects:
 
 ### Tooling
 - [X] C backend (recommended)
-- [X] LLVM backend (experimental)
+- [ ] LLVM backend (deprecated; unavailable in the current compiler)
 - [X] Cross-compilation support
 - [X] LSP with completions, hover, diagnostics
 - [X] VS Code extension
@@ -324,4 +325,4 @@ Project Link: [https://github.com/neutrino2211/gecko](https://github.com/neutrin
 [Bootstrap.com]: https://img.shields.io/badge/Bootstrap-563D7C?style=for-the-badge&logo=bootstrap&logoColor=white
 [Bootstrap-url]: https://getbootstrap.com
 [JQuery.com]: https://img.shields.io/badge/jQuery-0769AD?style=for-the-badge&logo=jquery&logoColor=white
-[JQuery-url]: https://jquery.com 
+[JQuery-url]: https://jquery.com

@@ -15,8 +15,10 @@ Functions using `Raw<T>` in their signature signal potential unsafety.
 Example:
 ```
 let ptr: Raw<uint32> = Raw<uint32>::new(addr)
-ptr.write(42)
-let val: uint32 = ptr.read()
+@unsafe {
+    ptr.write(42)
+    let val: uint32 = ptr.read()
+}
 ```
 
 ## Type Parameters
@@ -146,6 +148,7 @@ Returns true if this pointer is not null.
 ### read
 
 ```gecko
+@unsafe
 func read(self: void): T
 ```
 
@@ -164,6 +167,7 @@ Does not perform null checking - caller must ensure pointer is valid.
 ### write
 
 ```gecko
+@unsafe
 func write(self: void, value: T)
 ```
 
@@ -219,6 +223,7 @@ The offset is calculated as `n * sizeof(T)` bytes.
 ### copy_from
 
 ```gecko
+@unsafe
 func copy_from(self: void, src: Raw<T>, count: uint64)
 ```
 
@@ -235,6 +240,7 @@ Copies `count` elements from source pointer to this pointer.
 ### zero
 
 ```gecko
+@unsafe
 func zero(self: void, count: uint64)
 ```
 

@@ -8,7 +8,6 @@ import std.memory.rc use { Rc }
 import std.option use { Option }
 
 declare external func malloc(size: uint64): void*
-declare external func free(ptr: void*): void
 
 external func main(): int32 {
     // Vec from raw parts checks
@@ -22,16 +21,17 @@ external func main(): int32 {
     if (ok_vec.is_none()) {
         return 2
     }
-    free(mem)
+    let recovered_vec: Vec<uint8> = ok_vec.unwrap()
+    recovered_vec.drop()
 
     // Box raw pointer checks
-    let bad_box: Option<Box<int32>> = Box<int32>::from_raw_checked(0)
+    @unsafe { let bad_box: Option<Box<int32>> = Box<int32>::from_raw_checked(0) }
     if (bad_box.is_some()) {
         return 3
     }
 
     let raw_mem: void* = malloc(@size_of<int32>())
-    let ok_box: Option<Box<int32>> = Box<int32>::from_raw_checked(raw_mem as uint64)
+    @unsafe { let ok_box: Option<Box<int32>> = Box<int32>::from_raw_checked(raw_mem as uint64) }
     if (ok_box.is_none()) {
         return 4
     }
@@ -40,14 +40,14 @@ external func main(): int32 {
 
     // Rc inner pointer checks
     let rc: Rc<int32> = Rc<int32>::new(42)
-    let ok_rc: Option<Rc<int32>> = Rc<int32>::from_inner_checked(rc.inner_ptr())
+    @unsafe { let ok_rc: Option<Rc<int32>> = Rc<int32>::from_inner_checked(rc.inner_ptr()) }
     if (ok_rc.is_none()) {
         return 5
     }
     let rc_copy: Rc<int32> = ok_rc.unwrap()
     rc_copy.drop()
 
-    let bad_rc: Option<Rc<int32>> = Rc<int32>::from_inner_checked(0)
+    @unsafe { let bad_rc: Option<Rc<int32>> = Rc<int32>::from_inner_checked(0) }
     if (bad_rc.is_some()) {
         return 6
     }

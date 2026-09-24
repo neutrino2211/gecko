@@ -12,7 +12,7 @@ The Gecko compiler provides several commands for compiling, building, and managi
 | Command | Alias | Description |
 |---------|-------|-------------|
 | `gecko init` | `i` | Initialize a new project |
-| `gecko compile` | `c` | Compile to C/LLVM IR |
+| `gecko compile` | `c` | Compile to C |
 | `gecko build` | `b` | Compile to executable |
 | `gecko run` | `r` | Compile and run |
 | `gecko check` | `ck` | Type-check without compiling |
@@ -69,7 +69,7 @@ mylib/
 
 ## gecko compile
 
-Compiles Gecko source files to intermediate representation (C or LLVM IR).
+Compiles Gecko source files to C or an object file. The LLVM backend is deprecated and unavailable in the current compiler.
 
 ```bash
 gecko compile [options] <sources...>
@@ -84,7 +84,7 @@ gecko compile --entry <name>
 | `--output-dir` | Output directory | `.` |
 | `--entry, -e` | Entry point from gecko.toml | - |
 | `--type` | Output type: `executable` or `library` | `executable` |
-| `--backend` | Backend: `c` or `llvm` | `c` |
+| `--backend` | Backend: `c` (LLVM is deprecated and unavailable) | `c` |
 | `--target-arch` | Target architecture | Host arch |
 | `--target-platform` | Target OS | Host OS |
 | `--target-vendor` | Target vendor | - |
@@ -92,7 +92,6 @@ gecko compile --entry <name>
 | `--ir-only` | Only generate IR (no object file) | false |
 | `--treeshake` | Explicitly enable treeshake | false |
 | `--no-treeshake` | Disable treeshake | false |
-| `--llc-args` | Arguments for llc (LLVM backend) | - |
 | `--log-level` | Logging: silent, error, warn, info, debug, trace | `silent` |
 | `--cflags` | Additional C compiler flags (repeatable) | - |
 | `--ldflags` | Additional linker flags (repeatable) | - |

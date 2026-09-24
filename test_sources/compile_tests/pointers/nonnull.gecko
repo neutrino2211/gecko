@@ -7,7 +7,9 @@ class Data {
 }
 
 func process_nonnull(d: Data*!): int {
-    return d.value
+    @unsafe {
+        return d.value
+    }
 }
 
 func maybe_process(d: Data*): int {

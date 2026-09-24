@@ -1,0 +1,275 @@
+// spec: spec/types.md, spec/traits.md, spec/modules.md, spec/scoping.md
+
+package tests
+
+import (
+	"testing"
+
+	"github.com/neutrino2211/gecko/parser"
+)
+
+func TestCImportClausesParsing(t *testing.T) {
+	tests := []struct {
+		name          string
+		code          string
+		expectedLibs  []string
+		expectedObjs  []string
+		expectedCount int
+	}{
+		{
+			name: "header only",
+			code: `package main
+cimport "<stdio.h>"`,
+			expectedCount: 0,
+		},
+		{
+			name: "withlibrary only",
+			code: `package main
+cimport "<gtk/gtk.h>" withlibrary "gtk4"`,
+			expectedLibs:  []string{"gtk4"},
+			expectedCount: 1,
+		},
+		{
+			name: "withobject only",
+			code: `package main
+cimport "mylib.h" withobject "build/mylib.o"`,
+			expectedObjs:  []string{"build/mylib.o"},
+			expectedCount: 1,
+		},
+		{
+			name: "both clauses same statement",
+			code: `package main
+cimport "swiftlib.h" withlibrary "swiftlib" withobject "build/swiftlib.o"`,
+			expectedLibs:  []string{"swiftlib"},
+			expectedObjs:  []string{"build/swiftlib.o"},
+			expectedCount: 2,
+		},
+		{
+			name: "both clauses reverse order",
+			code: `package main
+cimport "swiftlib.h" withobject "build/swiftlib.o" withlibrary "swiftlib"`,
+			expectedLibs:  []string{"swiftlib"},
+			expectedObjs:  []string{"build/swiftlib.o"},
+			expectedCount: 2,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			file, err := parser.Parser.ParseString("test.gecko", tc.code)
+			if err != nil {
+				t.Fatalf("Parse error: %v", err)
+			}
+			if len(file.Entries) == 0 || file.Entries[0].CImport == nil {
+				t.Fatal("First entry is not cimport")
+			}
+
+			cimp := file.Entries[0].CImport
+			if len(cimp.Clauses) != tc.expectedCount {
+				t.Fatalf("Expected %d clauses, got %d", tc.expectedCount, len(cimp.Clauses))
+			}
+
+			var libs []string
+			for _, lib := range cimp.GetWithLibraries() {
+				libs = append(libs, stripQuotes(lib))
+			}
+			var objs []string
+			for _, obj := range cimp.GetWithObjects() {
+				objs = append(objs, stripQuotes(obj))
+			}
+
+			if len(libs) != len(tc.expectedLibs) {
+				t.Fatalf("Expected %d libs, got %d: %v", len(tc.expectedLibs), len(libs), libs)
+			}
+			for i, lib := range tc.expectedLibs {
+				if libs[i] != lib {
+					t.Fatalf("Library %d mismatch: expected %q got %q", i, lib, libs[i])
+				}
+			}
+
+			if len(objs) != len(tc.expectedObjs) {
+				t.Fatalf("Expected %d objects, got %d: %v", len(tc.expectedObjs), len(objs), objs)
+			}
+			for i, obj := range tc.expectedObjs {
+				if objs[i] != obj {
+					t.Fatalf("Object %d mismatch: expected %q got %q", i, obj, objs[i])
+				}
+			}
+		})
+	}
+}
+
+func TestForeignClausesParsing(t *testing.T) {
+	tests := []struct {
+		name            string
+		code            string
+		expectedHeaders []string
+		expectedLibs    []string
+		expectedObjs    []string
+	}{
+		{
+			name: "header only",
+			code: `package main
+foreign "c" stdio withheader "<stdio.h>" {
+    func printf(fmt: string, ...): int32 as "printf"
+}`,
+			expectedHeaders: []string{"<stdio.h>"},
+		},
+		{
+			name: "all clauses mixed order",
+			code: `package main
+foreign "c" sqlite withobject "build/sqlite3.o" withheader "<sqlite3.h>" withlibrary "sqlite3" withheader "<stdint.h>" {
+    type sqlite3 opaque
+    func sqlite3_open(path: string, db: out sqlite3*): int32
+}`,
+			expectedHeaders: []string{"<sqlite3.h>", "<stdint.h>"},
+			expectedLibs:    []string{"sqlite3"},
+			expectedObjs:    []string{"build/sqlite3.o"},
+		},
+		{
+			name: "repeated library and object clauses",
+			code: `package main
+foreign "c" native withlibrary "m" withobject "build/a.o" withlibrary "z" withobject "build/b.o" {
+    func puts(msg: string): int32
+}`,
+			expectedLibs: []string{"m", "z"},
+			expectedObjs: []string{"build/a.o", "build/b.o"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			file, err := parser.Parser.ParseString("test.gecko", tc.code)
+			if err != nil {
+				t.Fatalf("Parse error: %v", err)
+			}
+			if len(file.Entries) == 0 || file.Entries[0].Foreign == nil {
+				t.Fatal("First entry is not foreign")
+			}
+			foreign := file.Entries[0].Foreign
+
+			var headers []string
+			for _, h := range foreign.GetWithHeaders() {
+				headers = append(headers, stripQuotes(h))
+			}
+			var libs []string
+			for _, lib := range foreign.GetWithLibraries() {
+				libs = append(libs, stripQuotes(lib))
+			}
+			var objs []string
+			for _, obj := range foreign.GetWithObjects() {
+				objs = append(objs, stripQuotes(obj))
+			}
+
+			if len(headers) != len(tc.expectedHeaders) {
+				t.Fatalf("expected %d headers, got %d: %v", len(tc.expectedHeaders), len(headers), headers)
+			}
+			for i, h := range tc.expectedHeaders {
+				if headers[i] != h {
+					t.Fatalf("header %d mismatch: expected %q got %q", i, h, headers[i])
+				}
+			}
+			if len(libs) != len(tc.expectedLibs) {
+				t.Fatalf("expected %d libs, got %d: %v", len(tc.expectedLibs), len(libs), libs)
+			}
+			for i, lib := range tc.expectedLibs {
+				if libs[i] != lib {
+					t.Fatalf("library %d mismatch: expected %q got %q", i, lib, libs[i])
+				}
+			}
+			if len(objs) != len(tc.expectedObjs) {
+				t.Fatalf("expected %d objects, got %d: %v", len(tc.expectedObjs), len(objs), objs)
+			}
+			for i, obj := range tc.expectedObjs {
+				if objs[i] != obj {
+					t.Fatalf("object %d mismatch: expected %q got %q", i, obj, objs[i])
+				}
+			}
+		})
+	}
+}
+
+func TestVariadicSyntaxParsing(t *testing.T) {
+	valid := `package main
+func printf(fmt: string, ...): int32 {}`
+	file, err := parser.Parser.ParseString("test.gecko", valid)
+	if err != nil {
+		t.Fatalf("unexpected parse error for valid variadic syntax: %v", err)
+	}
+	if len(file.Entries) == 0 || file.Entries[0].Method == nil {
+		t.Fatal("expected top-level method")
+	}
+	if !file.Entries[0].Method.IsVariadic() {
+		t.Fatal("expected method to be variadic")
+	}
+
+	legacy := `package main
+variardic func puts(fmt: string): int32 {}`
+	file, err = parser.Parser.ParseString("legacy.gecko", legacy)
+	if err != nil {
+		t.Fatalf("unexpected parse error for legacy variardic syntax: %v", err)
+	}
+	if len(file.Entries) == 0 || file.Entries[0].Method == nil || !file.Entries[0].Method.Variardic {
+		t.Fatal("expected legacy variardic method to parse")
+	}
+
+	invalid := `package main
+func bad(..., x: int32): void {}`
+	if _, err := parser.Parser.ParseString("invalid.gecko", invalid); err == nil {
+		t.Fatal("expected parse failure for malformed variadic placement")
+	}
+}
+
+func TestOutParamParsing(t *testing.T) {
+	code := `package main
+declare external type sqlite3
+declare external func sqlite3_open(path: string, db: out sqlite3*): int32
+
+func main(): int32 {
+    let db: sqlite3* = 0 as sqlite3*
+    sqlite3_open("db.sqlite", out db)
+    return 0
+}`
+
+	file, err := parser.Parser.ParseString("out_params.gecko", code)
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	if len(file.Entries) < 2 {
+		t.Fatalf("Expected at least 2 entries, got %d", len(file.Entries))
+	}
+
+	decl := file.Entries[1].Declaration
+	if decl == nil || decl.Method == nil {
+		t.Fatal("Expected external method declaration as second entry")
+	}
+
+	m := decl.Method
+	if len(m.Arguments) != 2 {
+		t.Fatalf("Expected 2 declaration arguments, got %d", len(m.Arguments))
+	}
+	if m.Arguments[1].Name != "db" {
+		t.Fatalf("Expected out parameter name 'db', got %q", m.Arguments[1].Name)
+	}
+	if !m.Arguments[1].Out {
+		t.Fatal("Expected second declaration parameter to be marked as out")
+	}
+
+	mainFn := file.Entries[len(file.Entries)-1].Method
+	if mainFn == nil || len(mainFn.Value) < 2 {
+		t.Fatal("Expected function body with function call entry")
+	}
+
+	call := mainFn.Value[1].FuncCall
+	if call == nil {
+		t.Fatal("Expected second statement to be a function call")
+	}
+
+	if len(call.Arguments) != 2 {
+		t.Fatalf("Expected 2 call arguments, got %d", len(call.Arguments))
+	}
+	if !call.Arguments[1].Out {
+		t.Fatal("Expected second call argument to be marked as out")
+	}
+}

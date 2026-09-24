@@ -64,14 +64,18 @@ public class Raw<T> {
     /// Reads and returns the value at the pointer address.
     ///
     /// Does not perform null checking - caller must ensure pointer is valid.
+    @unsafe
     func read(self): T {
         let ptr: T* = self.addr as T*
-        return @deref(ptr)
+        @unsafe {
+            return @deref(ptr)
+        }
     }
 
     /// Writes a value to the pointer address.
     ///
     /// Does not perform null checking - caller must ensure pointer is valid.
+    @unsafe
     func write(self, value: T) {
         let ptr: T* = self.addr as T*
         @unsafe {
@@ -102,6 +106,7 @@ public class Raw<T> {
     }
 
     /// Copies `count` elements from source pointer to this pointer.
+    @unsafe
     func copy_from(self, src: Raw<T>, count: uint64) {
         let size: uint64 = count * @size_of<T>()
         @unsafe {
@@ -110,6 +115,7 @@ public class Raw<T> {
     }
 
     /// Sets `count` elements at this pointer to zero.
+    @unsafe
     func zero(self, count: uint64) {
         let size: uint64 = count * @size_of<T>()
         @unsafe {

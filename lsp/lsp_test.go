@@ -6,8 +6,19 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/neutrino2211/gecko/analysis"
 	"go.lsp.dev/protocol"
 )
+
+// newTestCtx builds a shared analysis context for the given content so the LSP
+// features exercise the same semantic graph the compiler uses.
+func newTestCtx(content string) *analysis.AnalysisContext {
+	ctx, err := analysis.NewAnalysisContext("test.gecko", content)
+	if err != nil {
+		return nil
+	}
+	return ctx
+}
 
 // LSPTestCase represents a single LSP test case
 type LSPTestCase struct {
@@ -80,7 +91,7 @@ func main(): bool {
 
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			info := GetHoverInfo(tc.Content, tc.Line, tc.Col)
+			info := GetHoverInfo(newTestCtx(tc.Content), tc.Content, tc.Line, tc.Col)
 			if info == nil {
 				t.Fatalf("Expected hover info, got nil")
 			}
@@ -121,7 +132,7 @@ func greet(): void {
 
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			info := GetHoverInfo(tc.Content, tc.Line, tc.Col)
+			info := GetHoverInfo(newTestCtx(tc.Content), tc.Content, tc.Line, tc.Col)
 			if info == nil {
 				t.Fatalf("Expected hover info, got nil")
 			}
@@ -151,7 +162,7 @@ class Point {
 
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			info := GetHoverInfo(tc.Content, tc.Line, tc.Col)
+			info := GetHoverInfo(newTestCtx(tc.Content), tc.Content, tc.Line, tc.Col)
 			if info == nil {
 				t.Fatalf("Expected hover info, got nil")
 			}
@@ -194,7 +205,7 @@ func main(): void {
 
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			items := GetCompletions(tc.Content, "test.gecko", tc.Line, tc.Col)
+			items := GetCompletions(newTestCtx(tc.Content), tc.Content, "test.gecko", tc.Line, tc.Col)
 			labels := getCompletionLabels(items)
 
 			for _, expected := range tc.ExpectedLabels {
@@ -237,7 +248,7 @@ func main(): void {
 
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			items := GetCompletions(tc.Content, "test.gecko", tc.Line, tc.Col)
+			items := GetCompletions(newTestCtx(tc.Content), tc.Content, "test.gecko", tc.Line, tc.Col)
 			labels := getCompletionLabels(items)
 
 			for _, expected := range tc.ExpectedLabels {
@@ -278,7 +289,7 @@ func main(): void {
 
 	for _, tc := range tests {
 		t.Run(tc.Name, func(t *testing.T) {
-			items := GetCompletions(tc.Content, "test.gecko", tc.Line, tc.Col)
+			items := GetCompletions(newTestCtx(tc.Content), tc.Content, "test.gecko", tc.Line, tc.Col)
 			labels := getCompletionLabels(items)
 
 			for _, expected := range tc.ExpectedLabels {
@@ -337,7 +348,7 @@ func demo(): int32 {
 		col = wordIdx - lastNewline - 1
 	}
 
-	info := GetHoverInfo(content, line, col)
+	info := GetHoverInfo(newTestCtx(content), content, line, col)
 	if info == nil {
 		t.Fatal("Expected hover info for inherited trait method, got nil")
 	}
@@ -396,7 +407,7 @@ func demo(): int32 {
 		col = wordIdx - lastNewline - 1
 	}
 
-	loc := GetDefinitionLocation(content, line, col, "file:///test.gecko")
+	loc := GetDefinitionLocation(newTestCtx(content), content, line, col, "file:///test.gecko")
 	if loc == nil {
 		t.Fatal("Expected definition location for inherited trait method, got nil")
 	}

@@ -13,7 +13,8 @@ This spec documents **what exists**, not aspirational features. Each document no
 | [types.md](types.md) | Primitive types, type references, arrays |
 | [functions.md](functions.md) | Function declarations, parameters, return types |
 | [classes.md](classes.md) | Class/struct definitions, fields, methods |
-| [traits.md](traits.md) | Trait definitions, implementations, compiler hooks |
+| [traits.md](traits.md) | Trait definitions, implementations, coherence |
+| [trait-hooks.md](trait-hooks.md) | Compiler hooks, operators, iteration, cleanup |
 | [generics.md](generics.md) | Generic type parameters, monomorphization |
 | [modules.md](modules.md) | Module system, imports, visibility |
 | [control-flow.md](control-flow.md) | Conditionals, loops, early returns |

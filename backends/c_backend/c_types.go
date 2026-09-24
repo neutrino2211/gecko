@@ -4,7 +4,6 @@ package cbackend
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/neutrino2211/gecko/ast"
@@ -30,6 +29,13 @@ type StructDefinition struct {
 
 // CScopeInformation holds per-scope C code generation state
 type CScopeInformation struct {
+	UnsafeSetup           *unsafeSetupContext
+	LocalVarOrder         []string
+	ChildSequence         int
+	LexicalBlock          bool
+	FunctionBoundary      bool
+	LoopBoundary          bool
+	PreparingDefer        bool
 	Code                  string
 	Declarations          []string
 	Functions             []string
@@ -45,48 +51,40 @@ type CScopeInformation struct {
 	CurrentFuncReturnType *tokens.TypeRef   // Return type of current function for validation
 	LocalVars             map[string]string // variable name -> C type
 	ChildContexts         map[string]*CScopeInformation
-	TypeState             *ast.TypeState // Flow-sensitive type state for this scope
-	DeferStack            []string       // Deferred C code expressions to emit at scope exit
+	TypeState             *ast.TypeState         // Flow-sensitive type state for this scope
+	DeferStack            []string               // Deferred C code expressions to emit at scope exit
 	ClosureCaptures       *ClosureCaptureContext // Active closure capture context for lambda compilation
-	InUnsafe              bool           // True inside @unsafe functions or @unsafe { ... } blocks
-	// ActiveUnsafeHandlers is the stack of unsafe-handler instances active in
-	// the current scope (pushed by `@unsafe with`, popped on block exit). Each
-	// intrinsic call consults these to run guard/catch before executing.
-	ActiveUnsafeHandlers []*UnsafeHandlerInstance
+	InUnsafe              bool                   // True inside @unsafe functions or @unsafe { ... } blocks
+
 }
 
 // UnsafeHandlerInstance records one active unsafe-handler value in scope:
 // VarName is its C variable, TypeName is the handler type (used to look up
 // which intrinsics it covers via the global UnsafeHandlerCoverage map).
-// FailFlag/FailIdx are the shared C variable names (one per @unsafe block) that
-// record whether any guard failed and which handler failed first; they are only
-// populated for @unsafe blocks used as expressions (so the Result can be built).
 type UnsafeHandlerInstance struct {
 	VarName  string
 	TypeName string
 	Index    int
-	FailFlag string
-	FailIdx  string
 }
 
 // ClosureCaptureContext tracks captured variables during lambda compilation
 type ClosureCaptureContext struct {
-	StructName  string                          // Name of the capture struct (e.g., "__cap_0")
-	ParamName   string                          // Parameter name in lambda (e.g., "__cap")
-	Fields      []*ClosureCaptureField          // Captured variable fields
-	FieldMap    map[string]*ClosureCaptureField // Quick lookup by variable name
-	StructDef   string                          // Generated C struct definition
-	GlobalSlot  string                          // Global variable name for the capture
-	OuterScope  *ast.Ast                        // The enclosing scope where variables are defined
+	StructName string                          // Name of the capture struct (e.g., "__cap_0")
+	ParamName  string                          // Parameter name in lambda (e.g., "__cap")
+	Fields     []*ClosureCaptureField          // Captured variable fields
+	FieldMap   map[string]*ClosureCaptureField // Quick lookup by variable name
+	StructDef  string                          // Generated C struct definition
+	GlobalSlot string                          // Global variable name for the capture
+	OuterScope *ast.Ast                        // The enclosing scope where variables are defined
 }
 
 // ClosureCaptureField represents a single captured variable
 type ClosureCaptureField struct {
-	VarName     string // Original variable name
-	FullName    string // Full qualified name
- CType      string // C type of the variable
-	IsPointer   bool   // Whether the variable is a pointer
-	Scope       *ast.Ast // The scope where the variable is defined
+	VarName   string   // Original variable name
+	FullName  string   // Full qualified name
+	CType     string   // C type of the variable
+	IsPointer bool     // Whether the variable is a pointer
+	Scope     *ast.Ast // The scope where the variable is defined
 }
 
 // TreeshakeDynamicCallWarning tracks dynamic-call patterns that require treeshake fallback.
@@ -273,332 +271,4 @@ func GetTreeshakeDynamicCallWarnings() []TreeshakeDynamicCallWarning {
 	out := make([]TreeshakeDynamicCallWarning, len(currentTreeshakeDynamicCallWarnings))
 	copy(out, currentTreeshakeDynamicCallWarnings)
 	return out
-}
-
-// TypeRefToCType converts a gecko TypeRef to a C type string
-func TypeRefToCType(t *tokens.TypeRef, scope *ast.Ast) string {
-	if t == nil {
-		return "void"
-	}
-
-	// Resolve Self to the current class type
-	if t.Type == "Self" && CurrentSelfType != "" {
-		return CurrentSelfType
-	}
-
-	base := ""
-
-	if t.Size != nil {
-		// Fixed-size array: [N]T -> T* (passed as pointer in C)
-		base = TypeRefToCType(t.Size.Type, scope) + "*"
-	} else if t.Array != nil {
-		base = TypeRefToCType(t.Array, scope) + "*"
-	} else if t.FuncType != nil {
-		// Function pointer type: return_type (*)( param_types... )
-		retType := "void"
-		if t.FuncType.ReturnType != nil {
-			retType = TypeRefToCType(t.FuncType.ReturnType, scope)
-		}
-
-		params := ""
-		for i, paramType := range t.FuncType.ParamTypes {
-			if i > 0 {
-				params += ", "
-			}
-			params += TypeRefToCType(paramType, scope)
-		}
-		if params == "" {
-			params = "void"
-		}
-
-		// Return function pointer type with __FUNCPTR__ marker for name placement
-		base = retType + " (*__FUNCPTR__)(" + params + ")"
-	} else {
-		cType, ok := GeckoToCType[t.Type]
-		if ok {
-			base = cType
-		} else if enumType, isEnum := EnumToCType[t.Type]; isEnum {
-			base = enumType
-		} else if t.Module != "" {
-			// Module-qualified type: module.Type
-			// Use simple type name (typedef names don't include module prefix)
-			if len(t.TypeArgs) > 0 {
-				typeArgStrs := make([]string, len(t.TypeArgs))
-				for i, typeArg := range t.TypeArgs {
-					typeArgStrs[i] = TypeRefToCType(typeArg, scope)
-				}
-				base = Generics.RequestClassInstantiation(t.Type, typeArgStrs)
-			} else {
-				base = t.Type
-			}
-		} else {
-			// Check if this is a type parameter that should be substituted
-			if CurrentMonomorphContext != nil {
-				if concreteType, found := CurrentMonomorphContext.GetConcreteTypeForParam(t.Type); found {
-					base = concreteType
-				} else if len(t.TypeArgs) > 0 {
-					// Generic type instantiation
-					typeArgStrs := make([]string, len(t.TypeArgs))
-					for i, typeArg := range t.TypeArgs {
-						typeArgStrs[i] = TypeRefToCType(typeArg, scope)
-					}
-					base = Generics.RequestClassInstantiation(t.Type, typeArgStrs)
-				} else {
-					base = t.Type
-				}
-			} else if len(t.TypeArgs) > 0 {
-				// Convert type arguments to C types
-				typeArgStrs := make([]string, len(t.TypeArgs))
-				for i, typeArg := range t.TypeArgs {
-					typeArgStrs[i] = TypeRefToCType(typeArg, scope)
-				}
-				// Request instantiation and get mangled name
-				base = Generics.RequestClassInstantiation(t.Type, typeArgStrs)
-			} else {
-				// Unknown type, use as-is (struct or custom type)
-				base = t.Type
-			}
-		}
-	}
-
-	// Qualifiers apply to the pointee / value (C: const/volatile T*).
-	if t.Const {
-		base = "const " + base
-	}
-	if t.Volatile {
-		base = "volatile " + base
-	}
-
-	if t.Pointer {
-		base += "*"
-	}
-
-	return base
-}
-
-// GetMonomorphizedClassName returns the class name to use for lookup.
-// For generic types like Raw<uint32>, returns the mangled name like Raw__uint32.
-func GetMonomorphizedClassName(t *tokens.TypeRef, scope *ast.Ast) string {
-	if t == nil {
-		return ""
-	}
-	if len(t.TypeArgs) > 0 {
-		// Generic type - get the mangled name
-		typeArgStrs := make([]string, len(t.TypeArgs))
-		for i, typeArg := range t.TypeArgs {
-			typeArgStrs[i] = TypeRefToCType(typeArg, scope)
-		}
-		return Generics.RequestClassInstantiation(t.Type, typeArgStrs)
-	}
-	return t.Type
-}
-
-// IsFuncPointerType checks if a type string is a function pointer type
-func IsFuncPointerType(cType string) bool {
-	return strings.Contains(cType, "__FUNCPTR__")
-}
-
-// TopologicalSortStructs sorts struct definitions so dependencies come first.
-// Uses Kahn's algorithm for topological sorting.
-func TopologicalSortStructs(structs []*StructDefinition) []*StructDefinition {
-	if len(structs) == 0 {
-		return structs
-	}
-
-	// Build maps for quick lookup
-	nameToStruct := make(map[string]*StructDefinition)
-	for _, s := range structs {
-		nameToStruct[s.Name] = s
-	}
-
-	// Build in-degree map (count of dependencies not yet processed)
-	inDegree := make(map[string]int)
-	dependents := make(map[string][]string) // type -> structs that depend on it
-
-	for _, s := range structs {
-		inDegree[s.Name] = 0
-	}
-
-	for _, s := range structs {
-		for _, dep := range s.Dependencies {
-			if _, exists := nameToStruct[dep]; exists {
-				inDegree[s.Name]++
-				dependents[dep] = append(dependents[dep], s.Name)
-			}
-		}
-	}
-
-	// Start with structs that have no dependencies
-	queue := []string{}
-	for name, degree := range inDegree {
-		if degree == 0 {
-			queue = append(queue, name)
-		}
-	}
-
-	result := make([]*StructDefinition, 0, len(structs))
-
-	for len(queue) > 0 {
-		// Pop from queue
-		name := queue[0]
-		queue = queue[1:]
-
-		if s, ok := nameToStruct[name]; ok {
-			result = append(result, s)
-		}
-
-		// Reduce in-degree for dependents
-		for _, dependent := range dependents[name] {
-			inDegree[dependent]--
-			if inDegree[dependent] == 0 {
-				queue = append(queue, dependent)
-			}
-		}
-	}
-
-	// If we couldn't process all structs, there's a cycle - return original order
-	if len(result) < len(structs) {
-		return structs
-	}
-
-	return result
-}
-
-// CircularDependency represents a cycle in type dependencies
-type CircularDependency struct {
-	Types []*StructDefinition // Types involved in the cycle
-}
-
-// DetectCircularValueDependencies checks for cycles in non-pointer (value) dependencies.
-// These cycles cause infinite struct sizes and are compile errors.
-// Returns a list of cycles found, empty if no cycles.
-func DetectCircularValueDependencies(structs []*StructDefinition) []CircularDependency {
-	if len(structs) == 0 {
-		return nil
-	}
-
-	// Build maps for quick lookup
-	nameToStruct := make(map[string]*StructDefinition)
-	for _, s := range structs {
-		nameToStruct[s.Name] = s
-	}
-
-	// Build adjacency list from VALUE dependencies only
-	adj := make(map[string][]string)
-	for _, s := range structs {
-		for _, dep := range s.ValueDependencies {
-			if _, exists := nameToStruct[dep]; exists {
-				adj[s.Name] = append(adj[s.Name], dep)
-			}
-		}
-	}
-
-	// Track visited state for cycle detection
-	// 0 = unvisited, 1 = in current path (gray), 2 = fully visited (black)
-	color := make(map[string]int)
-	parent := make(map[string]string)
-	var cycles []CircularDependency
-
-	// DFS to find cycles
-	var dfs func(node string) bool
-	dfs = func(node string) bool {
-		color[node] = 1 // Mark as being visited
-
-		for _, neighbor := range adj[node] {
-			if color[neighbor] == 1 {
-				// Found a cycle - reconstruct it
-				cycle := []*StructDefinition{nameToStruct[neighbor]}
-				curr := node
-				for curr != neighbor {
-					cycle = append([]*StructDefinition{nameToStruct[curr]}, cycle...)
-					curr = parent[curr]
-				}
-				cycles = append(cycles, CircularDependency{Types: cycle})
-				return true
-			}
-			if color[neighbor] == 0 {
-				parent[neighbor] = node
-				if dfs(neighbor) {
-					return true
-				}
-			}
-		}
-
-		color[node] = 2 // Mark as fully visited
-		return false
-	}
-
-	// Run DFS from each unvisited node
-	for _, s := range structs {
-		if color[s.Name] == 0 {
-			dfs(s.Name)
-		}
-	}
-
-	return cycles
-}
-
-// FormatFuncPointerDecl formats a function pointer declaration with variable name
-func FormatFuncPointerDecl(cType, varName string) string {
-	return strings.Replace(cType, "__FUNCPTR__", varName, 1)
-}
-
-// GetScopedTypeName returns the scoped C type name for a module-qualified type.
-// This is the single source of truth for type name mangling with module prefixes.
-// Examples:
-//   - GetScopedTypeName("geometry", "Point") -> "geometry__Point"
-//   - GetScopedTypeName("", "Point") -> "Point"
-//   - GetScopedTypeName("std.collections", "Vec") -> "std__collections__Vec"
-func GetScopedTypeName(module string, typeName string) string {
-	if module == "" {
-		return typeName
-	}
-	// Replace dots with double underscores for nested modules
-	modulePrefix := strings.ReplaceAll(module, ".", "__")
-	return modulePrefix + "__" + typeName
-}
-
-// ResolveClassFromTypeRef resolves a TypeRef to a class AST, handling module qualification.
-// For module-qualified types (e.g., geometry.Point), it searches the child scope.
-// Returns the class AST and the scoped C name for the type.
-func ResolveClassFromTypeRef(typeRef *tokens.TypeRef, scope *ast.Ast) (*ast.Ast, string) {
-	if typeRef == nil {
-		return nil, ""
-	}
-
-	rootScope := scope.GetRoot()
-	typeName := typeRef.Type
-	scopedName := GetScopedTypeName(typeRef.Module, typeName)
-
-	// Handle generic types first
-	if len(typeRef.TypeArgs) > 0 {
-		typeArgStrs := make([]string, len(typeRef.TypeArgs))
-		for i, typeArg := range typeRef.TypeArgs {
-			typeArgStrs[i] = TypeRefToCType(typeArg, scope)
-		}
-		scopedName = Generics.RequestClassInstantiation(scopedName, typeArgStrs)
-	}
-
-	// For module-qualified types, search the child scope first
-	if typeRef.Module != "" {
-		if child, ok := rootScope.Children[typeRef.Module]; ok {
-			if classOpt := child.ResolveClass(typeName); !classOpt.IsNil() {
-				return classOpt.Unwrap(), scopedName
-			}
-		}
-	}
-
-	// Search in root scope
-	if classOpt := rootScope.ResolveClass(typeName); !classOpt.IsNil() {
-		return classOpt.Unwrap(), scopedName
-	}
-
-	// Search imported modules
-	for _, child := range rootScope.Children {
-		if classOpt := child.ResolveClass(typeName); !classOpt.IsNil() {
-			return classOpt.Unwrap(), scopedName
-		}
-	}
-
-	return nil, scopedName
 }

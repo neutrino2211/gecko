@@ -8,12 +8,20 @@ func vga_test(): void {
     let vga: uint16 volatile* = 753664 as uint16 volatile*
 
     // Write to VGA buffer using array indexing
-    vga[0] = 3905  // 0x0F41 = white 'A' on black
-    vga[1] = 3906  // 0x0F42 = white 'B' on black
+    @unsafe {
+        vga[0] = 3905  // 0x0F41 = white 'A' on black
+    }
+    @unsafe {
+        vga[1] = 3906  // 0x0F42 = white 'B' on black
+    }
 
     // Read from VGA buffer using array indexing
-    let first: uint16 = vga[0]
-    let second: uint16 = vga[1]
+    @unsafe {
+        let first: uint16 = vga[0]
+    }
+    @unsafe {
+        let second: uint16 = vga[1]
+    }
 }
 
 // Test with non-volatile pointer
@@ -21,9 +29,15 @@ func simple_array_test(): void {
     let ptr: uint32* = 4096 as uint32*
 
     // Write to array
-    ptr[0] = 100
-    ptr[1] = 200
+    @unsafe {
+        ptr[0] = 100
+    }
+    @unsafe {
+        ptr[1] = 200
+    }
 
     // Read from array
-    let val: uint32 = ptr[0]
+    @unsafe {
+        let val: uint32 = ptr[0]
+    }
 }

@@ -415,7 +415,11 @@ func generateCaptureStruct(fields []*ClosureCaptureField, scope *ast.Ast) (struc
 func generateCaptureInit(fields []*ClosureCaptureField, structVarName string) string {
 	var sb strings.Builder
 	for _, field := range fields {
-		sb.WriteString(fmt.Sprintf("    %s.%s = %s;\n", structVarName, field.VarName, field.VarName))
+		source := field.VarName
+		if variable, ok := field.Scope.Variables[field.VarName]; ok {
+			source = CVariableIdentifier(&variable)
+		}
+		sb.WriteString(fmt.Sprintf("    %s.%s = %s;\n", structVarName, field.VarName, source))
 	}
 	return sb.String()
 }

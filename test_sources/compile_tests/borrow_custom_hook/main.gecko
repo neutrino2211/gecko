@@ -1,0 +1,17 @@
+package main
+@borrow_hook(.view)
+trait Readable<R> { func view(self): R }
+class View {
+ let value: int32
+ func get(self): int32 { return self.value }
+}
+class Owner { let value: int32 }
+impl Readable<View> for Owner {
+ func view(self): View { return View { value: self.value } }
+}
+external func main(): int32 {
+ let owner: Owner = Owner { value: 17 }
+ let view = @borrow(owner)
+ if (view.get() != 17) { return 1 }
+ return 0
+}

@@ -2,7 +2,7 @@
 
 package option
 
-import std.core.traits use { Tryable, Orable }
+import std.core.traits use { Tryable, Orable, Drop }
 import std.errors
 
 /// Option<T> - Represents an optional value.
@@ -38,7 +38,7 @@ public class Option<T> {
     /// Creates an Option containing a value.
     public func some(val: T): Option<T> {
         let opt: Option<T>
-        opt.value = val
+        opt.value = @move(val)
         opt.has_value = true
         return opt
     }
@@ -61,15 +61,17 @@ public class Option<T> {
     }
 
     /// Returns the contained value.
-    /// Behavior is undefined if the Option is None.
     public func unwrap(self): T {
-        return self.value
+        if (!self.has_value) { @unsafe { @trap() } }
+        let value: T = self.value
+        self.has_value = false
+        return value
     }
 
     /// Returns the contained value, or a default if None.
     public func unwrap_or(self, default_val: T): T {
         if (self.has_value) {
-            return self.value
+            return self.unwrap()
         }
         return default_val
     }
@@ -78,10 +80,20 @@ public class Option<T> {
     /// Note: In Gecko, this takes the computed default directly.
     public func get_or(self, default_val: T): T {
         if (self.has_value) {
-            return self.value
+            return self.unwrap()
         }
         return default_val
     }
+
+    public func drop(self): void {
+        if (!self.has_value) { return }
+        self.has_value = false
+        @unsafe { @drop_in_place(&self.value) }
+    }
+}
+
+impl<T> Drop for Option<T> {
+    func drop(self): void { self.drop() }
 }
 
 /// Implement Tryable for Option - enables `try option_expr`
@@ -91,7 +103,7 @@ impl<T> Tryable<T> for Option<T> {
     }
 
     public func try_unwrap(self): T {
-        return self.value
+        return self.unwrap()
     }
 }
 
@@ -99,7 +111,7 @@ impl<T> Tryable<T> for Option<T> {
 impl<T> Orable<T> for Option<T> {
     public func unwrap_or(self, default_val: T): T {
         if (self.has_value) {
-            return self.value
+            return self.unwrap()
         }
         return default_val
     }

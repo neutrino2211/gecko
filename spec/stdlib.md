@@ -62,8 +62,8 @@ public trait Default {
 }
 ```
 
-`Drop` hook integration is implemented.
-`Clone` and `Copy` remain regular traits unless hook support is explicitly enabled in a future release.
+`Drop`, `Borrow`, and `BorrowMut` hook integration is implemented.
+`Clone` is called explicitly. `Copy` marks values eligible for implicit bitwise duplication.
 
 **Dependencies:** None (freestanding-compatible)
 
@@ -107,6 +107,9 @@ impl Option<T> {
 }
 ```
 
+`Option<T>` implements Drop for its active Some payload. `unwrap()` transfers
+that payload and marks the Option empty.
+
 **Dependencies:** None (freestanding-compatible)
 
 ### std.result
@@ -118,6 +121,7 @@ public class Result<T, E> {
     let value: T
     let error: E
     let is_ok: bool
+    let active: bool
 }
 
 impl Result<T, E> {
@@ -130,6 +134,9 @@ impl Result<T, E> {
     public func unwrap_or(self, default: T): T
 }
 ```
+
+`Result<T, E>` implements Drop for its active Ok or Err payload. `unwrap()` and
+`unwrap_err()` transfer that payload and clear `active`.
 
 **Dependencies:** None (freestanding-compatible)
 
@@ -197,62 +204,24 @@ impl Drop for String {
 
 **Dependencies:** malloc/free (hosted)
 
-### std.memory.box
+### std.memory.box / rc / weak
 
-Unique heap ownership:
+`Box<T>` uniquely owns allocated storage. `Rc<T>` and `Weak<T>` share a control
+block with strong and weak counts. Drop hooks release handles automatically unless
+`--no-auto-drop` is supplied. Box replacement and final strong Rc release invoke
+the contained type's Drop hook before storage is freed.
 
-```gecko
-public class Box<T> {
-    let ptr: uint64
-}
+Raw adoption methods require an unsafe region. Weak handles keep control metadata
+alive after the contained value is dropped. All counts are non-atomic.
 
-impl Box<T> {
-    public func new(value: T): Box<T>
-    public func get(self): T
-    public func set(self, value: T)
-    public func as_raw(self): uint64
-    public func into_raw(self): uint64
-}
+### std.memory.borrow_cell / ref / ref_mut
 
-impl Drop for Box<T> {
-    func drop(self): void {
-        // Drop inner value if it implements Drop
-        free(self.ptr)
-    }
-}
-```
+`BorrowCell<T is Copy>` supplies multiple immutable `Ref<T>` views or one
+exclusive `RefMut<T>` view. Borrow hooks dispatch `@borrow(cell)` and
+`@borrow_mut(cell)`; direct methods expose the same operations. Acquisitions check
+exclusivity at runtime, and view Drop hooks release access and retained storage.
 
-**Dependencies:** malloc/free (hosted)
-
-### std.memory.rc
-
-Reference-counted pointer:
-
-```gecko
-public class Rc<T> {
-    let ptr: uint64
-}
-
-impl Rc<T> {
-    public func new(value: T): Rc<T>
-    public func clone(self): Rc<T>
-    public func get(self): T
-    public func strong_count(self): uint64
-    public func inner_ptr(self): uint64
-}
-
-impl Drop for Rc<T> {
-    func drop(self): void {
-        @deref(self.count) = @deref(self.count) - 1
-        if @deref(self.count) == 0 {
-            free(self.ptr)
-            free(self.count)
-        }
-    }
-}
-```
-
-**Dependencies:** malloc/free (hosted)
+See [Memory Model](memory.md) for the API, examples, and ownership-analysis limits.
 
 ### Hosted I/O
 

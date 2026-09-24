@@ -41,7 +41,7 @@ external func main(): int32 {
 
     // Address-of operator inference: &rect -> Rectangle*
     let ptr = &rect
-    let ptrArea = ptr.area()
+    @unsafe { let ptrArea = ptr.area() }
     printf(&"Ptr Area: %d\n", ptrArea as int32)
 
     // Struct literal inference

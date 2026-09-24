@@ -1,0 +1,35 @@
+package main
+import std.core.traits use { Borrow, BorrowMut }
+import std.memory.borrow_cell use { BorrowCell }
+import std.memory.ref use { Ref }
+import std.memory.ref_mut use { RefMut }
+
+func escaped(): Ref<int32> {
+    let cell: BorrowCell<int32> = BorrowCell<int32>::new(91)
+    return @borrow(cell)
+}
+external func main(): int32 {
+    let cell: BorrowCell<int32> = BorrowCell<int32>::new(42)
+    if (!cell.can_borrow_mut()) { return 1 }
+    if (true) {
+        let view = @borrow(cell)
+        let second: Ref<int32> = view.clone()
+        if (view.get() != 42 || second.get() != 42) { return 2 }
+        if (cell.can_borrow_mut()) { return 3 }
+    }
+    if (!cell.can_borrow_mut()) { return 4 }
+    if (true) {
+        let writer: RefMut<int32> = @borrow_mut(cell)
+        if (cell.can_borrow() || cell.can_borrow_mut()) { return 5 }
+        writer.set(87)
+        let moved: RefMut<int32> = writer
+        if (moved.get() != 87) { return 6 }
+    }
+    let reader: Ref<int32> = cell.borrow()
+    if (reader.get() != 87) { return 7 }
+    reader.drop()
+    if (!cell.can_borrow_mut()) { return 8 }
+    let retained: Ref<int32> = escaped()
+    if (retained.get() != 91) { return 9 }
+    return 0
+}

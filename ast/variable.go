@@ -8,10 +8,13 @@ import (
 
 type Variable struct {
 	Name       string
+	CName      string
+	DropFlag   string
 	IsPointer  bool
 	IsConst    bool
 	IsVolatile bool
 	IsExternal bool
+	IsReceiver bool
 	IsArgument bool
 	IsGlobal   bool // Explicit flag for global variables (vs inferred from scope)
 	Parent     *Ast

@@ -1,0 +1,7 @@
+package main
+import std.core.traits use { Borrow }
+import std.memory.borrow_cell use { BorrowCell }
+external func main(): int32 {
+ let reader = @borrow(BorrowCell<int32>::new(1))
+ return 0
+}

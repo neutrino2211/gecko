@@ -13,14 +13,43 @@ import (
 func (impl *CBackendImplementation) IntrinsicStatement(scope *ast.Ast, i *tokens.Intrinsic) {
 	info := CGetScopeInformation(scope)
 	code := impl.IntrinsicToCString(i, scope)
-	code = impl.wrapUnsafeGuards(scope, i, code)
 	info.Code += "    " + code + ";\n"
 }
 
 // IntrinsicToCString converts an intrinsic call to C code
 func (impl *CBackendImplementation) IntrinsicToCString(i *tokens.Intrinsic, scope *ast.Ast) string {
 	requireUnsafeIntrinsic(i.Name, scope, i.Pos)
+	if !impl.validateRawMemoryIntrinsic(i, scope) {
+		return "0"
+	}
+	if i.Store != nil && i.Name != "deref" {
+		scope.ErrorScope.NewCompileTimeError("Intrinsic Error", "Only @deref can be assigned to", i.Pos)
+		return "0"
+	}
+	if ctx := findUnsafeSetup(scope); ctx != nil {
+		if ctx.Preparing && unsafeIntrinsics[i.Name] && i.Name != "alloc" || ctx.Preparing && i.Name == "deref" {
+			scope.ErrorScope.NewCompileTimeError("Unsafe Setup Error", "Raw access must occur in the body after setup validation", i.Pos)
+			return "0"
+		}
+		if !ctx.Preparing && (unsafeIntrinsics[i.Name] || i.Name == "deref") {
+			return impl.guardedSetupIntrinsic(i, scope, ctx)
+		}
+	}
 	switch i.Name {
+	case "move":
+		return impl.intrinsicMove(i, scope)
+	case "borrow", "borrow_mut":
+		return impl.intrinsicBorrow(i, scope)
+	case "drop_in_place":
+		return impl.intrinsicDropInPlace(i, scope)
+	case "alloc":
+		return impl.intrinsicAlloc(i, scope)
+	case "free":
+		if len(i.Args) != 1 {
+			scope.ErrorScope.NewCompileTimeError("Intrinsic Error", "@free requires exactly 1 pointer argument", i.Pos)
+			return "0"
+		}
+		return "__builtin_free(" + impl.ExpressionToCString(i.Args[0], scope) + ")"
 	case "deref":
 		return impl.intrinsicDeref(i, scope)
 	case "is_null":
@@ -94,6 +123,40 @@ func (impl *CBackendImplementation) IntrinsicToCString(i *tokens.Intrinsic, scop
 	}
 }
 
+func (impl *CBackendImplementation) validateRawMemoryIntrinsic(i *tokens.Intrinsic, scope *ast.Ast) bool {
+	if i.Name == "alloc" {
+		for _, arg := range i.Args {
+			t := impl.GetTypeOfExpression(arg, scope)
+			if t != nil && !t.Pointer && t.Array == nil && t.Size == nil {
+				switch t.Type {
+				case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64":
+					continue
+				}
+			}
+			scope.ErrorScope.NewCompileTimeError("Intrinsic Error", "@alloc size and alignment must be integers", i.Pos)
+			return false
+		}
+	}
+	if (i.Name == "free" || i.Name == "deref") && len(i.Args) == 1 {
+		t := impl.GetTypeOfExpression(i.Args[0], scope)
+		if t == nil || !t.Pointer || i.Name == "deref" && t.Type == "void" {
+			scope.ErrorScope.NewCompileTimeError("Intrinsic Error", "@"+i.Name+" requires a pointer to a valid operand type", i.Pos)
+			return false
+		}
+		if i.Store != nil {
+			valueType := cloneTypeRefForInference(t)
+			valueType.Pointer = false
+			valueType.NonNull = false
+			valueType.Const = false
+			valueType.Volatile = false
+			field := &tokens.Field{Name: "@deref", Type: valueType, Value: i.Store}
+			field.Pos = i.Pos
+			impl.CheckVariableInitType(field, scope)
+		}
+	}
+	return true
+}
+
 // @deref(ptr) - dereference a pointer
 func (impl *CBackendImplementation) intrinsicDeref(i *tokens.Intrinsic, scope *ast.Ast) string {
 	if len(i.Args) != 1 {
@@ -101,6 +164,11 @@ func (impl *CBackendImplementation) intrinsicDeref(i *tokens.Intrinsic, scope *a
 		return "0"
 	}
 	ptr := impl.ExpressionToCString(i.Args[0], scope)
+	if i.Store != nil {
+		requireUnsafe(scope, i.Pos, "raw pointer store")
+		CheckReadonlyStore(impl.GetTypeOfExpression(i.Args[0], scope), scope, i.Pos)
+		return fmt.Sprintf("(*(%s) = (%s))", ptr, impl.ExpressionToCString(i.Store, scope))
+	}
 	return fmt.Sprintf("(*(%s))", ptr)
 }
 

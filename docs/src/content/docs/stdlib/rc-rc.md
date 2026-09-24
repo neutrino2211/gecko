@@ -63,6 +63,7 @@ The initial strong count is 1.
 ### from_inner_checked
 
 ```gecko
+@unsafe
 func from_inner_checked(inner_ptr: uint64): Option<Rc<T>>
 ```
 
@@ -71,7 +72,11 @@ Rebuilds an Rc handle from an existing inner pointer after runtime validation.
 FFI-facing invariant checks:
 - pointer must be non-null
 - strong count must be > 0
-- weak count must be >= strong count (current layout invariant)
+- weak count must be > 0
+
+The caller must provide a valid, live control block. A successful call increments
+the strong count. The weak count includes one implicit reference while any
+strong handle exists.
 
 **Arguments:**
 
@@ -116,10 +121,12 @@ Returns the current strong reference count.
 ### get
 
 ```gecko
+@unsafe
 func get(self: void): T
 ```
 
-Returns the value stored in this Rc.
+Copies the contained value. Calling it requires an unsafe context; copying a
+payload with Drop can duplicate ownership.
 
 **Arguments:**
 
@@ -154,7 +161,8 @@ pointing to the same allocation.
 func drop(self: void)
 ```
 
-Decrements the reference count and frees memory if this was the last reference.
+Decrements the strong count. The last strong release drops the contained value.
+The control block remains allocated until all Weak handles are released.
 
 After calling drop, this Rc is invalidated.
 

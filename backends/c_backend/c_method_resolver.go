@@ -70,6 +70,7 @@ func (r *MethodResolver) ResolveMethod(
 
 		return MethodResolution{
 			MethodName:      methodPrefix + "__" + methodName,
+			Method:          genericMethodMetadata(baseClassName, methodName),
 			Found:           true,
 			IsGenericDirect: true,
 		}
@@ -186,4 +187,17 @@ func (r *MethodResolver) ResolveConstrainedGeneric(
 
 	// Build the trait method name: ConcreteType__TraitName__methodName
 	return concreteType + "__" + resolvedTraitName + "__" + methodName, true
+}
+
+func genericMethodMetadata(className, methodName string) *ast.Method {
+	class := Generics.GenericClasses[className]
+	if class == nil {
+		return nil
+	}
+	for _, field := range class.Fields {
+		if field.Method != nil && field.Method.Name == methodName {
+			return &ast.Method{Name: methodName, Visibility: "public", Parent: Generics.GenericClassScopes[className], Unsafe: tokens.HasAttribute(field.Method.Attributes, "unsafe")}
+		}
+	}
+	return nil
 }

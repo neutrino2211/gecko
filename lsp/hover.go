@@ -18,13 +18,14 @@ type HoverInfo struct {
 	DocComment string
 }
 
-// GetHoverInfo returns hover information for a position in the source
-func GetHoverInfo(content string, line, col int) *HoverInfo {
-	file, err := parser.Parser.ParseString("", content)
-	if err != nil {
+// GetHoverInfo returns hover information for a position in the source. When ctx
+// is non-nil it is used as the single source of truth for types (the same
+// semantic graph the compiler builds); otherwise the content is parsed freshly.
+func GetHoverInfo(ctx *analysis.AnalysisContext, content string, line, col int) *HoverInfo {
+	file := ctxFile(ctx, content)
+	if file == nil {
 		return nil
 	}
-	file.ComputeRanges()
 
 	word := getWordAt(content, line, col)
 	if word == "" {
@@ -33,14 +34,14 @@ func GetHoverInfo(content string, line, col int) *HoverInfo {
 
 	// First check if we're inside a method body - look for local variables
 	for _, entry := range file.Entries {
-		if info := findLocalVariable(entry, word, line+1, col+1, file); info != nil {
+		if info := findLocalVariable(entry, word, line+1, col+1, file, ctx); info != nil {
 			return info
 		}
 	}
 
 	// Search for the symbol in top-level definitions
 	for _, entry := range file.Entries {
-		if info := findInEntry(entry, word); info != nil {
+		if info := findInEntry(entry, word, ctx); info != nil {
 			return info
 		}
 	}
@@ -48,8 +49,23 @@ func GetHoverInfo(content string, line, col int) *HoverInfo {
 	return nil
 }
 
+// ctxFile returns the parsed file backing an analysis context, or parses the
+// content directly when no context is available (e.g. tests exercising the
+// fallback path).
+func ctxFile(ctx *analysis.AnalysisContext, content string) *tokens.File {
+	if ctx != nil && ctx.MainFile != nil {
+		return ctx.MainFile
+	}
+	file, err := parser.Parser.ParseString("", content)
+	if err != nil {
+		return nil
+	}
+	file.ComputeRanges()
+	return file
+}
+
 // findLocalVariable searches for a local variable within method bodies
-func findLocalVariable(entry *tokens.Entry, name string, line, _ int, file *tokens.File) *HoverInfo {
+func findLocalVariable(entry *tokens.Entry, name string, line, _ int, file *tokens.File, ctx *analysis.AnalysisContext) *HoverInfo {
 	// Check if we're in a method
 	if entry.Method != nil {
 		method := entry.Method
@@ -71,7 +87,7 @@ func findLocalVariable(entry *tokens.Entry, name string, line, _ int, file *toke
 			}
 
 			// Search in method body for local variables
-			if info := findInEntries(method.Value, name, file); info != nil {
+			if info := findInEntries(method.Value, name, file, ctx); info != nil {
 				return info
 			}
 		}
@@ -96,7 +112,7 @@ func findLocalVariable(entry *tokens.Entry, name string, line, _ int, file *toke
 				}
 
 				// Check method body
-				if info := findInEntries(field.Method.Value, name, file); info != nil {
+				if info := findInEntries(field.Method.Value, name, file, ctx); info != nil {
 					return info
 				}
 			}
@@ -122,7 +138,7 @@ func findLocalVariable(entry *tokens.Entry, name string, line, _ int, file *toke
 				}
 
 				// Check method body
-				if info := findInEntries(field.Value, name, file); info != nil {
+				if info := findInEntries(field.Value, name, file, ctx); info != nil {
 					return info
 				}
 			}
@@ -133,22 +149,21 @@ func findLocalVariable(entry *tokens.Entry, name string, line, _ int, file *toke
 }
 
 // findInEntries searches for a variable declaration in a list of entries
-func findInEntries(entries []*tokens.Entry, name string, file *tokens.File) *HoverInfo {
-	// Create analysis context for type inference
-	var ctx *analysis.AnalysisContext
-	if file != nil && file.Path != "" {
-		ctx, _ = analysis.NewAnalysisContext(file.Path, file.Content)
-	}
-
+func findInEntries(entries []*tokens.Entry, name string, file *tokens.File, ctx *analysis.AnalysisContext) *HoverInfo {
 	for _, entry := range entries {
 		// Check for variable declarations (let/const)
 		if entry.Field != nil && entry.Field.Name == name {
 			typeStr := "unknown"
 			if entry.Field.Type != nil {
 				typeStr = analysis.FormatTypeRef(entry.Field.Type)
-			} else if entry.Field.Value != nil && ctx != nil {
-				// Use analysis package for type inference
-				typeStr = analysis.InferExpressionType(entry.Field.Value, ctx)
+			} else if entry.Field.Value != nil {
+				// Prefer the shared semantic graph (compiler inference), falling
+				// back to the declared type being unknown.
+				if ctx != nil && ctx.SemanticGraph != nil {
+					if t := ctx.SemanticGraph.TypeOfExpression(entry.Field.Value); t != nil {
+						typeStr = analysis.FormatTypeRef(t)
+					}
+				}
 			}
 			mutability := entry.Field.Mutability
 			if mutability == "" {
@@ -162,20 +177,20 @@ func findInEntries(entries []*tokens.Entry, name string, file *tokens.File) *Hov
 
 		// Recurse into if blocks
 		if entry.If != nil {
-			if info := findInEntries(entry.If.Value, name, file); info != nil {
+			if info := findInEntries(entry.If.Value, name, file, ctx); info != nil {
 				return info
 			}
 			// Check else-if chain
 			elseIf := entry.If.ElseIf
 			for elseIf != nil {
-				if info := findInEntries(elseIf.Value, name, file); info != nil {
+				if info := findInEntries(elseIf.Value, name, file, ctx); info != nil {
 					return info
 				}
 				elseIf = elseIf.ElseIf
 			}
 			// Check else
 			if entry.If.Else != nil {
-				if info := findInEntries(entry.If.Else.Value, name, file); info != nil {
+				if info := findInEntries(entry.If.Else.Value, name, file, ctx); info != nil {
 					return info
 				}
 			}
@@ -183,7 +198,7 @@ func findInEntries(entries []*tokens.Entry, name string, file *tokens.File) *Hov
 
 		// Recurse into loops
 		if entry.Loop != nil {
-			if info := findInEntries(entry.Loop.Value, name, file); info != nil {
+			if info := findInEntries(entry.Loop.Value, name, file, ctx); info != nil {
 				return info
 			}
 		}
@@ -313,7 +328,7 @@ func getPrimaryFromExpr(expr *tokens.Expression) *tokens.Primary {
 	return lo.LogicalAnd.Equality.Comparison.Addition.Multiplication.Unary.Primary
 }
 
-func findInEntry(entry *tokens.Entry, name string) *HoverInfo {
+func findInEntry(entry *tokens.Entry, name string, ctx *analysis.AnalysisContext) *HoverInfo {
 	if entry.Class != nil && entry.Class.Name == name {
 		return &HoverInfo{
 			Name:       entry.Class.Name,

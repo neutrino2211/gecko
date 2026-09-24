@@ -34,7 +34,7 @@ func entry(c: uint8, color: uint8): uint16 {
 func putchar(c: uint8, color: uint8, x: int, y: int): void {
     let buffer: uint16 volatile* = ADDRESS as uint16 volatile*
     let index: int = y * WIDTH + x
-    buffer[index] = entry(c, color)
+    @unsafe { buffer[index] = entry(c, color) }
 }
 
 func clear(color: uint8): void {
@@ -42,7 +42,7 @@ func clear(color: uint8): void {
     let space: uint16 = entry(32, color)
     let i: int = 0
     while i < WIDTH * HEIGHT {
-        buffer[i] = space
+        @unsafe { buffer[i] = space }
         i = i + 1
     }
 }
@@ -50,7 +50,7 @@ func clear(color: uint8): void {
 func print(text: uint8*, len: int, x: int, y: int, color: uint8): void {
     let i: int = 0
     while i < len {
-        putchar(text[i], color, x + i, y)
+        @unsafe { putchar(text[i], color, x + i, y) }
         i = i + 1
     }
 }

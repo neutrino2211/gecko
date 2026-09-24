@@ -21,10 +21,9 @@ public class UnsafeOp {
 ///       surrounding `@unsafe with ...` expression then yields `Err` and
 ///       execution continues normally.
 ///     * trap     - abort the program (e.g. `@trap`). This is a HARD ABORT:
-///       the process stops and NO `Result` is produced, so `catch` cannot be
-///       used together with the `let`/assignment result form. Trapping handlers
-///       (NonNull, Bounds, Assume below) are useful as "this must never happen"
-///       assertions where continuing would be unsafe.
+///       the process stops and NO `Result` is produced on failure. A result
+///       form may still be used for successful execution. Trapping handlers
+///       (NonNull, Bounds, Assume below) express fatal assertions.
 public trait UnsafeHandler {
     func guard(self, op: UnsafeOp): bool
     func catch(self, op: UnsafeOp): void
@@ -34,18 +33,20 @@ public trait UnsafeHandler {
 /// This is the basic "don't deref a null pointer" guard.
 ///
 /// NOTE: its `catch` TRAPS (hard-aborts the process) on a null pointer. It is
-/// meant as a fatal assertion, not a recoverable error - pair it with a
-/// recovering handler (one whose `catch` records the failure) if you need an
-/// `Err` value instead of a crash.
+/// meant as a fatal assertion. Use a recovering handler instead if you need
+/// an `Err` value on failure; adding another handler cannot recover a trap.
 public class NonNull {
     let ptr: void*
+    public func handle(a: void*): NonNull {
+        return NonNull { ptr: a }
+    }
     public func handler(a: void*): NonNull {
         let h: NonNull
         h.ptr = a
         return h
     }
 }
-@attach_handler("write_volatile", "read_volatile", "ptr_add", "ptr_sub", "copy", "zero")
+@attach_handler("alloc", "drop_in_place", "deref", "free", "write_volatile", "read_volatile", "ptr_add", "ptr_sub", "copy", "zero")
 impl UnsafeHandler for NonNull {
     func guard(self, op: UnsafeOp): bool {
         return self.ptr != null
@@ -59,6 +60,9 @@ impl UnsafeHandler for NonNull {
 public class Bounds {
     let base: void*
     let len: uint64
+    public func handle(b: void*, n: uint64): Bounds {
+        return Bounds { base: b, len: n }
+    }
     public func handler(b: void*, n: uint64): Bounds {
         let h: Bounds
         h.base = b
@@ -66,13 +70,16 @@ public class Bounds {
         return h
     }
 }
-@attach_handler("write_volatile", "read_volatile", "ptr_add", "ptr_sub", "copy", "zero")
+@attach_handler("alloc", "drop_in_place", "deref", "write_volatile", "read_volatile", "ptr_add", "ptr_sub", "copy", "zero")
 impl UnsafeHandler for Bounds {
     func guard(self, op: UnsafeOp): bool {
         let start = self.base as uint64
-        let end = start + self.len
         let p = op.ptr as uint64
-        return p >= start && p + op.size <= end
+        if p < start {
+            return false
+        }
+        let offset: uint64 = p - start
+        return offset <= self.len && op.size <= self.len - offset
     }
     func catch(self, op: UnsafeOp): void {
         @trap("out-of-bounds unsafe operation")

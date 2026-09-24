@@ -1,0 +1,6 @@
+external func main(): int32 {
+    @unsafe [hidden = 42] {
+        let local = hidden
+    }
+    return hidden
+}

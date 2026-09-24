@@ -1,0 +1,6 @@
+external func main(): int32 {
+    let x: int32 = 7
+    let p: int32* = &x
+    @deref(p) = 9
+    return 0
+}

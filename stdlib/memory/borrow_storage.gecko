@@ -1,0 +1,8 @@
+package borrow_storage
+
+public class BorrowStorage<T> {
+    let refs: uint64
+    let readers: uint64
+    let writer: bool
+    let value: T
+}

@@ -1,0 +1,48 @@
+package main
+
+import std.memory.box use { Box }
+import std.memory.rc use { Rc }
+import std.memory.weak use { Weak }
+import std.core.traits use { Drop }
+
+class Tracked {
+    let count: int32*
+}
+
+impl Drop for Tracked {
+    func drop(self): void {
+        @unsafe { @deref(self.count) = @deref(self.count) + 1 }
+    }
+}
+
+func automatic_box(count: int32*): void {
+    let owner: Box<Tracked> = Box<Tracked>::new(Tracked { count: count })
+}
+
+external func main(): int32 {
+    let count: int32 = 0
+    let owner: Box<Tracked> = Box<Tracked>::new(Tracked { count: &count })
+    owner.set(Tracked { count: &count })
+    if (count != 1) { return 1 }
+    owner.drop()
+    if (count != 2) { return 2 }
+    automatic_box(&count)
+    if (count != 3) { return 3 }
+    let shared: Rc<Tracked> = Rc<Tracked>::new(Tracked { count: &count })
+    let other: Rc<Tracked> = shared.clone()
+    @unsafe { let weak: Weak<Tracked> = Weak<Tracked>::from_rc_ptr(shared.inner_ptr()) }
+    let weak2: Weak<Tracked> = weak.clone()
+    shared.drop()
+    if (count != 3 || !weak.is_alive()) { return 4 }
+    other.drop()
+    if (count != 4 || weak.is_alive()) { return 5 }
+    if (weak.strong_count() != 0 || weak.weak_count() != 2) { return 6 }
+    weak.drop()
+    if (weak2.weak_count() != 1 || weak2.is_alive()) { return 7 }
+    weak2.drop()
+    let original: Tracked = Tracked { count: &count }
+    let moved: Box<Tracked> = Box<Tracked>::new(@move(original))
+    moved.drop()
+    if (count != 5) { return 8 }
+    return 0
+}

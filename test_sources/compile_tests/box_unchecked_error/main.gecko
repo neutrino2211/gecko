@@ -1,0 +1,8 @@
+package main
+
+import std.memory.box use { Box }
+
+external func main(): int32 {
+    let owner: Box<int32> = Box<int32>::new(42)
+    return owner.get()
+}

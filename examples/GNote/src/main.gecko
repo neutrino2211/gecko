@@ -17,7 +17,7 @@ external func main(): int32 {
         return 1
     }
 
-    let schema_rc: int32 = queries.ensure_notes_schema(db)
+    let schema_rc: int32 = queries.ensure_notes_schema(db.raw() as void*)
     if (schema_rc != SQLITE_OK) {
         puts("Failed to initialize notes table")
         return 1

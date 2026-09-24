@@ -55,6 +55,14 @@ let error: E
 let is_ok: bool
 ```
 
+### active
+
+```gecko
+let active: bool
+```
+
+Tracks whether the selected payload is still owned by this Result.
+
 ## Methods
 
 ### ok
@@ -127,8 +135,7 @@ Returns true if this Result is Err.
 func unwrap(self: void): T
 ```
 
-Returns the contained value.
-Behavior is undefined if the Result is Err.
+Moves out the Ok payload and clears `active`. Calling it on Err traps.
 
 **Arguments:**
 
@@ -144,8 +151,7 @@ Behavior is undefined if the Result is Err.
 func unwrap_err(self: void): E
 ```
 
-Returns the contained error.
-Behavior is undefined if the Result is Ok.
+Moves out the Err payload and clears `active`. Calling it on Ok traps.
 
 **Arguments:**
 
@@ -175,7 +181,7 @@ Returns the contained value, or a default if Err.
 ### map
 
 ```gecko
-func map<U>(self: void, mapper: func(T): U): Result<U, E>
+func map(self: void, mapper: func(T): T): Result<T, E>
 ```
 
 Maps the success value with a function.
@@ -185,14 +191,14 @@ Maps the success value with a function.
 | Name | Type |
 |------|------|
 | `self` | `void` |
-| `mapper` | `func(T): U` |
+| `mapper` | `func(T): T` |
 
-**Returns:** `Result<U, E>`
+**Returns:** `Result<T, E>`
 
 ### map_err
 
 ```gecko
-func map_err<F>(self: void, mapper: func(E): F): Result<T, F>
+func map_err(self: void, mapper: func(E): E): Result<T, E>
 ```
 
 Maps the error value with a function.
@@ -202,9 +208,12 @@ Maps the error value with a function.
 | Name | Type |
 |------|------|
 | `self` | `void` |
-| `mapper` | `func(E): F` |
+| `mapper` | `func(E): E` |
 
-**Returns:** `Result<T, F>`
+**Returns:** `Result<T, E>`
+
+The Drop hook checks `active` and `is_ok`, then drops exactly one payload using
+`@drop_in_place`. The implementation is visible in `stdlib/result.gecko`.
 
 ---
 

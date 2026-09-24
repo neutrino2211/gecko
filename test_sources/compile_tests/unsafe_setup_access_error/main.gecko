@@ -1,0 +1,6 @@
+external func main(): int32 {
+    @unsafe [ptr = @alloc(8, 8) as int32*, value = @deref(ptr)] {
+        @free(ptr)
+    }
+    return 0
+}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/tokens"
 )
 
@@ -21,7 +22,8 @@ type GenericInstantiation struct {
 // GenericRegistry tracks all generic definitions and their instantiations
 type GenericRegistry struct {
 	// Generic class definitions: name -> Class token
-	GenericClasses map[string]*tokens.Class
+	GenericClasses     map[string]*tokens.Class
+	GenericClassScopes map[string]*ast.Ast
 	// Origin module for generic classes: name -> module name
 	GenericClassOrigins map[string]string
 	// Generic method definitions: name -> Method token
@@ -44,6 +46,7 @@ type MonomorphContext struct {
 
 var Generics = &GenericRegistry{
 	GenericClasses:       make(map[string]*tokens.Class),
+	GenericClassScopes:   make(map[string]*ast.Ast),
 	GenericClassOrigins:  make(map[string]string),
 	GenericMethods:       make(map[string]*tokens.Method),
 	ClassInstantiations:  make([]*GenericInstantiation, 0),
@@ -56,6 +59,7 @@ var Generics = &GenericRegistry{
 func NewGenericRegistry() *GenericRegistry {
 	return &GenericRegistry{
 		GenericClasses:       make(map[string]*tokens.Class),
+		GenericClassScopes:   make(map[string]*ast.Ast),
 		GenericClassOrigins:  make(map[string]string),
 		GenericMethods:       make(map[string]*tokens.Method),
 		ClassInstantiations:  make([]*GenericInstantiation, 0),
@@ -271,6 +275,7 @@ func SubstituteTypeParams(typeStr string, typeParams []*tokens.TypeParam, typeAr
 func ResetGenerics() {
 	Generics = &GenericRegistry{
 		GenericClasses:       make(map[string]*tokens.Class),
+		GenericClassScopes:   make(map[string]*ast.Ast),
 		GenericClassOrigins:  make(map[string]string),
 		GenericMethods:       make(map[string]*tokens.Method),
 		ClassInstantiations:  make([]*GenericInstantiation, 0),

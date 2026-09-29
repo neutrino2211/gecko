@@ -44,11 +44,9 @@ func (impl *CBackendImplementation) CheckAssignmentType(a *tokens.Assignment, sc
 
 	// Check if it's a const being reassigned (only for direct variable assignment)
 	if a.Field == "" && a.Index == nil && variable.IsConst {
-		scope.ErrorScope.NewCompileTimeError(
-			"Constant Reassignment",
-			"Cannot reassign constant '"+a.Name+"'",
-			a.Pos,
-		)
+		if CurrentSemanticProgram == nil {
+			scope.ErrorScope.NewCompileTimeError("Constant Reassignment", "Cannot reassign constant '"+a.Name+"'", a.Pos)
+		}
 		return
 	}
 

@@ -15,36 +15,63 @@ import (
 	"github.com/neutrino2211/gecko/backends"
 	"github.com/neutrino2211/gecko/config"
 	"github.com/neutrino2211/gecko/errors"
+	"github.com/neutrino2211/gecko/frontend"
 	"github.com/neutrino2211/gecko/interfaces"
-	"github.com/neutrino2211/gecko/parser"
-	"github.com/neutrino2211/gecko/semantic"
 	"github.com/neutrino2211/gecko/tokens"
 	"github.com/neutrino2211/gecko/utils"
-	"github.com/neutrino2211/go-option"
 )
 
+type Compilation struct {
+	Artifact string
+	Scopes   []*errors.ErrorScope
+}
+
 func Compile(file string, config *config.CompileCfg) string {
-	fileOpt := option.SomePair(os.ReadFile(file))
-	fileContents := fileOpt.Expect("Unable to read file '" + file + "'")
-	compileErrorScope := errors.NewErrorScope("compile", file, string(fileContents))
+	return CompileWithDiagnostics(file, config).Artifact
+}
 
-	sourceFile, tokenError := parser.Parser.ParseString(file, string(fileContents))
-
-	sourceFile.Content = string(fileContents)
-	sourceFile.Path = file
-	sourceFile.Config = config
-	tokens.NormalizeWhereClauses(sourceFile)
-
-	state := newCompileState()
-
-	// Resolve imports
-	baseDir := filepath.Dir(file)
-	if baseDir == "" {
-		baseDir = "."
+func CompileWithDiagnostics(file string, config *config.CompileCfg) Compilation {
+	fileContents, err := readSource(file, config)
+	if err != nil {
+		diagnostics := &errors.Collector{}
+		scope := diagnostics.NewScope("compile", file, "")
+		scope.NewCompileTimeError("Read Error", fmt.Sprintf("Unable to read file '%s': %v", file, err), lexer.Position{Line: 1, Column: 1})
+		return Compilation{Scopes: diagnostics.Scopes()}
 	}
-	resolveImports(sourceFile, baseDir, config, compileErrorScope, state)
-	preloadDirectoryUseImports(sourceFile, state)
-	emitLegacyInteropDeprecationWarnings(sourceFile)
+	return CompileSourceWithDiagnostics(file, string(fileContents), config)
+}
+
+func CompileSource(file string, content string, config *config.CompileCfg) string {
+	return CompileSourceWithDiagnostics(file, content, config).Artifact
+}
+
+func CompileSourceWithDiagnostics(file string, content string, config *config.CompileCfg) Compilation {
+	return CompilePreparedWithDiagnostics(frontend.Analyze(file, content, config), config)
+}
+
+func CompilePrepared(result *frontend.Result, cfg *config.CompileCfg) string {
+	return CompilePreparedWithDiagnostics(result, cfg).Artifact
+}
+
+func CompilePreparedWithDiagnostics(result *frontend.Result, cfg *config.CompileCfg) Compilation {
+	diagnostics := &errors.Collector{}
+	artifact := compileFrontend(result.CloneForBackend(cfg), cfg, diagnostics)
+	return Compilation{Artifact: artifact, Scopes: diagnostics.Scopes()}
+}
+
+func compileFrontend(result *frontend.View, config *config.CompileCfg, diagnostics *errors.Collector) string {
+	sourceFile := result.File
+	if sourceFile == nil {
+		scope := diagnostics.NewScope("compile", result.Path, result.Content)
+		parseSyntaxError(result.ParseError, scope)
+		return ""
+	}
+	file := sourceFile.Path
+	compileErrorScope := diagnostics.NewScope("compile", file, sourceFile.Content)
+	for _, scope := range result.Scopes {
+		diagnostics.Add(scope)
+	}
+	emitLegacyInteropDeprecationWarnings(sourceFile, diagnostics)
 	collectNativeLinkMetadata(sourceFile)
 
 	ts := strconv.Itoa(int(time.Now().UnixNano()))
@@ -60,7 +87,7 @@ func Compile(file string, config *config.CompileCfg) string {
 		backend = config.Ctx.String("backend")
 	}
 
-	parseSyntaxError(tokenError, compileErrorScope)
+	parseSyntaxError(result.ParseError, compileErrorScope)
 
 	compilationBackend, ok := backends.Backends[backend]
 
@@ -73,21 +100,22 @@ func Compile(file string, config *config.CompileCfg) string {
 		return ""
 	}
 
-	if haveErrors() {
+	if diagnostics.HasErrors() {
 		return ""
 	}
 
-	semanticInfo := semantic.Analyze(sourceFile)
-	emitSemanticDiagnostics(sourceFile, semanticInfo.Diagnostics())
+	semanticInfo := result.Program
+	emitSemanticDiagnostics(sourceFile, semanticInfo.Diagnostics(), diagnostics)
 
-	if haveErrors() {
+	if diagnostics.HasErrors() {
 		return ""
 	}
 
+	tokens.UnsafeBlockBindNames, tokens.UnsafeBlockErrorNames = semanticInfo.UnsafeBlockNames()
 	compilationBackend.Init()
 	unsupportedCount := validateFeatures(sourceFile, compilationBackend, backend, compileErrorScope, config)
 
-	if haveErrors() {
+	if diagnostics.HasErrors() {
 		return ""
 	}
 
@@ -106,29 +134,13 @@ func Compile(file string, config *config.CompileCfg) string {
 		return ""
 	}
 
-	// Create lazy type resolver for directory imports
-	lazyResolver := func(typeName string) (*tokens.File, bool) {
-		return resolveTypeFromDirectoryImports(sourceFile, typeName, state)
-	}
-
-	// Create lazy method resolver for directory imports
-	lazyMethodResolver := func(methodName string) (*tokens.File, bool) {
-		return resolveMethodFromDirectoryImports(sourceFile, methodName, state)
-	}
-
-	// Create lazy module type resolver for qualified types (e.g., shapes.Circle)
-	lazyModuleTypeResolver := func(moduleName string, typeName string) (*tokens.File, bool) {
-		return resolveModuleTypeFromDirectoryImports(sourceFile, moduleName, typeName, state)
-	}
-
-	// Initialize type registry for suggestions
-	ResetTypeRegistry()
-	registry := GetTypeRegistry()
-	registry.ScanStdlib()
-	registry.ScanProjectDirectory(filepath.Dir(file))
-
-	// Create suggestion provider
+	var registry *TypeRegistry
 	suggestionProvider := func(typeName string) string {
+		if registry == nil {
+			registry = &TypeRegistry{types: make(map[string][]TypeLocation)}
+			registry.ScanStdlib()
+			registry.ScanProjectDirectory(filepath.Dir(file))
+		}
 		return registry.FormatSuggestions(typeName)
 	}
 
@@ -137,15 +149,16 @@ func Compile(file string, config *config.CompileCfg) string {
 		File:                   file,
 		Ctx:                    config.Ctx,
 		SourceFile:             sourceFile,
-		LazyTypeResolver:       lazyResolver,
-		LazyMethodResolver:     lazyMethodResolver,
-		LazyModuleTypeResolver: lazyModuleTypeResolver,
+		LazyTypeResolver:       result.ResolveType,
+		LazyMethodResolver:     result.ResolveMethod,
+		LazyModuleTypeResolver: result.ResolveModuleType,
 		SuggestionProvider:     suggestionProvider,
 		SemanticInfo:           semanticInfo,
+		Diagnostics:            diagnostics,
 	})
 
 	// Check for errors after codegen/type checking - bail early if any
-	if haveErrors() {
+	if diagnostics.HasErrors() {
 		return ""
 	}
 

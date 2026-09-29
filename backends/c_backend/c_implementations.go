@@ -6,79 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/tokens"
 )
-
-// Helper functions for implementations
-
-func (impl *CBackendImplementation) validateInherentImplCoherence(scope *ast.Ast, className string, classOrigin string, pos lexer.Position) bool {
-	currentPackage := scope.GetRoot().Scope
-	if classOrigin == "" || classOrigin == currentPackage {
-		return true
-	}
-
-	typeName := className
-	if classOrigin != "" {
-		typeName = classOrigin + "." + className
-	}
-
-	scope.ErrorScope.NewCompileTimeError(
-		"Coherence Error",
-		"cannot add inherent impl for foreign type '"+typeName+"'\nhelp: inherent impls are only allowed in the defining package '"+classOrigin+"'",
-		pos,
-	)
-	return false
-}
-
-func (impl *CBackendImplementation) resolveTraitOrigin(scope *ast.Ast, traitName string) string {
-	if origin, ok := TraitDefinitionOrigins[traitName]; ok && origin != "" {
-		return origin
-	}
-
-	traitOpt := scope.ResolveTrait(traitName)
-	if !traitOpt.IsNil() {
-		traitMethods := traitOpt.Unwrap()
-		if traitMethods != nil && len(*traitMethods) > 0 {
-			first := (*traitMethods)[0]
-			if first != nil {
-				return first.GetOriginModule()
-			}
-		}
-	}
-
-	return ""
-}
-
-func (impl *CBackendImplementation) validateTraitImplCoherence(scope *ast.Ast, class *ast.Ast, className string, traitName string, pos lexer.Position) bool {
-	currentPackage := scope.GetRoot().Scope
-	classOrigin := class.GetOriginModule()
-	traitOrigin := impl.resolveTraitOrigin(scope, traitName)
-
-	classLocal := classOrigin == "" || classOrigin == currentPackage
-	traitLocal := traitOrigin == "" || traitOrigin == currentPackage
-	if classLocal || traitLocal {
-		return true
-	}
-
-	typeName := className
-	if classOrigin != "" {
-		typeName = classOrigin + "." + className
-	}
-
-	qualifiedTraitName := traitName
-	if traitOrigin != "" {
-		qualifiedTraitName = traitOrigin + "." + traitName
-	}
-
-	scope.ErrorScope.NewCompileTimeError(
-		"Coherence Error",
-		"orphan impl is not allowed: both trait '"+qualifiedTraitName+"' and type '"+typeName+"' are foreign\nhelp: define a local trait or wrap the foreign type in a local newtype",
-		pos,
-	)
-	return false
-}
 
 func (impl *CBackendImplementation) CImplementationForClass(scope *ast.Ast, i *tokens.Implementation) {
 	className := i.GetFor()
@@ -87,27 +17,6 @@ func (impl *CBackendImplementation) CImplementationForClass(scope *ast.Ast, i *t
 	// Check if this is a generic trait impl (impl<T> Trait for GenericClass<T>)
 	// If so, store it with the generic class for later instantiation
 	if len(typeParams) > 0 && Generics.IsGenericClass(className) {
-		originModule := Generics.GenericClassOrigins[className]
-		classLocal := originModule == "" || originModule == scope.GetRoot().Scope
-		traitOrigin := impl.resolveTraitOrigin(scope, i.GetName())
-		traitLocal := traitOrigin == "" || traitOrigin == scope.GetRoot().Scope
-		if !classLocal && !traitLocal {
-			typeName := className
-			if originModule != "" {
-				typeName = originModule + "." + className
-			}
-			qualifiedTraitName := i.GetName()
-			if traitOrigin != "" {
-				qualifiedTraitName = traitOrigin + "." + i.GetName()
-			}
-			scope.ErrorScope.NewCompileTimeError(
-				"Coherence Error",
-				"orphan impl is not allowed: both trait '"+qualifiedTraitName+"' and type '"+typeName+"' are foreign\nhelp: define a local trait or wrap the foreign type in a local newtype",
-				i.Pos,
-			)
-			return
-		}
-
 		classToken := Generics.GenericClasses[className]
 		if classToken != nil {
 			classToken.Implementations = append(classToken.Implementations, i)
@@ -151,10 +60,6 @@ func (impl *CBackendImplementation) CImplementationForClass(scope *ast.Ast, i *t
 	class := classOpt.Unwrap()
 	_ = traitOpt.Unwrap() // Validate trait exists (methods come from TraitDefinitions for default impls)
 	traitName := i.GetName()
-	if !impl.validateTraitImplCoherence(scope, class, className, traitName, i.Pos) {
-		return
-	}
-
 	// Build mangled trait name with type arguments (e.g., "Add__Point" for Add<Point>)
 	mangledTraitName := traitName
 	if len(i.GetTypeArgs()) > 0 {

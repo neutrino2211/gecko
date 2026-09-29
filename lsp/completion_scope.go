@@ -19,7 +19,7 @@ func lookupVariableTypeInScope(file *tokens.File, varName string, cursorLine int
 	for _, entry := range file.Entries {
 		// Check if cursor is in a top-level method
 		if entry.Method != nil {
-			if cursorLine >= entry.Method.Pos.Line && cursorLine <= entry.Method.EndPos.Line {
+			if methodContainsLine(entry.Method.Pos.Line, entry.Method.EndPos.Line, cursorLine) {
 				// Check arguments
 				for _, arg := range entry.Method.Arguments {
 					if arg.Name == varName && arg.Type != nil {
@@ -37,7 +37,7 @@ func lookupVariableTypeInScope(file *tokens.File, varName string, cursorLine int
 		if entry.Class != nil {
 			for _, field := range entry.Class.Fields {
 				if field.Method != nil {
-					if cursorLine >= field.Method.Pos.Line && cursorLine <= field.Method.EndPos.Line {
+					if methodContainsLine(field.Method.Pos.Line, field.Method.EndPos.Line, cursorLine) {
 						// Check arguments
 						for _, arg := range field.Method.Arguments {
 							if arg.Name == varName && arg.Type != nil {
@@ -56,7 +56,7 @@ func lookupVariableTypeInScope(file *tokens.File, varName string, cursorLine int
 		// Check implementation methods
 		if entry.Implementation != nil {
 			for _, implMethod := range entry.Implementation.GetFields() {
-				if cursorLine >= implMethod.Pos.Line && cursorLine <= implMethod.EndPos.Line {
+				if methodContainsLine(implMethod.Pos.Line, implMethod.EndPos.Line, cursorLine) {
 					// Check arguments
 					for _, arg := range implMethod.Arguments {
 						if arg.Name == varName && arg.Type != nil {
@@ -73,6 +73,10 @@ func lookupVariableTypeInScope(file *tokens.File, varName string, cursorLine int
 	}
 
 	return ""
+}
+
+func methodContainsLine(start, end, cursor int) bool {
+	return cursor >= start && (cursor < end || cursor == start)
 }
 
 // lookupVarInEntriesBeforeLine searches for a variable declared before the cursor line
@@ -199,7 +203,7 @@ func findEnclosingMethod(file *tokens.File, cursorLine int) *MethodInfo {
 	for _, entry := range file.Entries {
 		// Check top-level methods
 		if entry.Method != nil {
-			if cursorLine >= entry.Method.Pos.Line && cursorLine <= entry.Method.EndPos.Line {
+			if methodContainsLine(entry.Method.Pos.Line, entry.Method.EndPos.Line, cursorLine) {
 				return &MethodInfo{
 					Arguments: entry.Method.Arguments,
 					Value:     entry.Method.Value,
@@ -211,7 +215,7 @@ func findEnclosingMethod(file *tokens.File, cursorLine int) *MethodInfo {
 		if entry.Class != nil {
 			for _, field := range entry.Class.Fields {
 				if field.Method != nil {
-					if cursorLine >= field.Method.Pos.Line && cursorLine <= field.Method.EndPos.Line {
+					if methodContainsLine(field.Method.Pos.Line, field.Method.EndPos.Line, cursorLine) {
 						return &MethodInfo{
 							Arguments: field.Method.Arguments,
 							Value:     field.Method.Value,
@@ -224,7 +228,7 @@ func findEnclosingMethod(file *tokens.File, cursorLine int) *MethodInfo {
 		// Check trait methods
 		if entry.Trait != nil {
 			for _, field := range entry.Trait.Fields {
-				if cursorLine >= field.Pos.Line && cursorLine <= field.EndPos.Line {
+				if methodContainsLine(field.Pos.Line, field.EndPos.Line, cursorLine) {
 					return &MethodInfo{
 						Arguments: field.Arguments,
 						Value:     field.Value,
@@ -236,7 +240,7 @@ func findEnclosingMethod(file *tokens.File, cursorLine int) *MethodInfo {
 		// Check implementation methods
 		if entry.Implementation != nil {
 			for _, implMethod := range entry.Implementation.GetFields() {
-				if cursorLine >= implMethod.Pos.Line && cursorLine <= implMethod.EndPos.Line {
+				if methodContainsLine(implMethod.Pos.Line, implMethod.EndPos.Line, cursorLine) {
 					return &MethodInfo{
 						Arguments: implMethod.Arguments,
 						Value:     implMethod.Value,
@@ -249,7 +253,7 @@ func findEnclosingMethod(file *tokens.File, cursorLine int) *MethodInfo {
 	return nil
 }
 
-func getLocalCompletions(method *MethodInfo, prefix string, cursorLine int, file *tokens.File) []protocol.CompletionItem {
+func getLocalCompletions(method *MethodInfo, prefix string, cursorLine int, ctx *analysis.AnalysisContext) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 
 	if method == nil {
@@ -272,19 +276,13 @@ func getLocalCompletions(method *MethodInfo, prefix string, cursorLine int, file
 	}
 
 	// Add local variables from method body
-	items = append(items, getLocalVarsFromEntries(method.Value, prefix, cursorLine, file)...)
+	items = append(items, getLocalVarsFromEntries(method.Value, prefix, cursorLine, ctx)...)
 
 	return items
 }
 
-func getLocalVarsFromEntries(entries []*tokens.Entry, prefix string, cursorLine int, file *tokens.File) []protocol.CompletionItem {
+func getLocalVarsFromEntries(entries []*tokens.Entry, prefix string, cursorLine int, ctx *analysis.AnalysisContext) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
-
-	// Create analysis context for type inference
-	var ctx *analysis.AnalysisContext
-	if file != nil && file.Path != "" {
-		ctx, _ = analysis.NewAnalysisContext(file.Path, file.Content)
-	}
 
 	for _, entry := range entries {
 		// Only include variables declared before the cursor
@@ -306,10 +304,10 @@ func getLocalVarsFromEntries(entries []*tokens.Entry, prefix string, cursorLine 
 
 		// Recurse into blocks only if cursor is within the block
 		if entry.If != nil {
-			items = append(items, getVarsFromIfBlock(entry.If, prefix, cursorLine, file)...)
+			items = append(items, getVarsFromIfBlock(entry.If, prefix, cursorLine, ctx)...)
 		}
 		if entry.Loop != nil {
-			items = append(items, getVarsFromLoopBlock(entry.Loop, prefix, cursorLine, file)...)
+			items = append(items, getVarsFromLoopBlock(entry.Loop, prefix, cursorLine, ctx)...)
 		}
 	}
 
@@ -317,24 +315,24 @@ func getLocalVarsFromEntries(entries []*tokens.Entry, prefix string, cursorLine 
 }
 
 // getVarsFromIfBlock extracts variables from if/else-if/else blocks, respecting scope
-func getVarsFromIfBlock(ifBlock *tokens.If, prefix string, cursorLine int, file *tokens.File) []protocol.CompletionItem {
+func getVarsFromIfBlock(ifBlock *tokens.If, prefix string, cursorLine int, ctx *analysis.AnalysisContext) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 
 	// Check if cursor is within the if block's body
 	if cursorLine >= ifBlock.Pos.Line && cursorLine <= ifBlock.EndPos.Line {
 		// Cursor is somewhere in this if statement - check which branch
-		items = append(items, getLocalVarsFromEntries(ifBlock.Value, prefix, cursorLine, file)...)
+		items = append(items, getLocalVarsFromEntries(ifBlock.Value, prefix, cursorLine, ctx)...)
 	}
 
 	// Check else-if branches
 	if ifBlock.ElseIf != nil {
-		items = append(items, getVarsFromElseIfBlock(ifBlock.ElseIf, prefix, cursorLine, file)...)
+		items = append(items, getVarsFromElseIfBlock(ifBlock.ElseIf, prefix, cursorLine, ctx)...)
 	}
 
 	// Check else branch
 	if ifBlock.Else != nil && ifBlock.Else.Value != nil {
 		if cursorLine >= ifBlock.Else.Pos.Line && cursorLine <= ifBlock.Else.EndPos.Line {
-			items = append(items, getLocalVarsFromEntries(ifBlock.Else.Value, prefix, cursorLine, file)...)
+			items = append(items, getLocalVarsFromEntries(ifBlock.Else.Value, prefix, cursorLine, ctx)...)
 		}
 	}
 
@@ -342,22 +340,22 @@ func getVarsFromIfBlock(ifBlock *tokens.If, prefix string, cursorLine int, file 
 }
 
 // getVarsFromElseIfBlock extracts variables from else-if blocks
-func getVarsFromElseIfBlock(elseIf *tokens.ElseIf, prefix string, cursorLine int, file *tokens.File) []protocol.CompletionItem {
+func getVarsFromElseIfBlock(elseIf *tokens.ElseIf, prefix string, cursorLine int, ctx *analysis.AnalysisContext) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 
 	if cursorLine >= elseIf.Pos.Line && cursorLine <= elseIf.EndPos.Line {
-		items = append(items, getLocalVarsFromEntries(elseIf.Value, prefix, cursorLine, file)...)
+		items = append(items, getLocalVarsFromEntries(elseIf.Value, prefix, cursorLine, ctx)...)
 	}
 
 	// Recurse into nested else-if
 	if elseIf.ElseIf != nil {
-		items = append(items, getVarsFromElseIfBlock(elseIf.ElseIf, prefix, cursorLine, file)...)
+		items = append(items, getVarsFromElseIfBlock(elseIf.ElseIf, prefix, cursorLine, ctx)...)
 	}
 
 	// Check else branch
 	if elseIf.Else != nil && elseIf.Else.Value != nil {
 		if cursorLine >= elseIf.Else.Pos.Line && cursorLine <= elseIf.Else.EndPos.Line {
-			items = append(items, getLocalVarsFromEntries(elseIf.Else.Value, prefix, cursorLine, file)...)
+			items = append(items, getLocalVarsFromEntries(elseIf.Else.Value, prefix, cursorLine, ctx)...)
 		}
 	}
 
@@ -365,7 +363,7 @@ func getVarsFromElseIfBlock(elseIf *tokens.ElseIf, prefix string, cursorLine int
 }
 
 // getVarsFromLoopBlock extracts variables from loop blocks, including loop variables
-func getVarsFromLoopBlock(loop *tokens.Loop, prefix string, cursorLine int, file *tokens.File) []protocol.CompletionItem {
+func getVarsFromLoopBlock(loop *tokens.Loop, prefix string, cursorLine int, ctx *analysis.AnalysisContext) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 
 	// Check if cursor is within the loop body
@@ -406,7 +404,7 @@ func getVarsFromLoopBlock(loop *tokens.Loop, prefix string, cursorLine int, file
 	}
 
 	// Add variables from loop body
-	items = append(items, getLocalVarsFromEntries(loop.Value, prefix, cursorLine, file)...)
+	items = append(items, getLocalVarsFromEntries(loop.Value, prefix, cursorLine, ctx)...)
 
 	return items
 }

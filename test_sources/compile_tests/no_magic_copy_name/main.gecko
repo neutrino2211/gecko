@@ -1,0 +1,14 @@
+package main
+
+trait Copy {}
+
+class Ticket { let value: int32 }
+
+impl Copy for Ticket {}
+
+external func main(): int32 {
+    let ticket: Ticket = Ticket { value: 12 }
+    let other: Ticket = ticket
+    if (other.value != 12) { return 1 }
+    return ticket.value
+}

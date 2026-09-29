@@ -3,6 +3,8 @@
 package semantic
 
 import (
+	"fmt"
+
 	"github.com/neutrino2211/gecko/tokens"
 )
 
@@ -91,7 +93,7 @@ func (a *analyzer) analyzeIf(ifStmt *tokens.If, env *flowEnv) *flowEnv {
 	facts := a.extractConditionFacts(ifStmt.Expression, env)
 	thenStart := env.clone()
 	thenStart.applyNonNull(facts.trueNonNull)
-	thenOut := a.analyzeEntries(ifStmt.Value, thenStart)
+	thenOut := a.analyzeEntries(ifStmt.Value, thenStart, ifStmt.Pos, thenEnd(ifStmt.EndPos, ifStmt.ElseIf, ifStmt.Else))
 
 	elseStart := env.clone()
 	elseStart.applyNonNull(facts.falseNonNull)
@@ -99,7 +101,7 @@ func (a *analyzer) analyzeIf(ifStmt *tokens.If, env *flowEnv) *flowEnv {
 	if ifStmt.ElseIf != nil {
 		elseOut = a.analyzeElseIf(ifStmt.ElseIf, elseStart)
 	} else if ifStmt.Else != nil {
-		elseOut = a.analyzeEntries(ifStmt.Else.Value, elseStart)
+		elseOut = a.analyzeEntries(ifStmt.Else.Value, elseStart, ifStmt.Else.Pos, ifStmt.Else.EndPos)
 	}
 
 	out := mergeIfFlows(env, thenOut, elseOut)
@@ -120,7 +122,7 @@ func (a *analyzer) analyzeElseIf(ei *tokens.ElseIf, env *flowEnv) *flowEnv {
 	facts := a.extractConditionFacts(ei.Expression, env)
 	thenStart := env.clone()
 	thenStart.applyNonNull(facts.trueNonNull)
-	thenOut := a.analyzeEntries(ei.Value, thenStart)
+	thenOut := a.analyzeEntries(ei.Value, thenStart, ei.Pos, thenEnd(ei.EndPos, ei.ElseIf, ei.Else))
 
 	elseStart := env.clone()
 	elseStart.applyNonNull(facts.falseNonNull)
@@ -128,7 +130,7 @@ func (a *analyzer) analyzeElseIf(ei *tokens.ElseIf, env *flowEnv) *flowEnv {
 	if ei.ElseIf != nil {
 		elseOut = a.analyzeElseIf(ei.ElseIf, elseStart)
 	} else if ei.Else != nil {
-		elseOut = a.analyzeEntries(ei.Else.Value, elseStart)
+		elseOut = a.analyzeEntries(ei.Else.Value, elseStart, ei.Else.Pos, ei.Else.EndPos)
 	}
 
 	return mergeIfFlows(env, thenOut, elseOut)
@@ -205,7 +207,6 @@ func (a *analyzer) analyzeLoop(loop *tokens.Loop, env *flowEnv) *flowEnv {
 		a.inferExpression(loop.WhileExpr, out, &tokens.TypeRef{Type: "bool"})
 	}
 	if loop.ForOf != nil {
-		a.inferExpression(loop.ForOf.SourceArray, out, nil)
 		elem := &tokens.TypeRef{Type: "int32"}
 		sourceType := a.inferExpression(loop.ForOf.SourceArray, out, nil)
 		if sourceType != nil {
@@ -220,11 +221,15 @@ func (a *analyzer) analyzeLoop(loop *tokens.Loop, env *flowEnv) *flowEnv {
 			if loopVar == nil {
 				loopVar = CloneTypeRef(elem)
 			}
-			sid := a.program.addSymbol(SymbolVariable, loop.ForOf.Variable.Name, loop.ForOf.Variable.Name, loopVar, loop.ForOf.Variable.Pos)
+			full := loop.ForOf.Variable.Name
+			if a.currentFunction != nil {
+				full = a.currentFunction.FullName + "::" + full + fmt.Sprintf("@%d:%d", loop.ForOf.Variable.Pos.Line, loop.ForOf.Variable.Pos.Column)
+			}
+			sid := a.addSymbol(SymbolVariable, loop.ForOf.Variable.Name, full, loopVar, loop.ForOf.Variable.Pos)
 			a.nameForID[sid] = loop.ForOf.Variable.Name
 			bodyEnv := out.clone()
 			bodyEnv.bind(loop.ForOf.Variable.Name, loopVar, sid)
-			_ = a.analyzeEntries(loop.Value, bodyEnv)
+			_ = a.analyzeEntries(loop.Value, bodyEnv, loop.Pos, loop.EndPos)
 		}
 		return out
 	}
@@ -235,15 +240,19 @@ func (a *analyzer) analyzeLoop(loop *tokens.Loop, env *flowEnv) *flowEnv {
 			if loopVar == nil {
 				loopVar = &tokens.TypeRef{Type: "int32"}
 			}
-			sid := a.program.addSymbol(SymbolVariable, loop.ForIn.Variable.Name, loop.ForIn.Variable.Name, loopVar, loop.ForIn.Variable.Pos)
+			full := loop.ForIn.Variable.Name
+			if a.currentFunction != nil {
+				full = a.currentFunction.FullName + "::" + full + fmt.Sprintf("@%d:%d", loop.ForIn.Variable.Pos.Line, loop.ForIn.Variable.Pos.Column)
+			}
+			sid := a.addSymbol(SymbolVariable, loop.ForIn.Variable.Name, full, loopVar, loop.ForIn.Variable.Pos)
 			a.nameForID[sid] = loop.ForIn.Variable.Name
 			bodyEnv := out.clone()
 			bodyEnv.bind(loop.ForIn.Variable.Name, loopVar, sid)
-			_ = a.analyzeEntries(loop.Value, bodyEnv)
+			_ = a.analyzeEntries(loop.Value, bodyEnv, loop.Pos, loop.EndPos)
 		}
 		return out
 	}
 
-	_ = a.analyzeEntries(loop.Value, out.clone())
+	_ = a.analyzeEntries(loop.Value, out.clone(), loop.Pos, loop.EndPos)
 	return out
 }

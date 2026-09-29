@@ -141,3 +141,29 @@ func test(): void {
 
 	t.Logf("Instance method signature: %s", sig.Label)
 }
+
+func TestSignatureHelpAcrossLines(t *testing.T) {
+	content := "package test\nfunc add(a: int32, b: int32): int32 { return a + b }\nfunc demo(): void {\n    let x: int32 = add(\n        1,\n        2)\n}\n"
+	ctx := newTestCtx(content)
+	if ctx == nil {
+		t.Fatal("failed to analyze multiline call")
+	}
+	result := GetSignatureHelp(ctx, content, "test.gecko", 5, 8)
+	if result == nil || result.ActiveParameter != 1 {
+		t.Fatalf("expected second parameter on next line, got %#v", result)
+	}
+}
+
+func TestSignatureHelpIgnoresNestedCommas(t *testing.T) {
+	content := "package test\nfunc add(a: int32, b: int32): int32 { return a + b }\nfunc demo(): void { let x: int32 = add(add(1, 2), 3) }\n"
+	ctx := newTestCtx(content)
+	if ctx == nil {
+		t.Fatal("failed to analyze nested call")
+	}
+	line := strings.Split(content, "\n")[2]
+	col := strings.Index(line, "), 3") + len("), ")
+	result := GetSignatureHelp(ctx, content, "test.gecko", 2, col)
+	if result == nil || result.ActiveParameter != 1 {
+		t.Fatalf("expected second outer parameter, got %#v", result)
+	}
+}

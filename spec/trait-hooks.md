@@ -10,7 +10,21 @@ Trait hooks connect compiler features to user-defined traits. The compiler provi
 trait Drop {
     func drop(self): void
 }
+
+@copy_hook
+trait BitCopy {}
+
+@unsafe_handler_hook(.guard, .catch)
+trait Guarded {
+    func guard(self, op: Operation): bool
+    func catch(self, op: Operation): void
+}
 ```
+
+`Operation` is an ordinary user-defined type with `ptr: void*` and
+`size: uint64` fields. A freestanding project can define its own handler trait
+and operation type without importing `std.unsafe`. Handler implementations use
+`@attach_handler(...)` to select the raw intrinsics they guard.
 
 ## Borrow Hooks
 
@@ -28,21 +42,9 @@ returns `Ref<T>` and `RefMut<T>` from `BorrowCell<T>`; custom implementations ca
 supply their own view types. The hooks do not confer raw memory permission.
 See [Memory Model](memory.md) for runtime exclusivity and current limits.
 
-## Hook Attributes (Planned, Not Yet Implemented)
-
-```gecko
-// Planned: compiler-guided implicit copy
-@copy_hook(.copy)
-trait Copy {
-    func copy(self): Self
-}
-
-// Planned: compiler-guided explicit clone
-@clone_hook(.clone)  
-trait Clone {
-    func clone(self): Self
-}
-```
+`Clone.clone()` is an ordinary explicit method call. It does not need a
+compiler hook. Other library traits such as `Default`, `Sized`, `Hash`,
+`Debug`, `Display`, `Fn`, and `FnOnce` have no compiler-driven behavior.
 
 ## Operator Hooks
 

@@ -3,6 +3,17 @@
 // Package tokens contains the definitions for all gecko symbols/tokens
 package tokens
 
+import "strings"
+
+func DocCommentText(lines []string) string {
+	cleaned := make([]string, len(lines))
+	for index, line := range lines {
+		line = strings.TrimPrefix(line, "///")
+		cleaned[index] = strings.TrimPrefix(line, " ")
+	}
+	return strings.Join(cleaned, "\n")
+}
+
 // Generic type parameters
 
 type TypeParam struct {

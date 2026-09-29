@@ -4,6 +4,7 @@ package cbackend
 
 import (
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/hooks"
 	"github.com/neutrino2211/gecko/tokens"
 )
 
@@ -28,7 +29,12 @@ func (impl *CBackendImplementation) isImplicitCopyTypeForMoves(t *tokens.TypeRef
 		return dropMethodForType(t, scope) == ""
 	}
 
-	return impl.TypeImplementsTrait(t, "Copy", scope)
+	registered := visibleHooks(scope, hooks.HookCopy)
+	if len(registered) != 1 {
+		return false
+	}
+	_, copied := impl.GetOperatorTraitName(t.Type, registered[0].TraitName, scope)
+	return copied
 }
 
 func extractPlainSymbolFromExpression(expr *tokens.Expression) (string, bool) {

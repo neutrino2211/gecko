@@ -8,6 +8,7 @@ import (
 
 	"github.com/neutrino2211/gecko/compiler"
 	"github.com/neutrino2211/gecko/config"
+	"github.com/neutrino2211/gecko/errors"
 	"github.com/urfave/cli/v2"
 )
 
@@ -25,9 +26,10 @@ var CheckCommand = &cli.Command{
 		}
 
 		targetKey := resolveTargetKey(ctx, nil)
+		var scopes []*errors.ErrorScope
 
 		for _, pos := range ctx.Args().Slice() {
-			compiler.Compile(pos, &config.CompileCfg{
+			compilation := compiler.CompileWithDiagnostics(pos, &config.CompileCfg{
 				Arch:      ctx.String("target-arch"),
 				Platform:  ctx.String("target-platform"),
 				Vendor:    ctx.String("target-vendor"),
@@ -38,9 +40,10 @@ var CheckCommand = &cli.Command{
 				Ctx:       ctx,
 				CheckOnly: true,
 			})
+			scopes = append(scopes, compilation.Scopes...)
 		}
 
-		hasErrors := compiler.PrintErrorSummary()
+		hasErrors := compiler.PrintErrorSummary(scopes)
 
 		if hasErrors {
 			os.Exit(1)

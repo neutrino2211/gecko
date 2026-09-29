@@ -8,6 +8,7 @@ import (
 
 	"github.com/neutrino2211/gecko/analysis"
 	"github.com/neutrino2211/gecko/parser"
+	"github.com/neutrino2211/gecko/semantic"
 	"github.com/neutrino2211/gecko/tokens"
 )
 
@@ -30,6 +31,21 @@ func GetHoverInfo(ctx *analysis.AnalysisContext, content string, line, col int) 
 	word := getWordAt(content, line, col)
 	if word == "" {
 		return nil
+	}
+	if ctx != nil && ctx.SemanticGraph != nil {
+		symbol := ctx.SemanticGraph.SymbolAt(ctx.FilePath, ctx.Offset(line+1, col+1))
+		if symbol != nil && symbol.Kind == semantic.SymbolVariable {
+			prefix := symbol.Mutability
+			if symbol.Parameter {
+				prefix = "(parameter)"
+			} else if prefix == "" {
+				prefix = "let"
+			}
+			return &HoverInfo{Name: symbol.Name, Type: fmt.Sprintf("%s %s: %s", prefix, symbol.Name, analysis.FormatTypeRef(symbol.Type)), DocComment: symbol.Documentation}
+		}
+	}
+	if imported := importedSymbolFile(ctx, file, content, line, col, word); imported != nil {
+		return findHoverInFile(imported, word)
 	}
 
 	// First check if we're inside a method body - look for local variables
@@ -329,12 +345,8 @@ func getPrimaryFromExpr(expr *tokens.Expression) *tokens.Primary {
 }
 
 func findInEntry(entry *tokens.Entry, name string, ctx *analysis.AnalysisContext) *HoverInfo {
-	if entry.Class != nil && entry.Class.Name == name {
-		return &HoverInfo{
-			Name:       entry.Class.Name,
-			Type:       analysis.FormatClassType(entry.Class),
-			DocComment: strings.Join(entry.Class.DocComment, "\n"),
-		}
+	if info := findTypeHoverInEntry(entry, name); info != nil {
+		return info
 	}
 
 	if entry.Class != nil {
@@ -343,7 +355,7 @@ func findInEntry(entry *tokens.Entry, name string, ctx *analysis.AnalysisContext
 				return &HoverInfo{
 					Name:       field.Method.Name,
 					Type:       analysis.FormatMethodSignature(field.Method),
-					DocComment: strings.Join(field.Method.DocComment, "\n"),
+					DocComment: tokens.DocCommentText(field.Method.DocComment),
 				}
 			}
 			if field.Field != nil && field.Field.Name == name {
@@ -355,21 +367,13 @@ func findInEntry(entry *tokens.Entry, name string, ctx *analysis.AnalysisContext
 		}
 	}
 
-	if entry.Trait != nil && entry.Trait.Name == name {
-		return &HoverInfo{
-			Name:       entry.Trait.Name,
-			Type:       analysis.FormatTraitType(entry.Trait),
-			DocComment: strings.Join(entry.Trait.DocComment, "\n"),
-		}
-	}
-
 	if entry.Trait != nil {
 		for _, field := range entry.Trait.Fields {
 			if field.Name == name {
 				return &HoverInfo{
 					Name:       field.Name,
 					Type:       fmt.Sprintf("func %s%s", field.Name, strings.TrimPrefix(formatImplMethodSignature(field), "func")),
-					DocComment: strings.Join(field.DocComment, "\n"),
+					DocComment: tokens.DocCommentText(field.DocComment),
 				}
 			}
 		}
@@ -379,7 +383,7 @@ func findInEntry(entry *tokens.Entry, name string, ctx *analysis.AnalysisContext
 		return &HoverInfo{
 			Name:       entry.Method.Name,
 			Type:       analysis.FormatMethodSignature(entry.Method),
-			DocComment: strings.Join(entry.Method.DocComment, "\n"),
+			DocComment: tokens.DocCommentText(entry.Method.DocComment),
 		}
 	}
 
@@ -387,7 +391,7 @@ func findInEntry(entry *tokens.Entry, name string, ctx *analysis.AnalysisContext
 		return &HoverInfo{
 			Name:       entry.Field.Name,
 			Type:       fmt.Sprintf("%s %s: %s", entry.Field.Mutability, entry.Field.Name, analysis.FormatTypeRef(entry.Field.Type)),
-			DocComment: strings.Join(entry.Field.DocComment, "\n"),
+			DocComment: tokens.DocCommentText(entry.Field.DocComment),
 		}
 	}
 
@@ -396,7 +400,7 @@ func findInEntry(entry *tokens.Entry, name string, ctx *analysis.AnalysisContext
 			return &HoverInfo{
 				Name:       entry.Declaration.Method.Name,
 				Type:       "declare " + analysis.FormatMethodSignature(entry.Declaration.Method),
-				DocComment: strings.Join(entry.Declaration.Method.DocComment, "\n"),
+				DocComment: tokens.DocCommentText(entry.Declaration.Method.DocComment),
 			}
 		}
 	}
@@ -407,7 +411,7 @@ func findInEntry(entry *tokens.Entry, name string, ctx *analysis.AnalysisContext
 				return &HoverInfo{
 					Name:       field.Name,
 					Type:       fmt.Sprintf("func %s%s", field.Name, strings.TrimPrefix(formatImplMethodSignature(field), "func")),
-					DocComment: strings.Join(field.DocComment, "\n"),
+					DocComment: tokens.DocCommentText(field.DocComment),
 				}
 			}
 		}
@@ -457,6 +461,10 @@ var geckoKeywords = []string{
 	"func", "let", "const", "if", "else", "while", "for", "return",
 	"class", "trait", "impl", "import", "package", "declare", "external",
 	"true", "false", "break", "continue", "asm", "as", "is",
+	"foreign", "enum", "match", "defer", "out", "public", "private",
+	"protected", "cimport", "readonly", "volatile", "throws", "where",
+	"try", "or", "loop", "of", "in", "with", "withheader", "withlibrary",
+	"withobject",
 }
 
 // Built-in types

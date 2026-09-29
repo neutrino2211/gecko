@@ -24,7 +24,7 @@ func exempt(path string) bool {
 		return true
 	}
 	switch filepath.Base(path) {
-	case "go.sum", "package-lock.json", "pnpm-lock.yaml", "yarn.lock":
+	case "go.sum", "Cargo.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock":
 		return true
 	}
 	name := strings.ToUpper(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))

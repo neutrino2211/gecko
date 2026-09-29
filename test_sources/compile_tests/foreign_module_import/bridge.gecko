@@ -1,0 +1,5 @@
+package bridge
+
+foreign "c" c_abi {
+    func sscanf(input: string, format: string, ...): int32
+}

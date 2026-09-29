@@ -1,0 +1,10 @@
+package main
+
+const top: int32 = 1
+
+external func main(): int32 {
+    const local: int32 = 2
+    global top = 3
+    local = 4
+    return 0
+}

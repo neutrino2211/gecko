@@ -188,7 +188,7 @@ func TestTypeCheckingErrors(t *testing.T) {
 			name:          "unsafe_setup_handler",
 			file:          "test_sources/compile_tests/unsafe_setup_handler_error/main.gecko",
 			expectedError: "Unsafe Handler Error",
-			expectedMsg:   "must implement UnsafeHandler",
+			expectedMsg:   "No visible trait registers @unsafe_handler_hook",
 		},
 		{
 			name:          "unsafe_setup_nested_alloc",
@@ -285,6 +285,18 @@ func TestTypeCheckingErrors(t *testing.T) {
 			file:          "test_sources/compile_tests/coherence/trait_impl_foreign_foreign_error.gecko",
 			expectedError: "Coherence Error",
 			expectedMsg:   "orphan impl is not allowed",
+		},
+		{
+			name:          "coherence_generic_orphan",
+			file:          "test_sources/compile_tests/coherence/generic_orphan_error.gecko",
+			expectedError: "Coherence Error",
+			expectedMsg:   "orphan impl is not allowed",
+		},
+		{
+			name:          "coherence_generic_inherent_foreign_type",
+			file:          "test_sources/compile_tests/coherence/generic_inherent_foreign_error.gecko",
+			expectedError: "Coherence Error",
+			expectedMsg:   "cannot add inherent impl for foreign type",
 		},
 		{
 			name:          "type_suggestion",

@@ -1,0 +1,5 @@
+package library
+
+public func extra(widget: Widget): int32 {
+    return widget.value() + 3
+}

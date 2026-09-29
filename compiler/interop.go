@@ -30,17 +30,13 @@ func unquoteIfQuoted(raw string) string {
 }
 
 type legacyDeprecationHits struct {
-	declarePos   *lexer.Position
-	cimportPos   *lexer.Position
-	variardicPos *lexer.Position
+	declarePos   []lexer.Position
+	cimportPos   []lexer.Position
+	variardicPos []lexer.Position
 }
 
-func notePos(dst **lexer.Position, pos lexer.Position) {
-	if *dst != nil {
-		return
-	}
-	p := pos
-	*dst = &p
+func notePos(dst *[]lexer.Position, pos lexer.Position) {
+	*dst = append(*dst, pos)
 }
 
 func scanLegacyDeprecations(entries []*tokens.Entry, hits *legacyDeprecationHits) {
@@ -70,7 +66,7 @@ func scanLegacyDeprecations(entries []*tokens.Entry, hits *legacyDeprecationHits
 	}
 }
 
-func emitLegacyInteropDeprecationWarnings(sourceFile *tokens.File) {
+func emitLegacyInteropDeprecationWarnings(sourceFile *tokens.File, diagnostics *errors.Collector) {
 	visited := make(map[string]bool)
 	var walk func(file *tokens.File)
 	walk = func(file *tokens.File) {
@@ -91,27 +87,27 @@ func emitLegacyInteropDeprecationWarnings(sourceFile *tokens.File) {
 
 		hits := &legacyDeprecationHits{}
 		scanLegacyDeprecations(file.Entries, hits)
-		if hits.declarePos != nil || hits.cimportPos != nil || hits.variardicPos != nil {
-			scope := errors.NewErrorScope("deprecation", file.Path, file.Content)
-			if hits.declarePos != nil {
+		if len(hits.declarePos) > 0 || len(hits.cimportPos) > 0 || len(hits.variardicPos) > 0 {
+			scope := diagnostics.NewScope("deprecation", file.Path, file.Content)
+			for _, pos := range hits.declarePos {
 				scope.NewCompileTimeWarning(
 					"Deprecated Syntax",
 					"`declare external` is deprecated; use `foreign \"c\" <module> ... { ... }`",
-					*hits.declarePos,
+					pos,
 				)
 			}
-			if hits.cimportPos != nil {
+			for _, pos := range hits.cimportPos {
 				scope.NewCompileTimeWarning(
 					"Deprecated Syntax",
 					"`cimport` is deprecated; use `foreign \"c\" <module> withheader ...`",
-					*hits.cimportPos,
+					pos,
 				)
 			}
-			if hits.variardicPos != nil {
+			for _, pos := range hits.variardicPos {
 				scope.NewCompileTimeWarning(
 					"Deprecated Syntax",
 					"`variardic` is deprecated; use trailing `...` in function parameter lists",
-					*hits.variardicPos,
+					pos,
 				)
 			}
 		}

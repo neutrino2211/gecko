@@ -1,0 +1,19 @@
+package main
+
+trait Iterator<T> {
+    func next(self): T
+    func has_next(self): bool
+}
+
+class Range { let current: int32 }
+
+impl Iterator<int32> for Range {
+    func next(self): int32 { return self.current }
+    func has_next(self): bool { return false }
+}
+
+external func main(): int32 {
+    let range: Range = Range { current: 0 }
+    for let value in range { let observed: int32 = value }
+    return 0
+}

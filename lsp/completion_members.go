@@ -13,7 +13,7 @@ import (
 
 // getStaticMethodCompletions returns static method completions for a type (Type::)
 func getStaticMethodCompletions(ctx *analysis.AnalysisContext, file *tokens.File, typeName, prefix string) []protocol.CompletionItem {
-	var items []protocol.CompletionItem
+	items := enumVariantCompletions(file, typeName, prefix)
 
 	// Prefer the shared semantic graph: it is the compiler's authoritative view
 	// of the type's methods and enum variants, including those defined in
@@ -59,18 +59,6 @@ func getStaticMethodCompletions(ctx *analysis.AnalysisContext, file *tokens.File
 			}
 		}
 
-		// Check for enum variants
-		if entry.Enum != nil && entry.Enum.Name == typeName {
-			for _, caseName := range entry.Enum.Cases {
-				if strings.HasPrefix(caseName, prefix) {
-					items = append(items, protocol.CompletionItem{
-						Label:  caseName,
-						Kind:   protocol.CompletionItemKindEnumMember,
-						Detail: typeName + "::" + caseName,
-					})
-				}
-			}
-		}
 	}
 
 	return items
@@ -80,27 +68,15 @@ func getStaticMethodCompletions(ctx *analysis.AnalysisContext, file *tokens.File
 func getMemberCompletionsWithScope(ctx *analysis.AnalysisContext, file *tokens.File, filePath, objName, prefix string, cursorLine int) []protocol.CompletionItem {
 	var items []protocol.CompletionItem
 
-	// Check if objName is an imported module
-	for _, entry := range file.Entries {
-		if entry.Import != nil && entry.Import.ModuleName() == objName {
-			items = append(items, getImportedModuleCompletions(filePath, objName, prefix)...)
-			return items
-		}
-	}
-
 	// Resolve the receiver type. Prefer the shared semantic graph so inference
 	// and imported types match the compiler.
-	typeName := ""
-	if ctx != nil {
-		if t := ctx.VariableType(objName, cursorLine, 0); t != nil {
-			typeName = analysis.FormatTypeRef(t)
+	typeName := receiverVariableType(ctx, file, objName, cursorLine)
+	if typeName == "" {
+		for _, entry := range file.Entries {
+			if entry.Import != nil && entry.Import.ModuleName() == objName {
+				return getImportedModuleCompletions(ctx, file, filePath, objName, prefix)
+			}
 		}
-	}
-	if typeName == "" {
-		typeName = lookupVariableTypeInScope(file, objName, cursorLine)
-	}
-	if typeName == "" {
-		typeName = lookupVariableType(file, objName)
 	}
 	if typeName == "" {
 		// Maybe it's a class name directly
@@ -108,15 +84,18 @@ func getMemberCompletionsWithScope(ctx *analysis.AnalysisContext, file *tokens.F
 	}
 
 	// Remove pointer/non-null suffix for class lookup
-	baseType := strings.TrimSuffix(typeName, "*")
-	baseType = strings.TrimSuffix(baseType, "!")
+	baseType := strings.TrimRight(typeName, "*!")
 
 	parsedType := parseGenericType(baseType)
 
 	// Use the shared semantic graph as the authoritative member source when available.
 	if ctx != nil && ctx.SemanticGraph != nil {
-		if ci := ctx.SemanticGraph.Class(parsedType.BaseName); ci != nil {
-			for fname, ftype := range ci.Fields {
+		receiverType := ctx.VariableType(objName, cursorLine, 0)
+		if receiverType == nil {
+			receiverType = &tokens.TypeRef{Type: parsedType.BaseName}
+		}
+		if fields := ctx.SemanticGraph.FieldsForTypeFrom(receiverType, filePath); fields != nil {
+			for fname, ftype := range fields {
 				if strings.HasPrefix(fname, prefix) {
 					detail := analysis.FormatTypeRef(ftype)
 					items = appendUnique(items, protocol.CompletionItem{
@@ -127,7 +106,7 @@ func getMemberCompletionsWithScope(ctx *analysis.AnalysisContext, file *tokens.F
 				}
 			}
 		}
-		for _, sig := range ctx.SemanticGraph.MethodsOfType(parsedType.BaseName) {
+		for _, sig := range ctx.SemanticGraph.MethodsForTypeFrom(receiverType, filePath) {
 			if strings.HasPrefix(sig.Name, prefix) {
 				items = appendUnique(items, protocol.CompletionItem{
 					Label:  sig.Name,
@@ -144,15 +123,15 @@ func getMemberCompletionsWithScope(ctx *analysis.AnalysisContext, file *tokens.F
 		moduleName := parts[0]
 		className := parts[1]
 
-		items = append(items, getImportedClassMemberCompletionsGeneric(filePath, moduleName, className, prefix, parsedType.TypeArgs)...)
-		items = append(items, getImportedTraitMethodCompletions(filePath, moduleName, className, prefix)...)
+		items = appendUnique(items, getImportedClassMemberCompletionsGeneric(ctx, file, filePath, moduleName, className, prefix, parsedType.TypeArgs)...)
+		items = appendUnique(items, getImportedTraitMethodCompletions(ctx, file, filePath, moduleName, className, prefix)...)
 		return items
 	}
 
 	// Fall back to file-based member/trait completion (covers trait methods the
 	// semantic graph does not key directly under the class).
-	items = append(items, getClassMemberCompletionsGeneric(file, parsedType.BaseName, prefix, parsedType.TypeArgs)...)
-	items = append(items, getTraitMethodCompletions(file, parsedType.BaseName, prefix, parsedType.TypeArgs)...)
+	items = appendUnique(items, getClassMemberCompletionsGeneric(file, parsedType.BaseName, prefix, parsedType.TypeArgs)...)
+	items = appendUnique(items, getTraitMethodCompletions(file, parsedType.BaseName, prefix, parsedType.TypeArgs)...)
 
 	return items
 }

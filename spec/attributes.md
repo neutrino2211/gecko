@@ -140,6 +140,8 @@ Hook attributes connect compiler features to user-defined traits. See [Traits](t
 | Attribute | Purpose | Expected Signature |
 |-----------|---------|-------------------|
 | `@drop_hook(.method)` | Cleanup on scope exit | `func method(self): void` |
+| `@copy_hook` | Implicit bitwise copy | Marker trait with no methods |
+| `@unsafe_handler_hook(.guard, .catch)` | Guarded raw intrinsics | `guard(self, op): bool`, `catch(self, op): void` |
 
 ```gecko
 @drop_hook(.drop)
@@ -148,12 +150,7 @@ trait Drop {
 }
 ```
 
-### Lifecycle Hooks (Planned)
-
-| Attribute | Purpose | Expected Signature |
-|-----------|---------|-------------------|
-| `@copy_hook(.method)` | Compiler-guided implicit copy | `func method(self): Self` |
-| `@clone_hook(.method)` | Compiler-guided explicit clone | `func method(self): Self` |
+`Clone.clone()` is an explicit method call, so `Clone` needs no hook.
 
 ### Operator Hooks
 

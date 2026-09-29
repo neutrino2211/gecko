@@ -1,0 +1,7 @@
+package main
+
+import generic_shared use { Box }
+
+impl<T> Box<T> {
+    func read(self): T { return self.value }
+}

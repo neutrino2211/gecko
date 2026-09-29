@@ -1,0 +1,34 @@
+package main
+
+class Operation {
+    let ptr: void*
+    let size: uint64
+}
+
+@unsafe_handler_hook(.allow, .reject)
+trait Gate {
+    func allow(self, op: Operation): bool
+    func reject(self, op: Operation): void
+}
+
+class Pass {
+    let ptr: void*
+    public func handler(p: void*): Pass {
+        return Pass { ptr: p }
+    }
+}
+
+@attach_handler("write_volatile")
+impl Gate for Pass {
+    func allow(self, op: Operation): bool { return op.ptr == self.ptr }
+    func reject(self, op: Operation): void { @trap("rejected") }
+}
+
+external func main(): int32 {
+    let value: int32 = 0
+    let ptr: int32* = &value
+    @unsafe with Pass::handler(ptr as void*) {
+        @write_volatile(ptr, 23)
+    }
+    return value
+}

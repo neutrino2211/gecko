@@ -1,0 +1,8 @@
+package main
+
+import generic_shared use { Box }
+import std.core.traits use { Clone }
+
+impl<T> Clone for Box<T> {
+    func clone(self): Box<T> { return self }
+}

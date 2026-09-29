@@ -5,6 +5,7 @@ package backends
 import (
 	"os/exec"
 
+	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/neutrino2211/gecko/ast"
 	"github.com/neutrino2211/gecko/interfaces"
 	"github.com/neutrino2211/gecko/tokens"
@@ -34,8 +35,7 @@ func (b *AsmBackend) Features() interfaces.FeatureChecker {
 }
 
 func (b *AsmBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
-	// TODO: Implement ASM generation
-	// For now, this is a stub to demonstrate feature validation
-	println("ASM backend compilation not yet implemented")
+	scope := c.Diagnostics.NewScope("compile", c.File, c.SourceFile.Content)
+	scope.NewCompileTimeError("Backend Error", "ASM backend compilation is not yet implemented", lexer.Position{Line: 1, Column: 1})
 	return nil
 }

@@ -46,6 +46,20 @@ treeshake = true                        # Optional; defaults to true when omitte
 default_target = "x86_64-apple-darwin"  # Default target triple
 ```
 
+### Editor analysis
+
+The Gecko language server reads the nearest `gecko.toml` for each open source
+file. Its compiler checks use `build.backend`, `build.default_target`, and
+target-specific native settings. If no target is configured, checks use the
+host architecture and platform.
+
+An editor can override the active target with
+`initializationOptions.gecko.target`, or update it through
+`workspace/didChangeConfiguration` using `settings.gecko.target`. The value is
+a target triple such as `x86_64-unknown-linux-gnu`. An open, unsaved
+`gecko.toml` takes precedence over its disk contents. Invalid TOML produces a
+diagnostic on `gecko.toml`; source checks resume after the config is corrected.
+
 ### Treeshake (C Backend v1)
 
 Treeshake v1 is a link-time dead-section optimization for the C backend. It targets final binary size (not generated `.c` size).

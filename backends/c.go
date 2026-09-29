@@ -74,8 +74,10 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 	// Check for errors from imported modules
 	for _, importScope := range importScopes {
 		if importScope.ErrorScope.HasErrors() {
-			for _, err := range importScope.ErrorScope.CompileTimeErrors {
-				println(err.GetError())
+			if !c.SourceFile.Config.CheckOnly {
+				for _, err := range importScope.ErrorScope.CompileTimeErrors {
+					println(err.GetError())
+				}
 			}
 			return nil
 		}
@@ -83,8 +85,10 @@ func (b *CBackend) Compile(c *interfaces.BackendConfig) *exec.Cmd {
 
 	// Check for errors from the main file - bail early if any
 	if file.ErrorScope.HasErrors() {
-		for _, err := range file.ErrorScope.CompileTimeErrors {
-			println(err.GetError())
+		if !c.SourceFile.Config.CheckOnly {
+			for _, err := range file.ErrorScope.CompileTimeErrors {
+				println(err.GetError())
+			}
 		}
 		return nil
 	}

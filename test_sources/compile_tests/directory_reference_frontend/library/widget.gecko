@@ -1,0 +1,15 @@
+package library
+
+public class Widget {
+    let number: int32
+}
+
+impl Widget {
+    public func new(number: int32): Widget {
+        return Widget { number: number }
+    }
+
+    public func value(self): int32 {
+        return self.number
+    }
+}

@@ -14,7 +14,7 @@ import (
 type DiagnosticSeverity int
 
 const (
-	SeverityError   DiagnosticSeverity = iota
+	SeverityError DiagnosticSeverity = iota
 	SeverityWarning
 	SeverityNote
 	SeverityHelp
@@ -44,6 +44,7 @@ const (
 	CodeTypeMismatch     = "E0010"
 	CodeIncompatibleType = "E0011"
 	CodeCannotInfer      = "E0012"
+	CodeArgumentCount    = "E0013"
 
 	// Name resolution errors
 	CodeUndefinedSymbol   = "E0020"
@@ -51,18 +52,19 @@ const (
 	CodeUndefinedFunction = "E0022"
 
 	// Control flow errors
-	CodeMissingReturn     = "E0030"
-	CodeUnreachableCode   = "E0031"
+	CodeMissingReturn      = "E0030"
+	CodeUnreachableCode    = "E0031"
 	CodeNonExhaustiveMatch = "E0032"
 
 	// Declaration errors
-	CodeRedefinition      = "E0040"
-	CodeInvalidModifier   = "E0041"
-	CodeMissingFieldInit  = "E0042"
+	CodeRedefinition     = "E0040"
+	CodeInvalidModifier  = "E0041"
+	CodeMissingFieldInit = "E0042"
+	CodeCoherence        = "E0043"
 
 	// Import errors
-	CodeImportNotFound    = "E0050"
-	CodeCircularImport    = "E0051"
+	CodeImportNotFound = "E0050"
+	CodeCircularImport = "E0051"
 
 	// Semantic warnings (not errors)
 	CodeUnusedVariable    = "W0001"
@@ -71,14 +73,34 @@ const (
 )
 
 type CompileTimeMessage struct {
-	Message  string
-	Scope    *ErrorScope
-	Title    string
-	Pos      lexer.Position
-	Severity DiagnosticSeverity
-	Code     string
-	Help     string
-	Notes    []string
+	Message   string
+	Scope     *ErrorScope
+	Title     string
+	Pos       lexer.Position
+	EndOffset int
+	Severity  DiagnosticSeverity
+	Code      string
+	Help      string
+	Notes     []string
+	Related   []RelatedLocation
+	Fixes     []SuggestedFix
+}
+
+type SourceSpan struct {
+	File  string `json:"file"`
+	Start int    `json:"start"`
+	End   int    `json:"end"`
+}
+
+type RelatedLocation struct {
+	Span    SourceSpan `json:"span"`
+	Message string     `json:"message"`
+}
+
+type SuggestedFix struct {
+	Title   string     `json:"title"`
+	Span    SourceSpan `json:"span"`
+	NewText string     `json:"newText"`
 }
 
 type ErrorScope struct {
@@ -196,7 +218,7 @@ func (c *CompileTimeMessage) GetWarning() string {
 	return c.getText("warning")
 }
 
-func (s *ErrorScope) NewCompileTimeError(title string, message string, pos lexer.Position) {
+func (s *ErrorScope) NewCompileTimeError(title string, message string, pos lexer.Position) *CompileTimeMessage {
 	e := &CompileTimeMessage{
 		Message:  message,
 		Pos:      pos,
@@ -206,9 +228,10 @@ func (s *ErrorScope) NewCompileTimeError(title string, message string, pos lexer
 	}
 
 	s.CompileTimeErrors = append(s.CompileTimeErrors, e)
+	return e
 }
 
-func (s *ErrorScope) NewCompileTimeWarning(title string, message string, pos lexer.Position) {
+func (s *ErrorScope) NewCompileTimeWarning(title string, message string, pos lexer.Position) *CompileTimeMessage {
 	e := &CompileTimeMessage{
 		Message:  message,
 		Pos:      pos,
@@ -218,6 +241,7 @@ func (s *ErrorScope) NewCompileTimeWarning(title string, message string, pos lex
 	}
 
 	s.CompileTimeWarnings = append(s.CompileTimeWarnings, e)
+	return e
 }
 
 // NewError creates an error with an error code and optional help text
@@ -272,33 +296,47 @@ func (e *ErrorScope) GetSummary() string {
 	return color.HiWhiteString(e.SourceName + ": No warnings or errors generated")
 }
 
-// Global registry of all error scopes for centralized warning/error collection
-var allScopes []*ErrorScope
-
-// RegisterScope adds an ErrorScope to the global registry for later printing
-func RegisterScope(scope *ErrorScope) {
-	allScopes = append(allScopes, scope)
-}
-
-// GetAllScopes returns all registered error scopes
-func GetAllScopes() []*ErrorScope {
-	return allScopes
-}
-
-// ResetScopes clears the global scope registry
-func ResetScopes() {
-	allScopes = make([]*ErrorScope, 0)
-}
-
 func NewErrorScope(name string, sourceName string, source string) *ErrorScope {
-	scope := &ErrorScope{
+	return &ErrorScope{
 		Name:                name,
 		CompileTimeErrors:   make([]*CompileTimeMessage, 0),
 		CompileTimeWarnings: make([]*CompileTimeMessage, 0),
 		Source:              &source,
 		SourceName:          sourceName,
 	}
-	// Auto-register for centralized collection
-	RegisterScope(scope)
+}
+
+type Collector struct {
+	scopes []*ErrorScope
+}
+
+func (c *Collector) Add(scope *ErrorScope) {
+	if c != nil && scope != nil {
+		c.scopes = append(c.scopes, scope)
+	}
+}
+
+func (c *Collector) NewScope(name, sourceName, source string) *ErrorScope {
+	scope := NewErrorScope(name, sourceName, source)
+	c.Add(scope)
 	return scope
+}
+
+func (c *Collector) Scopes() []*ErrorScope {
+	if c == nil {
+		return nil
+	}
+	return append([]*ErrorScope(nil), c.scopes...)
+}
+
+func (c *Collector) HasErrors() bool {
+	if c == nil {
+		return false
+	}
+	for _, scope := range c.scopes {
+		if scope.HasErrors() {
+			return true
+		}
+	}
+	return false
 }

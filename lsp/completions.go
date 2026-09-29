@@ -4,10 +4,11 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/neutrino2211/gecko/analysis"
-	"github.com/neutrino2211/gecko/parser"
 	"github.com/neutrino2211/gecko/semantic"
 	"github.com/neutrino2211/gecko/tokens"
 	"go.lsp.dev/protocol"
@@ -35,13 +36,44 @@ func GetCompletions(ctx *analysis.AnalysisContext, content, filePath string, lin
 		}
 	}
 
-	// Sanitize content for parsing - remove incomplete expressions on current line
-	sanitizedContent := sanitizeForParsing(content, line)
-	file, _ := parser.Parser.ParseString(filePath, sanitizedContent)
-	if file == nil {
-		file = &tokens.File{}
+	var file *tokens.File
+	if ctx != nil && ctx.MainFile != nil && ctx.SourceContent == content && filepath.Clean(ctx.FilePath) == filepath.Clean(filePath) {
+		file = ctx.MainFile
+	} else {
+		// Sanitize content for parsing - remove incomplete expressions on current line
+		parseLines := append([]string(nil), lines...)
+		if line >= 0 && line < len(lines) {
+			dot := col - len(prefix) - 1
+			if dot >= 0 && dot < len(lineText) && lineText[dot] == '.' {
+				if receiver := completionReceiver(lineText, dot); receiver != "" {
+					parseLines[line] = lineText[:dot-len(receiver)] + "0" + strings.Repeat(" ", col-dot+len(receiver)-1) + lineText[col:]
+				}
+			}
+		}
+		sanitizedContent := sanitizeForParsing(strings.Join(parseLines, "\n"), line)
+		readSource := os.ReadFile
+		if ctx != nil && ctx.MainFile != nil && ctx.MainFile.Config != nil && ctx.MainFile.Config.ReadSource != nil {
+			readSource = ctx.MainFile.Config.ReadSource
+		}
+		recovered, err := analysis.NewAnalysisContextWithReader(filePath, sanitizedContent, readSource)
+		if err != nil && line >= 0 && line < len(lines) {
+			maskedLines := append([]string{}, lines...)
+			maskedLines[line] = strings.Repeat(" ", len(maskedLines[line]))
+			recovered, err = analysis.NewAnalysisContextWithReader(filePath, strings.Join(maskedLines, "\n"), readSource)
+		}
+		if err == nil {
+			ctx = recovered
+			file = ctx.MainFile
+		} else if ctx != nil && filepath.Clean(ctx.FilePath) == filepath.Clean(filePath) {
+			file = ctx.MainFile
+		}
+
+		if file == nil {
+			file = &tokens.File{}
+		}
+		file.ComputeRanges()
+
 	}
-	file.ComputeRanges()
 
 	// Check if we're after :: (static method access)
 	if line < len(lines) && col > 1 {
@@ -65,16 +97,8 @@ func GetCompletions(ctx *analysis.AnalysisContext, content, filePath string, lin
 	if line < len(lines) && col > 0 {
 		dotPos := col - len(prefix) - 1
 		if dotPos >= 0 && dotPos < len(lineText) && lineText[dotPos] == '.' {
-			// Member completion - find the object before the dot
-			objEnd := dotPos
-			objStart := objEnd
-			for objStart > 0 && isIdentChar(lineText[objStart-1]) {
-				objStart--
-			}
-			if objStart < objEnd {
-				objName := lineText[objStart:objEnd]
-				// Find the type using local scope resolution
-				items = append(items, getMemberCompletionsWithScope(ctx, file, filePath, objName, prefix, line+1)...)
+			if receiver := completionReceiver(lineText, dotPos); receiver != "" {
+				items = append(items, qualifiedCompletions(ctx, file, filePath, receiver, prefix, line+1)...)
 				return items
 			}
 		}
@@ -104,12 +128,25 @@ func GetCompletions(ctx *analysis.AnalysisContext, content, filePath string, lin
 
 	// Add symbols from the file
 	for _, entry := range file.Entries {
-		items = append(items, getEntryCompletions(entry, prefix)...)
+		items = appendDistinctCompletions(items, getEntryCompletions(entry, prefix)...)
 	}
+	items = appendUnique(items, selectedImportCompletions(ctx, file, filePath, prefix)...)
 
 	// Add local variables if inside a function
-	enclosingMethod := findEnclosingMethod(file, line+1)
-	items = append(items, getLocalCompletions(enclosingMethod, prefix, line+1, file)...)
+	if ctx != nil && ctx.SemanticGraph != nil {
+		for _, symbol := range ctx.SemanticGraph.VisibleSymbols(ctx.FilePath, ctx.Offset(line+1, col+1)) {
+			if symbol.Local && strings.HasPrefix(symbol.Name, prefix) {
+				detail := analysis.FormatTypeRef(symbol.Type)
+				if symbol.Parameter {
+					detail = "(parameter) " + detail
+				}
+				items = appendUnique(items, protocol.CompletionItem{Label: symbol.Name, Kind: protocol.CompletionItemKindVariable, Detail: detail})
+			}
+		}
+	} else {
+		enclosingMethod := findEnclosingMethod(file, line+1)
+		items = append(items, getLocalCompletions(enclosingMethod, prefix, line+1, ctx)...)
+	}
 
 	// Add stdlib suggestions if prefix looks like a type name (starts with uppercase)
 	if len(prefix) > 0 && prefix[0] >= 'A' && prefix[0] <= 'Z' {
@@ -181,7 +218,7 @@ func sanitizeForParsing(content string, cursorLine int) string {
 	if strings.HasSuffix(lineText, ".") || strings.HasSuffix(lineText, "::") ||
 		strings.HasSuffix(lineText, "(") || strings.HasSuffix(lineText, ",") {
 		// Remove the incomplete line for parsing
-		lines[cursorLine] = ""
+		lines[cursorLine] = strings.Repeat(" ", len(lines[cursorLine]))
 	}
 
 	return strings.Join(lines, "\n")
@@ -268,6 +305,43 @@ func getEntryCompletions(entry *tokens.Entry, prefix string) []protocol.Completi
 			Kind:   protocol.CompletionItemKindEnum,
 			Detail: fmt.Sprintf("enum %s (%d variants)", entry.Enum.Name, len(entry.Enum.Cases)),
 		})
+	}
+	if entry.Import != nil && strings.HasPrefix(entry.Import.ModuleName(), prefix) {
+		items = append(items, protocol.CompletionItem{
+			Label:  entry.Import.ModuleName(),
+			Kind:   protocol.CompletionItemKindModule,
+			Detail: entry.Import.Package(),
+		})
+	}
+	if entry.Foreign != nil && strings.HasPrefix(entry.Foreign.Module, prefix) {
+		items = append(items, protocol.CompletionItem{
+			Label:  entry.Foreign.Module,
+			Kind:   protocol.CompletionItemKindModule,
+			Detail: "foreign " + entry.Foreign.Backend,
+		})
+	}
+	if entry.Foreign != nil {
+		for _, member := range entry.Foreign.Members {
+			if member.Type != nil && strings.HasPrefix(member.Type.Name, prefix) {
+				items = append(items, protocol.CompletionItem{
+					Label: member.Type.Name, Kind: protocol.CompletionItemKindClass,
+					Detail: "opaque foreign type",
+				})
+			}
+		}
+	}
+	if entry.Declaration != nil {
+		if method := entry.Declaration.Method; method != nil && strings.HasPrefix(method.Name, prefix) {
+			items = append(items, protocol.CompletionItem{
+				Label: method.Name, Kind: protocol.CompletionItemKindFunction,
+				Detail: analysis.FormatMethodSignature(method),
+			})
+		}
+		if typ := entry.Declaration.ExternalType; typ != nil && strings.HasPrefix(typ.Name, prefix) {
+			items = append(items, protocol.CompletionItem{
+				Label: typ.Name, Kind: protocol.CompletionItemKindClass, Detail: "external type",
+			})
+		}
 	}
 
 	return items

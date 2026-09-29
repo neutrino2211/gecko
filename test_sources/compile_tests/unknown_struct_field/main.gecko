@@ -1,0 +1,10 @@
+package main
+
+class Point {
+    let x: int32
+}
+
+external func main(): int32 {
+    let point: Point = Point { x: 1, y: 2 }
+    return 0
+}

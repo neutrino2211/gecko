@@ -1,0 +1,8 @@
+package main
+
+import library as Lib
+
+external func main(): int32 {
+    let widget: Lib.Widget = Lib.Widget::new(4)
+    return widget.value() + Lib.extra(widget)
+}

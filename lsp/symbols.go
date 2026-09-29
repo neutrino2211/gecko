@@ -12,9 +12,7 @@ type ParsedGenericType struct {
 
 // parseGenericType parses a type string like "Vec<int>" into its components
 func parseGenericType(typeStr string) ParsedGenericType {
-	// Handle pointer suffix
-	typeStr = strings.TrimSuffix(typeStr, "*")
-	typeStr = strings.TrimSuffix(typeStr, "!")
+	typeStr = strings.TrimRight(typeStr, "*!")
 
 	// Find the generic brackets
 	ltIdx := strings.Index(typeStr, "<")
@@ -24,17 +22,29 @@ func parseGenericType(typeStr string) ParsedGenericType {
 
 	baseName := typeStr[:ltIdx]
 
-	// Extract type arguments (simple parsing - doesn't handle nested generics perfectly)
 	gtIdx := strings.LastIndex(typeStr, ">")
 	if gtIdx == -1 || gtIdx <= ltIdx {
 		return ParsedGenericType{BaseName: baseName}
 	}
 
 	argsStr := typeStr[ltIdx+1 : gtIdx]
-	args := strings.Split(argsStr, ",")
-	for i := range args {
-		args[i] = strings.TrimSpace(args[i])
+	var args []string
+	depth := 0
+	start := 0
+	for i, ch := range argsStr {
+		switch ch {
+		case '<':
+			depth++
+		case '>':
+			depth--
+		case ',':
+			if depth == 0 {
+				args = append(args, strings.TrimSpace(argsStr[start:i]))
+				start = i + 1
+			}
+		}
 	}
+	args = append(args, strings.TrimSpace(argsStr[start:]))
 
 	return ParsedGenericType{BaseName: baseName, TypeArgs: args}
 }

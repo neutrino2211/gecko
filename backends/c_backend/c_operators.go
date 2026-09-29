@@ -234,15 +234,48 @@ func formatHookCandidates(candidates []*hooks.RegisteredHook) string {
 	return strings.Join(names, ", ")
 }
 
+func visibleHooks(scope *ast.Ast, hookType hooks.HookType) []*hooks.RegisteredHook {
+	if scope == nil {
+		return nil
+	}
+	root := scope.GetRoot()
+	all := hooks.GetHookRegistry().GetVisibleHooks(root.Scope, hookType, nil)
+	visible := make([]*hooks.RegisteredHook, 0, len(all))
+	for _, hook := range all {
+		if hook.ModulePath == root.Scope || !scope.ResolveTrait(hook.TraitName).IsNil() {
+			visible = append(visible, hook)
+			continue
+		}
+		visited := map[*ast.Ast]bool{}
+		queue := make([]*ast.Ast, 0, len(root.Children))
+		for _, child := range root.Children {
+			queue = append(queue, child)
+		}
+		for len(queue) > 0 {
+			current := queue[0]
+			queue = queue[1:]
+			if current == nil || visited[current] {
+				continue
+			}
+			visited[current] = true
+			if current.Scope == hook.ModulePath {
+				visible = append(visible, hook)
+				break
+			}
+			for _, child := range current.Children {
+				queue = append(queue, child)
+			}
+		}
+	}
+	return visible
+}
+
 func (impl *CBackendImplementation) resolveVisibleOperatorHook(scope *ast.Ast, hookType hooks.HookType, pos lexer.Position) (*hooks.RegisteredHook, bool) {
 	if scope == nil {
 		return nil, false
 	}
 
-	root := scope.GetRoot()
-	candidates := hooks.GetHookRegistry().GetVisibleHooks(root.Scope, hookType, func(traitName string) bool {
-		return !scope.ResolveTrait(traitName).IsNil()
-	})
+	candidates := visibleHooks(scope, hookType)
 	if len(candidates) == 0 {
 		return nil, false
 	}

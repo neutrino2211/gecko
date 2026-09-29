@@ -25,3 +25,19 @@ func (f *Field) ToCString(scope *ast.Ast) string {
 
 	return base
 }
+
+func (f *Field) IsConstBinding() bool {
+	if f == nil {
+		return false
+	}
+	if f.Mutability == "const" {
+		return true
+	}
+	if f.Type == nil || f.Type.Pointer {
+		return false
+	}
+	if f.Type.Const {
+		return true
+	}
+	return f.Type.Size != nil && f.Type.Size.Type != nil && f.Type.Size.Type.Const
+}

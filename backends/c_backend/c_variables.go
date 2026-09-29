@@ -82,7 +82,9 @@ func (impl *CBackendImplementation) NewVariable(scope *ast.Ast, f *tokens.Field)
 	isConst := bindingIsConst(f)
 
 	if f.Value == nil && isConst {
-		scope.ErrorScope.NewCompileTimeError("Uninitialized Constant", "Constant must be initialized with a value", f.Pos)
+		if CurrentSemanticProgram == nil {
+			scope.ErrorScope.NewCompileTimeError("Uninitialized Constant", "Constant must be initialized with a value", f.Pos)
+		}
 		return
 	}
 

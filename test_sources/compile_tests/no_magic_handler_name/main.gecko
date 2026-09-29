@@ -1,0 +1,31 @@
+package main
+
+class Operation {
+    let ptr: void*
+    let size: uint64
+}
+
+trait UnsafeHandler {
+    func guard(self, op: Operation): bool
+    func catch(self, op: Operation): void
+}
+
+class Pass {
+    let ptr: void*
+    public func handler(p: void*): Pass { return Pass { ptr: p } }
+}
+
+@attach_handler("write_volatile")
+impl UnsafeHandler for Pass {
+    func guard(self, op: Operation): bool { return true }
+    func catch(self, op: Operation): void { let ignored: int32 = 0 }
+}
+
+external func main(): int32 {
+    let value: int32 = 0
+    let ptr: int32* = &value
+    @unsafe with Pass::handler(ptr as void*) {
+        @write_volatile(ptr, 23)
+    }
+    return value
+}

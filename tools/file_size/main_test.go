@@ -35,6 +35,7 @@ func TestFileSizePolicy(t *testing.T) {
 	write("source.go", strings.Repeat("line\r\n", 500))
 	write("LICENSE", strings.Repeat("license\n", 600))
 	write("package-lock.json", strings.Repeat("generated\n", 600))
+	write("editors/zed/Cargo.lock", strings.Repeat("generated\n", 600))
 	write("examples/GNote/web/notes.html", strings.Repeat("generated\n", 600))
 	write("asset.bin", "\x00"+strings.Repeat("binary\n", 600))
 	write(".gitignore", "ignored.txt\n")

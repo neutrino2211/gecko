@@ -8,8 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/BurntSushi/toml"
 )
 
 // ProjectConfig represents the root gecko.toml configuration
@@ -86,58 +84,12 @@ type Dependency struct {
 
 // LoadProjectConfig loads gecko.toml from the given directory or searches up
 func LoadProjectConfig(startDir string) (*ProjectConfig, error) {
-	configPath, err := findConfigFile(startDir)
-	if err != nil {
-		return nil, err
-	}
-
-	return LoadProjectConfigFromFile(configPath)
+	return LoadProjectConfigWithReader(startDir, os.ReadFile)
 }
 
 // LoadProjectConfigFromFile loads gecko.toml from a specific path
 func LoadProjectConfigFromFile(configPath string) (*ProjectConfig, error) {
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
-	}
-
-	var config ProjectConfig
-	if err := toml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse gecko.toml: %w", err)
-	}
-
-	config.ConfigPath = configPath
-	config.ProjectRoot = filepath.Dir(configPath)
-
-	// Set defaults
-	if config.Build.Backend == "" {
-		config.Build.Backend = "c"
-	}
-
-	return &config, nil
-}
-
-// findConfigFile searches for gecko.toml starting from dir and going up
-func findConfigFile(startDir string) (string, error) {
-	dir, err := filepath.Abs(startDir)
-	if err != nil {
-		return "", err
-	}
-
-	for {
-		configPath := filepath.Join(dir, "gecko.toml")
-		if _, err := os.Stat(configPath); err == nil {
-			return configPath, nil
-		}
-
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-
-	return "", fmt.Errorf("gecko.toml not found in %s or any parent directory", startDir)
+	return LoadProjectConfigFromFileWithReader(configPath, os.ReadFile)
 }
 
 // GetEntry returns the entry point file for the given entry name

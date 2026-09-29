@@ -3,10 +3,12 @@
 package compiler
 
 import (
+	stdErrors "errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/fatih/color"
 	"github.com/neutrino2211/gecko/backends"
@@ -51,7 +53,7 @@ func buildFileContentMap(sourceFile *tokens.File) map[string]string {
 	return out
 }
 
-func emitSemanticDiagnostics(sourceFile *tokens.File, diags []semantic.Diagnostic) {
+func emitSemanticDiagnostics(sourceFile *tokens.File, diags []semantic.Diagnostic, diagnostics *errors.Collector) {
 	if len(diags) == 0 {
 		return
 	}
@@ -86,13 +88,8 @@ func emitSemanticDiagnostics(sourceFile *tokens.File, diags []semantic.Diagnosti
 			if scopeName == "" {
 				scopeName = defaultPath
 			}
-			scope = errors.NewErrorScope("semantic", scopeName, content)
+			scope = diagnostics.NewScope("semantic", scopeName, content)
 			scopes[scopeKey] = scope
-		}
-
-		message := diag.Message
-		if diag.Help != "" {
-			message = message + "\nhelp: " + diag.Help
 		}
 
 		title := diag.Title
@@ -100,11 +97,17 @@ func emitSemanticDiagnostics(sourceFile *tokens.File, diags []semantic.Diagnosti
 			title = "Semantic Error"
 		}
 
+		var emitted *errors.CompileTimeMessage
 		if diag.Severity == semantic.SeverityWarning {
-			scope.NewCompileTimeWarning(title, message, diag.Pos)
+			emitted = scope.NewCompileTimeWarning(title, diag.Message, diag.Pos)
 		} else {
-			scope.NewCompileTimeError(title, message, diag.Pos)
+			emitted = scope.NewCompileTimeError(title, diag.Message, diag.Pos)
 		}
+		emitted.Help = diag.Help
+		emitted.Code = diag.Code
+		emitted.EndOffset = diag.EndOffset
+		emitted.Related = append([]errors.RelatedLocation(nil), diag.Related...)
+		emitted.Fixes = append([]errors.SuggestedFix(nil), diag.Fixes...)
 	}
 }
 
@@ -113,6 +116,11 @@ func parseSyntaxError(tokenError error, compileErrorScope *errors.ErrorScope) {
 		return
 	}
 	errorMsg := tokenError.Error()
+	var parseErr participle.Error
+	if stdErrors.As(tokenError, &parseErr) {
+		compileErrorScope.NewCompileTimeError("Syntax Error", errorMsg, parseErr.Position())
+		return
+	}
 	var line, column int = 1, 1
 
 	// Try to extract position from Participle error format: "filename:line:col: message"
@@ -146,33 +154,23 @@ func parseSyntaxError(tokenError error, compileErrorScope *errors.ErrorScope) {
 	)
 }
 
-func haveErrors() bool {
-	for _, e := range errors.GetAllScopes() {
-		if e.HasErrors() {
-			return true
-		}
-	}
-
-	return false
-}
-
 // DiagnosticMessage represents an error or warning for external consumers (like LSP)
 type DiagnosticMessage struct {
-	Line    int
-	Column  int
-	Message string
-	Title   string
-}
-
-// ResetErrorScopes clears all error scopes (useful for LSP between checks)
-func ResetErrorScopes() {
-	ResetCompilationState()
+	Line      int
+	Column    int
+	Offset    int
+	EndOffset int
+	Message   string
+	Title     string
+	File      string
+	Code      string
+	Related   []errors.RelatedLocation
+	Fixes     []errors.SuggestedFix
 }
 
 // ResetCompilationState clears all compiler/backend global state.
 // Useful for long-lived processes (e.g. LSP) between checks.
 func ResetCompilationState() {
-	errors.ResetScopes()
 	ResetTypeRegistry()
 	LastNativeLibraries = nil
 	LastNativeObjects = nil
@@ -181,42 +179,60 @@ func ResetCompilationState() {
 	backends.GlobalScopeLifecycle.Reset()
 }
 
-// GetAllErrors returns all errors from all scopes
-func GetAllErrors() []DiagnosticMessage {
+func GetAllErrors(scopes []*errors.ErrorScope) []DiagnosticMessage {
 	var result []DiagnosticMessage
-	for _, scope := range errors.GetAllScopes() {
+	for _, scope := range scopes {
 		for _, err := range scope.CompileTimeErrors {
 			result = append(result, DiagnosticMessage{
-				Line:    err.Pos.Line,
-				Column:  err.Pos.Column,
-				Message: err.Title + ": " + err.Message,
-				Title:   err.Title,
+				Line:      err.Pos.Line,
+				Column:    err.Pos.Column,
+				Offset:    err.Pos.Offset,
+				EndOffset: err.EndOffset,
+				Message:   diagnosticMessageText(err),
+				Title:     err.Title,
+				File:      scope.SourceName,
+				Code:      err.Code,
+				Related:   append([]errors.RelatedLocation(nil), err.Related...),
+				Fixes:     append([]errors.SuggestedFix(nil), err.Fixes...),
 			})
 		}
 	}
 	return result
 }
 
-// GetAllWarnings returns all warnings from all scopes
-func GetAllWarnings() []DiagnosticMessage {
+func GetAllWarnings(scopes []*errors.ErrorScope) []DiagnosticMessage {
 	var result []DiagnosticMessage
-	for _, scope := range errors.GetAllScopes() {
+	for _, scope := range scopes {
 		for _, warn := range scope.CompileTimeWarnings {
 			result = append(result, DiagnosticMessage{
-				Line:    warn.Pos.Line,
-				Column:  warn.Pos.Column,
-				Message: warn.Title + ": " + warn.Message,
-				Title:   warn.Title,
+				Line:      warn.Pos.Line,
+				Column:    warn.Pos.Column,
+				Offset:    warn.Pos.Offset,
+				EndOffset: warn.EndOffset,
+				Message:   diagnosticMessageText(warn),
+				Title:     warn.Title,
+				File:      scope.SourceName,
+				Code:      warn.Code,
+				Related:   append([]errors.RelatedLocation(nil), warn.Related...),
+				Fixes:     append([]errors.SuggestedFix(nil), warn.Fixes...),
 			})
 		}
 	}
 	return result
 }
 
-func PrintErrorSummary() bool {
+func diagnosticMessageText(message *errors.CompileTimeMessage) string {
+	text := message.Title + ": " + message.Message
+	if message.Help != "" {
+		text += "\nhelp: " + message.Help
+	}
+	return text
+}
+
+func PrintErrorSummary(scopes []*errors.ErrorScope) bool {
 	var warnings, errCount int = 0, 0
 	var bold, boldYellow, boldRed *color.Color = color.New(color.Bold), color.New(color.Bold, color.FgHiYellow), color.New(color.Bold, color.FgHiRed)
-	for _, e := range errors.GetAllScopes() {
+	for _, e := range scopes {
 		if e.HasWarnings() {
 			for _, e := range e.CompileTimeWarnings {
 				fmt.Println(e.GetWarning())

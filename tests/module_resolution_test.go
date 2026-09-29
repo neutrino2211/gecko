@@ -48,7 +48,7 @@ func compileAndCollectErrors(t *testing.T, sourcePath string, projectCfg *config
 	t.Helper()
 
 	compiler.ResetCompilationState()
-	compiler.Compile(sourcePath, &config.CompileCfg{
+	compilation := compiler.CompileWithDiagnostics(sourcePath, &config.CompileCfg{
 		Arch:      runtime.GOARCH,
 		Platform:  runtime.GOOS,
 		Vendor:    "",
@@ -61,7 +61,31 @@ func compileAndCollectErrors(t *testing.T, sourcePath string, projectCfg *config
 		Project:   projectCfg,
 	})
 
-	return compiler.GetAllErrors()
+	return compiler.GetAllErrors(compilation.Scopes)
+}
+
+func TestCompilationDiagnosticsAreIsolated(t *testing.T) {
+	cfg := &config.CompileCfg{CheckOnly: true, Ctx: newTestCLIContext(t, "c")}
+	path := filepath.Join(t.TempDir(), "main.gecko")
+	bad := "package main\nconst top: int32\nexternal func main(): int32 {\n    const local: int32\n    return 0\n}\n"
+	first := compiler.CompileSourceWithDiagnostics(path, bad, cfg)
+	errors := compiler.GetAllErrors(first.Scopes)
+	if len(errors) != 2 {
+		t.Fatalf("expected two constant diagnostics, got %#v", errors)
+	}
+	for _, diagnostic := range errors {
+		if !strings.Contains(diagnostic.Message, "Uninitialized Constant") {
+			t.Fatalf("unexpected diagnostic: %#v", diagnostic)
+		}
+	}
+	good := "package main\nconst top: int32 = 1\nexternal func main(): int32 {\n    const local: int32 = 2\n    return top + local\n}\n"
+	second := compiler.CompileSourceWithDiagnostics(path, good, cfg)
+	if next := compiler.GetAllErrors(second.Scopes); len(next) != 0 {
+		t.Fatalf("diagnostics leaked into next compilation: %#v", next)
+	}
+	if len(compiler.GetAllErrors(first.Scopes)) != 2 {
+		t.Fatal("first compilation diagnostics changed after second compilation")
+	}
 }
 
 func formatCompileErrors(errs []compiler.DiagnosticMessage) string {

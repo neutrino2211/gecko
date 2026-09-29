@@ -15,6 +15,7 @@ type CompileCfg struct {
 	CLFlags      []string
 	CObjects     []string
 	CheckOnly    bool
+	ReadSource   func(string) ([]byte, error)
 
 	Ctx     *cli.Context
 	Project *ProjectConfig // Optional project configuration from gecko.toml

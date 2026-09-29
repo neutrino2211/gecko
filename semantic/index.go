@@ -60,16 +60,37 @@ func (a *analyzer) indexFileRecursive(file *tokens.File) {
 }
 
 func (a *analyzer) indexFileEntries(file *tokens.File, module string) {
+	a.currentFile = file
 	for _, entry := range file.Entries {
 		if entry == nil {
 			continue
 		}
+		if entry.Import != nil {
+			a.indexImportModule(entry.Import)
+		}
 
 		if entry.Trait != nil {
-			a.indexBorrowHooks(entry.Trait)
-			if entry.Trait.Parent != "" {
-				a.program.traitParents[entry.Trait.Name] = entry.Trait.Parent
+			trait := entry.Trait
+			a.indexBorrowHooks(trait)
+			full := trait.Name
+			if module != "" {
+				full = module + "::" + trait.Name
 			}
+			id := a.addSymbol(SymbolTrait, trait.Name, full, &tokens.TypeRef{Type: trait.Name}, trait.Pos)
+			a.program.traitSymbolIDs[trait.Name] = append(a.program.traitSymbolIDs[trait.Name], id)
+			a.indexTypeParams(trait.TypeParams, id, full)
+			for _, member := range trait.Fields {
+				if member != nil {
+					a.registerTraitMethodSignature(module, trait.Name, member)
+				}
+			}
+			if trait.Parent != "" {
+				a.program.traitParents[trait.Name] = trait.Parent
+				a.pendingTraitParents = append(a.pendingTraitParents, pendingTraitParent{childID: id, name: trait.Parent, file: file})
+			}
+		}
+		if entry.Enum != nil {
+			a.indexEnum(module, entry.Enum)
 		}
 
 		if entry.Field != nil {
@@ -77,7 +98,11 @@ func (a *analyzer) indexFileEntries(file *tokens.File, module string) {
 			if module != "" {
 				full = module + "::" + entry.Field.Name
 			}
-			id := a.program.addSymbol(SymbolVariable, entry.Field.Name, full, entry.Field.Type, entry.Field.Pos)
+			id := a.addSymbol(SymbolVariable, entry.Field.Name, full, entry.Field.Type, entry.Field.Pos)
+			a.program.Symbols[id].Mutability = entry.Field.Mutability
+			if entry.Field.IsConstBinding() {
+				a.program.Symbols[id].Mutability = "const"
+			}
 			a.program.globalsByName[entry.Field.Name] = CloneTypeRef(entry.Field.Type)
 			a.program.globalSymbolIDs[entry.Field.Name] = id
 			a.nameForID[id] = entry.Field.Name
@@ -89,7 +114,7 @@ func (a *analyzer) indexFileEntries(file *tokens.File, module string) {
 
 		if entry.Declaration != nil && entry.Declaration.Method != nil {
 			m := entry.Declaration.Method
-			a.registerFunctionSignature(module, "", m.Name, m.Type, m.Arguments, m.TypeParams, m.IsVariadic(), m.Pos)
+			a.registerFunctionSignature(module, "", m.Name, m.Type, m.Arguments, m.TypeParams, m.IsVariadic(), m.Pos, m.Visibility)
 		}
 
 		if entry.Foreign != nil {
@@ -98,7 +123,7 @@ func (a *analyzer) indexFileEntries(file *tokens.File, module string) {
 					continue
 				}
 				m := member.Method
-				a.registerFunctionSignature(entry.Foreign.Module, "", m.Name, m.Type, m.Arguments, nil, m.IsVariadic(), m.Pos)
+				a.registerFunctionSignature(entry.Foreign.Module, "", m.Name, m.Type, m.Arguments, nil, m.IsVariadic(), m.Pos, "public")
 			}
 		}
 
@@ -108,13 +133,17 @@ func (a *analyzer) indexFileEntries(file *tokens.File, module string) {
 			if module != "" {
 				full = module + "::" + cls.Name
 			}
-			id := a.program.addSymbol(SymbolClass, cls.Name, full, &tokens.TypeRef{Type: cls.Name}, cls.Pos)
+			id := a.addSymbol(SymbolClass, cls.Name, full, &tokens.TypeRef{Type: cls.Name}, cls.Pos)
+			a.program.classSymbolIDs[cls.Name] = append(a.program.classSymbolIDs[cls.Name], id)
 			a.nameForID[id] = cls.Name
+			a.indexTypeParams(cls.TypeParams, id, full)
 
 			classInfo := &ClassInfo{
-				Name:       cls.Name,
-				TypeParams: cls.TypeParams,
-				Fields:     make(map[string]*tokens.TypeRef),
+				Name:           cls.Name,
+				SymbolID:       id,
+				TypeParams:     cls.TypeParams,
+				Fields:         make(map[string]*tokens.TypeRef),
+				FieldSymbolIDs: make(map[string]int64),
 			}
 			for _, field := range cls.Fields {
 				if field == nil {
@@ -122,16 +151,22 @@ func (a *analyzer) indexFileEntries(file *tokens.File, module string) {
 				}
 				if field.Field != nil {
 					classInfo.Fields[field.Field.Name] = CloneTypeRef(field.Field.Type)
+					fieldFullName := full + "::" + field.Field.Name
+					fieldID := a.addSymbol(SymbolField, field.Field.Name, fieldFullName, field.Field.Type, field.Field.Pos)
+					classInfo.FieldSymbolIDs[field.Field.Name] = fieldID
+					a.program.Symbols[fieldID].Visibility = field.Field.Visibility
 				}
 				if field.Method != nil {
-					a.registerFunctionSignature(module, cls.Name, field.Method.Name, field.Method.Type, field.Method.Arguments, field.Method.TypeParams, field.Method.IsVariadic(), field.Method.Pos)
+					a.registerFunctionSignature(module, cls.Name, field.Method.Name, field.Method.Type, field.Method.Arguments, field.Method.TypeParams, field.Method.IsVariadic(), field.Method.Pos, field.Method.Visibility)
 				}
 			}
 			a.program.classes[cls.Name] = classInfo
+			a.program.classInfosByID[id] = classInfo
 		}
 
 		if entry.Implementation != nil {
 			impl := entry.Implementation
+			a.indexTypeParams(impl.GetTypeParams(), 0, fmt.Sprintf("%s::impl@%d", module, impl.Pos.Offset))
 			if impl.GetFor() != "" && impl.GetName() != "" {
 				a.addTraitImpl(impl.GetFor(), impl.GetName())
 			}
@@ -145,7 +180,7 @@ func (a *analyzer) indexFileEntries(file *tokens.File, module string) {
 						continue
 					}
 					m := field.ToMethodToken()
-					a.registerFunctionSignature(module, ownerType, m.Name, m.Type, m.Arguments, m.TypeParams, m.IsVariadic(), m.Pos)
+					a.registerFunctionSignature(module, ownerType, m.Name, m.Type, m.Arguments, m.TypeParams, m.IsVariadic(), m.Pos, m.Visibility)
 				}
 			}
 		}
@@ -180,9 +215,26 @@ func (a *analyzer) analyzeFileRecursive(file *tokens.File) {
 }
 
 func (a *analyzer) analyzeFileEntries(file *tokens.File, module string) {
+	a.currentFile = file
 	for _, entry := range file.Entries {
 		if entry == nil {
 			continue
+		}
+		a.recordEntryTypeRefs(entry)
+		if entry.Field != nil && entry.Field.Value == nil && entry.Field.IsConstBinding() {
+			a.program.addDiagnostic(Diagnostic{
+				Severity: SeverityError,
+				Title:    "Uninitialized Constant",
+				Message:  "Constant must be initialized with a value",
+				Pos:      entry.Field.Pos,
+			})
+		}
+		if entry.Field != nil && entry.Field.Value != nil {
+			env := newFlowEnv()
+			for name, typ := range a.program.globalsByName {
+				env.bind(name, typ, a.program.globalSymbolIDs[name])
+			}
+			a.inferExpression(entry.Field.Value, env, entry.Field.Type)
 		}
 		if entry.Method != nil {
 			a.analyzeMethod(module, "", entry.Method)
@@ -195,11 +247,15 @@ func (a *analyzer) analyzeFileEntries(file *tokens.File, module string) {
 			}
 		}
 		if entry.Implementation != nil {
+			a.validateImplementationCoherence(entry.Implementation)
+			previousTypeParams := a.typeParamScope
+			a.pushTypeParams(entry.Implementation.GetTypeParams())
 			ownerType := entry.Implementation.GetFor()
 			if ownerType == "" {
 				ownerType = entry.Implementation.GetName()
 			}
 			if ownerType == "" {
+				a.typeParamScope = previousTypeParams
 				continue
 			}
 			for _, field := range entry.Implementation.GetFields() {
@@ -209,12 +265,12 @@ func (a *analyzer) analyzeFileEntries(file *tokens.File, module string) {
 				m := field.ToMethodToken()
 				a.analyzeMethod(module, ownerType, m)
 			}
+			a.typeParamScope = previousTypeParams
 		}
 	}
 }
 
-func (a *analyzer) registerFunctionSignature(module, ownerType, name string, ret *tokens.TypeRef, params []*tokens.Value, typeParams []*tokens.TypeParam, variadic bool, pos lexer.Position) {
-	_ = pos
+func (a *analyzer) registerFunctionSignature(module, ownerType, name string, ret *tokens.TypeRef, params []*tokens.Value, typeParams []*tokens.TypeParam, variadic bool, pos lexer.Position, visibility ...string) {
 	full := name
 	if ownerType != "" {
 		if module != "" {
@@ -230,7 +286,10 @@ func (a *analyzer) registerFunctionSignature(module, ownerType, name string, ret
 	if ownerType != "" {
 		symbolKind = SymbolMethod
 	}
-	symID := a.program.addSymbol(symbolKind, name, full, ret, pos)
+	symID := a.addSymbol(symbolKind, name, full, ret, pos)
+	if len(visibility) > 0 {
+		a.program.Symbols[symID].Visibility = visibility[0]
+	}
 
 	sig := &FunctionSignature{
 		SymbolID:   symID,
@@ -260,13 +319,7 @@ func (a *analyzer) registerFunctionSignature(module, ownerType, name string, ret
 		a.program.staticMethods[ownerType][name] = append(a.program.staticMethods[ownerType][name], sig)
 	}
 
-	for _, tp := range typeParams {
-		if tp == nil {
-			continue
-		}
-		id := a.program.addTypeVar(tp.Name, tp.AllTraits(), symID)
-		a.nameForID[id] = tp.Name
-	}
+	a.indexTypeParams(typeParams, symID, full)
 }
 
 func cloneValues(in []*tokens.Value) []*tokens.Value {

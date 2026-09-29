@@ -1,0 +1,8 @@
+package main
+
+declare external func first(): int32
+declare external func second(): int32
+
+external func main(): int32 {
+    return 0
+}

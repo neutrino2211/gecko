@@ -1,0 +1,15 @@
+id = "gecko"
+name = "Gecko"
+description = "Language server support for Gecko"
+version = "0.1.0"
+schema_version = 1
+authors = ["Gecko contributors"]
+repository = "https://github.com/neutrino2211/gecko"
+
+[grammars.javascript]
+repository = "https://github.com/tree-sitter/tree-sitter-javascript"
+rev = "44c892e0be055ac465d5eeddae6d3e194424e7de"
+
+[language_servers.gecko-lsp]
+name = "Gecko Language Server"
+languages = ["Gecko"]

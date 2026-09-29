@@ -1,0 +1,13 @@
+package main
+
+func badValue(): void {
+    return 1
+}
+
+func badEmpty(): int32 {
+    return
+}
+
+external func main(): int32 {
+    return 0
+}

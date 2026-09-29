@@ -62,14 +62,14 @@ func buildUseObjectMap(entries []*tokens.Entry) map[string][]string {
 	return useObjects
 }
 
-func newImportedScope(importedFile *tokens.File, scopeName string, markImported bool) *ast.Ast {
+func newImportedScope(importedFile *tokens.File, scopeName string, markImported bool, diagnostics *errors.Collector) *ast.Ast {
 	scope := &ast.Ast{
 		Scope:            scopeName,
 		Parent:           nil, // Keep imported scope names stable: module__symbol.
 		IsImportedModule: markImported,
 		SourceFile:       importedFile.Path,
 	}
-	scope.Init(errors.NewErrorScope(importedFile.Name, importedFile.Path, importedFile.Content))
+	scope.Init(diagnostics.NewScope(importedFile.Name, importedFile.Path, importedFile.Content))
 	scope.Config = importedFile.Config
 	return scope
 }
@@ -86,7 +86,7 @@ func PrepareSharedCompilePipeline(b interfaces.BackendInterface, c *interfaces.B
 		Scope:      c.SourceFile.PackageName,
 		SourceFile: c.SourceFile.Path,
 	}
-	rootScope.Init(errors.NewErrorScope(c.SourceFile.Name, c.SourceFile.Path, c.SourceFile.Content))
+	rootScope.Init(c.Diagnostics.NewScope(c.SourceFile.Name, c.SourceFile.Path, c.SourceFile.Content))
 	rootScope.Config = c.SourceFile.Config
 
 	if c.SuggestionProvider != nil {
@@ -95,26 +95,24 @@ func PrepareSharedCompilePipeline(b interfaces.BackendInterface, c *interfaces.B
 		}
 	}
 
-	// Lazy-resolved module scopes are intentionally tracked separately from
-	// eagerly processed imports to preserve current behavior.
-	lazyResolvedFiles := make(map[string]*ast.Ast)
+	processedModules := make(map[string]*ast.Ast)
+	moduleScopes := make(map[string]*ast.Ast)
 	getOrCreateLazyScope := func(resolvedFile *tokens.File) *ast.Ast {
-		cacheKey := firstNonEmpty(resolvedFile.Path, resolvedFile.PackageName, resolvedFile.Name)
-		if existingScope, ok := lazyResolvedFiles[cacheKey]; ok {
+		scopeName := firstNonEmpty(resolvedFile.Name, resolvedFile.PackageName, resolvedFile.Path)
+		processedKey := firstNonEmpty(resolvedFile.Path, scopeName) + "\x00" + scopeName
+		if existingScope := processedModules[processedKey]; existingScope != nil {
 			return existingScope
 		}
-
-		scopeName := firstNonEmpty(resolvedFile.PackageName, resolvedFile.Name, resolvedFile.Path)
-		resolvedScope := newImportedScope(resolvedFile, scopeName, options.MarkImportedModules)
-		b.ProcessEntries(resolvedFile.Entries, resolvedScope)
-
-		if scopeName != "" {
+		resolvedScope := moduleScopes[scopeName]
+		newModule := resolvedScope == nil
+		if newModule {
+			resolvedScope = newImportedScope(resolvedFile, scopeName, options.MarkImportedModules, c.Diagnostics)
+			moduleScopes[scopeName] = resolvedScope
 			rootScope.Children[scopeName] = resolvedScope
 		}
-
-		lazyResolvedFiles[cacheKey] = resolvedScope
-
-		if options.TrackLazyResolvedAsImport {
+		processedModules[processedKey] = resolvedScope
+		b.ProcessEntries(resolvedFile.Entries, resolvedScope)
+		if newModule && options.TrackLazyResolvedAsImport {
 			result.ImportScopes = append(result.ImportScopes, resolvedScope)
 		}
 
@@ -156,7 +154,9 @@ func PrepareSharedCompilePipeline(b interfaces.BackendInterface, c *interfaces.B
 				return nil, false
 			}
 			resolvedScope := getOrCreateLazyScope(resolvedFile)
-			rootScope.Children[moduleName] = resolvedScope
+			if rootScope.Children[moduleName] == nil {
+				rootScope.Children[moduleName] = resolvedScope
+			}
 			if cls, ok := resolvedScope.Classes[typeName]; ok {
 				return cls, true
 			}
@@ -166,12 +166,11 @@ func PrepareSharedCompilePipeline(b interfaces.BackendInterface, c *interfaces.B
 
 	if options.ProcessImports {
 		useObjects := buildUseObjectMap(c.SourceFile.Entries)
-		processedModules := make(map[string]*ast.Ast)
 
 		var processImport func(importedFile *tokens.File, parentScope *ast.Ast) (*ast.Ast, bool)
 		processImport = func(importedFile *tokens.File, parentScope *ast.Ast) (*ast.Ast, bool) {
 			moduleKey := firstNonEmpty(importedFile.Name, importedFile.PackageName, importedFile.Path)
-			processKey := firstNonEmpty(importedFile.Path, moduleKey)
+			processKey := firstNonEmpty(importedFile.Path, moduleKey) + "\x00" + moduleKey
 
 			if existingScope, ok := processedModules[processKey]; ok {
 				// Register the existing scope under this import's name/alias too,
@@ -184,9 +183,14 @@ func PrepareSharedCompilePipeline(b interfaces.BackendInterface, c *interfaces.B
 				return existingScope, true
 			}
 
-			importScope := newImportedScope(importedFile, moduleKey, options.MarkImportedModules)
+			importScope := moduleScopes[moduleKey]
+			alreadyProcessedModule := importScope != nil
+			if importScope == nil {
+				importScope = newImportedScope(importedFile, moduleKey, options.MarkImportedModules, c.Diagnostics)
+				moduleScopes[moduleKey] = importScope
+				rootScope.Children[moduleKey] = importScope
+			}
 			processedModules[processKey] = importScope
-			rootScope.Children[moduleKey] = importScope
 
 			if parentScope != nil {
 				parentScope.Children[moduleKey] = importScope
@@ -208,7 +212,7 @@ func PrepareSharedCompilePipeline(b interfaces.BackendInterface, c *interfaces.B
 			}
 
 			b.ProcessEntries(importedFile.Entries, importScope)
-			return importScope, false
+			return importScope, alreadyProcessedModule
 		}
 
 		for _, importedFile := range c.SourceFile.Imports {

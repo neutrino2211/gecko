@@ -1,0 +1,12 @@
+package main
+
+func add(left: int32, right: int32): int32 {
+    return left + right
+}
+
+external func main(): int32 {
+    let good: int32 = add(1, 2)
+    let short: int32 = add(1)
+    let long: int32 = add(1, 2, 3)
+    return 0
+}

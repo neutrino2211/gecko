@@ -4,11 +4,9 @@ package semantic
 
 import (
 	"github.com/alecthomas/participle/v2/lexer"
+	"github.com/neutrino2211/gecko/errors"
 	"github.com/neutrino2211/gecko/tokens"
 )
-
-// CurrentSelfType tracks the current class type for resolving `Self` in method signatures.
-var CurrentSelfType string
 
 type DiagnosticSeverity string
 
@@ -23,15 +21,20 @@ const (
 	DiagnosticInferenceAmbiguity DiagnosticKind = "inference_ambiguity"
 	DiagnosticConstraintFailure  DiagnosticKind = "constraint_failure"
 	DiagnosticTypeMismatch       DiagnosticKind = "type_mismatch"
+	DiagnosticArgumentCount      DiagnosticKind = "argument_count"
 )
 
 type Diagnostic struct {
-	Severity DiagnosticSeverity
-	Kind     DiagnosticKind
-	Title    string
-	Message  string
-	Help     string
-	Pos      lexer.Position
+	Severity  DiagnosticSeverity
+	Kind      DiagnosticKind
+	Title     string
+	Message   string
+	Help      string
+	Pos       lexer.Position
+	EndOffset int
+	Code      string
+	Related   []errors.RelatedLocation
+	Fixes     []errors.SuggestedFix
 }
 
 type SymbolKind string
@@ -42,15 +45,33 @@ const (
 	SymbolMethod    SymbolKind = "method"
 	SymbolTypeParam SymbolKind = "type_param"
 	SymbolClass     SymbolKind = "class"
+	SymbolTrait     SymbolKind = "trait"
+	SymbolField     SymbolKind = "field"
+	SymbolModule    SymbolKind = "module"
+	SymbolEnum      SymbolKind = "enum"
+	SymbolEnumCase  SymbolKind = "enum_case"
 )
 
 type Symbol struct {
-	ID       int64
-	Kind     SymbolKind
-	Name     string
-	FullName string
-	Type     *tokens.TypeRef
-	Pos      lexer.Position
+	ID            int64
+	Local         bool
+	Parameter     bool
+	Mutability    string
+	Documentation string
+	Visibility    string
+	Kind          SymbolKind
+	Name          string
+	FullName      string
+	Type          *tokens.TypeRef
+	Pos           lexer.Position
+}
+
+type Occurrence struct {
+	SymbolID    int64
+	FilePath    string
+	Start       int
+	End         int
+	Declaration bool
 }
 
 type TypeVar struct {
@@ -74,16 +95,42 @@ type FunctionSignature struct {
 }
 
 type ClassInfo struct {
-	Name       string
-	TypeParams []*tokens.TypeParam
-	Fields     map[string]*tokens.TypeRef
+	Name           string
+	SymbolID       int64
+	TypeParams     []*tokens.TypeParam
+	Fields         map[string]*tokens.TypeRef
+	FieldSymbolIDs map[string]int64
 }
 
 type CallResolution struct {
+	Status           ResolutionStatus
 	CalleeID         int64
+	ReceiverType     *tokens.TypeRef
+	Signature        *FunctionSignature
+	Arguments        []CallArgumentBinding
 	ReturnType       *tokens.TypeRef
 	InferredTypeArgs map[string]*tokens.TypeRef
 	UsedExplicitArgs bool
+}
+
+type ResolutionStatus string
+
+const (
+	ResolutionResolved   ResolutionStatus = "resolved"
+	ResolutionInvalid    ResolutionStatus = "invalid"
+	ResolutionIncomplete ResolutionStatus = "incomplete"
+)
+
+type CallArgumentBinding struct {
+	ArgumentIndex  int
+	ParameterIndex int
+	ParameterName  string
+	ActualType     *tokens.TypeRef
+	ExpectedType   *tokens.TypeRef
+}
+
+type ExpressionOutcome struct {
+	Status ResolutionStatus
 }
 
 type FlowFacts struct {
@@ -103,19 +150,34 @@ type Program struct {
 	Symbols  map[int64]*Symbol
 	TypeVars map[int64]*TypeVar
 
-	expressionTypes map[*tokens.Expression]*tokens.TypeRef
-	literalTypes    map[*tokens.Literal]*tokens.TypeRef
-	funcCalls       map[*tokens.FuncCall]*CallResolution
-	methodCalls     map[*tokens.MethodCall]*CallResolution
-	ifFacts         map[*tokens.If]*IfFacts
-	entryFacts      map[*tokens.Entry]*FlowFacts
-	diagnostics     []Diagnostic
+	expressionTypes     map[*tokens.Expression]*tokens.TypeRef
+	expressionOutcomes  map[*tokens.Expression]*ExpressionOutcome
+	literalTypes        map[*tokens.Literal]*tokens.TypeRef
+	funcCalls           map[*tokens.FuncCall]*CallResolution
+	methodCalls         map[*tokens.MethodCall]*CallResolution
+	chainCalls          map[*tokens.ChainAccess]*CallResolution
+	ifFacts             map[*tokens.If]*IfFacts
+	entryFacts          map[*tokens.Entry]*FlowFacts
+	diagnostics         []Diagnostic
+	unsafeBindNames     map[*tokens.UnsafeBlock]string
+	unsafeErrorNames    map[*tokens.UnsafeBlock]string
+	occurrences         []Occurrence
+	occurrencesByFile   map[string][]Occurrence
+	occurrencesBySymbol map[int64][]Occurrence
+	occurrenceSet       map[Occurrence]bool
+	scopes              map[string][]scopeSnapshot
 
 	functionsByName map[string][]*FunctionSignature
 	moduleFunctions map[string]map[string][]*FunctionSignature
 	staticMethods   map[string]map[string][]*FunctionSignature
 	classes         map[string]*ClassInfo
+	classSymbolIDs  map[string][]int64
+	classInfosByID  map[int64]*ClassInfo
+	traitSymbolIDs  map[string][]int64
+	enumSymbolIDs   map[string][]int64
+	enumCaseIDs     map[int64]map[string]int64
 	traitParents    map[string]string
+	traitParentIDs  map[int64]int64
 	borrowHooks     map[string]map[string]string
 	typeTraits      map[string]map[string]bool
 	globalsByName   map[string]*tokens.TypeRef
@@ -131,24 +193,38 @@ type Program struct {
 
 func NewProgram(file *tokens.File) *Program {
 	return &Program{
-		File:            file,
-		Symbols:         make(map[int64]*Symbol),
-		TypeVars:        make(map[int64]*TypeVar),
-		expressionTypes: make(map[*tokens.Expression]*tokens.TypeRef),
-		literalTypes:    make(map[*tokens.Literal]*tokens.TypeRef),
-		funcCalls:       make(map[*tokens.FuncCall]*CallResolution),
-		methodCalls:     make(map[*tokens.MethodCall]*CallResolution),
-		ifFacts:         make(map[*tokens.If]*IfFacts),
-		entryFacts:      make(map[*tokens.Entry]*FlowFacts),
-		functionsByName: make(map[string][]*FunctionSignature),
-		moduleFunctions: make(map[string]map[string][]*FunctionSignature),
-		staticMethods:   make(map[string]map[string][]*FunctionSignature),
-		classes:         make(map[string]*ClassInfo),
-		traitParents:    make(map[string]string),
-		borrowHooks:     make(map[string]map[string]string),
-		typeTraits:      make(map[string]map[string]bool),
-		globalsByName:   make(map[string]*tokens.TypeRef),
-		globalSymbolIDs: make(map[string]int64),
+		File:                file,
+		unsafeBindNames:     make(map[*tokens.UnsafeBlock]string),
+		unsafeErrorNames:    make(map[*tokens.UnsafeBlock]string),
+		Symbols:             make(map[int64]*Symbol),
+		TypeVars:            make(map[int64]*TypeVar),
+		expressionTypes:     make(map[*tokens.Expression]*tokens.TypeRef),
+		expressionOutcomes:  make(map[*tokens.Expression]*ExpressionOutcome),
+		occurrenceSet:       make(map[Occurrence]bool),
+		occurrencesByFile:   make(map[string][]Occurrence),
+		occurrencesBySymbol: make(map[int64][]Occurrence),
+		scopes:              make(map[string][]scopeSnapshot),
+		literalTypes:        make(map[*tokens.Literal]*tokens.TypeRef),
+		funcCalls:           make(map[*tokens.FuncCall]*CallResolution),
+		methodCalls:         make(map[*tokens.MethodCall]*CallResolution),
+		chainCalls:          make(map[*tokens.ChainAccess]*CallResolution),
+		ifFacts:             make(map[*tokens.If]*IfFacts),
+		entryFacts:          make(map[*tokens.Entry]*FlowFacts),
+		functionsByName:     make(map[string][]*FunctionSignature),
+		moduleFunctions:     make(map[string]map[string][]*FunctionSignature),
+		staticMethods:       make(map[string]map[string][]*FunctionSignature),
+		classes:             make(map[string]*ClassInfo),
+		classSymbolIDs:      make(map[string][]int64),
+		classInfosByID:      make(map[int64]*ClassInfo),
+		traitSymbolIDs:      make(map[string][]int64),
+		enumSymbolIDs:       make(map[string][]int64),
+		enumCaseIDs:         make(map[int64]map[string]int64),
+		traitParents:        make(map[string]string),
+		traitParentIDs:      make(map[int64]int64),
+		borrowHooks:         make(map[string]map[string]string),
+		typeTraits:          make(map[string]map[string]bool),
+		globalsByName:       make(map[string]*tokens.TypeRef),
+		globalSymbolIDs:     make(map[string]int64),
 
 		signatureBySymbolID: make(map[int64]*FunctionSignature),
 	}
@@ -179,12 +255,14 @@ func (p *Program) addTypeVar(name string, traits []string, ownerID int64) int64 
 }
 
 func (p *Program) addDiagnostic(diag Diagnostic) {
-	p.diagnostics = append(p.diagnostics, diag)
+	p.diagnostics = append(p.diagnostics, cloneDiagnostic(diag))
 }
 
 func (p *Program) Diagnostics() []Diagnostic {
 	out := make([]Diagnostic, len(p.diagnostics))
-	copy(out, p.diagnostics)
+	for index, diagnostic := range p.diagnostics {
+		out[index] = cloneDiagnostic(diagnostic)
+	}
 	return out
 }
 
@@ -196,6 +274,13 @@ func (p *Program) TypeOfExpression(expr *tokens.Expression) *tokens.TypeRef {
 		return CloneTypeRef(t)
 	}
 	return nil
+}
+
+func (p *Program) ExpressionOutcome(expr *tokens.Expression) *ExpressionOutcome {
+	if expr == nil || p.expressionOutcomes[expr] == nil {
+		return nil
+	}
+	return cloneExpressionOutcome(p.expressionOutcomes[expr])
 }
 
 func (p *Program) TypeOfLiteral(lit *tokens.Literal) *tokens.TypeRef {
@@ -230,6 +315,13 @@ func (p *Program) MethodCallResolution(call *tokens.MethodCall) *CallResolution 
 	return cloneCallResolution(res)
 }
 
+func (p *Program) ChainCallResolution(call *tokens.ChainAccess) *CallResolution {
+	if call == nil {
+		return nil
+	}
+	return cloneCallResolution(p.chainCalls[call])
+}
+
 func (p *Program) IfFlowFacts(ifStmt *tokens.If) *IfFacts {
 	if ifStmt == nil {
 		return nil
@@ -261,13 +353,22 @@ func cloneCallResolution(in *CallResolution) *CallResolution {
 		return nil
 	}
 	out := &CallResolution{
+		Status:           in.Status,
 		CalleeID:         in.CalleeID,
+		ReceiverType:     CloneTypeRef(in.ReceiverType),
+		Signature:        cloneSignature(in.Signature, nil),
+		Arguments:        make([]CallArgumentBinding, len(in.Arguments)),
 		ReturnType:       CloneTypeRef(in.ReturnType),
 		InferredTypeArgs: make(map[string]*tokens.TypeRef, len(in.InferredTypeArgs)),
 		UsedExplicitArgs: in.UsedExplicitArgs,
 	}
 	for k, v := range in.InferredTypeArgs {
 		out.InferredTypeArgs[k] = CloneTypeRef(v)
+	}
+	for index, binding := range in.Arguments {
+		out.Arguments[index] = binding
+		out.Arguments[index].ActualType = CloneTypeRef(binding.ActualType)
+		out.Arguments[index].ExpectedType = CloneTypeRef(binding.ExpectedType)
 	}
 	return out
 }

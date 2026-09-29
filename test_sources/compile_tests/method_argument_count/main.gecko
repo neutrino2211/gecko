@@ -1,0 +1,16 @@
+package main
+
+class Counter {
+    let value: int32
+    func add(self, amount: int32): int32 { return self.value + amount }
+    func make(seed: int32): Counter { return Counter { value: seed } }
+}
+
+external func main(): int32 {
+    let counter: Counter = Counter::make(2)
+    let good: int32 = counter.add(3)
+    let short: int32 = counter.add()
+    let long: int32 = counter.add(3, 4)
+    let missing: Counter = Counter::make()
+    return 0
+}

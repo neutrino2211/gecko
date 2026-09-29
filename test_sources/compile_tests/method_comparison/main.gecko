@@ -1,0 +1,12 @@
+package main
+
+class View {
+    let value: int32
+    func get(self): int32 { return self.value }
+}
+
+external func main(): int32 {
+    let view: View = View { value: 17 }
+    if (view.get() != 17) { return 1 }
+    return 0
+}

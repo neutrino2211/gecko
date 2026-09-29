@@ -39,7 +39,7 @@ func ExtractClassDoc(class *tokens.Class, sourcePath string) DocItem {
 	item := DocItem{
 		Name:       class.Name,
 		Kind:       "class",
-		DocComment: joinDocComment(class.DocComment),
+		DocComment: tokens.DocCommentText(class.DocComment),
 		Signature:  buildClassSignature(class),
 		Visibility: normalizeVisibility(class.Visibility),
 		SourceFile: sourcePath,
@@ -65,7 +65,7 @@ func ExtractTraitDoc(trait *tokens.Trait, sourcePath string) DocItem {
 	item := DocItem{
 		Name:       trait.Name,
 		Kind:       "trait",
-		DocComment: joinDocComment(trait.DocComment),
+		DocComment: tokens.DocCommentText(trait.DocComment),
 		Signature:  buildTraitSignature(trait),
 		Visibility: "public",
 		SourceFile: sourcePath,
@@ -85,7 +85,7 @@ func ExtractMethodDoc(method *tokens.Method, sourcePath string) DocItem {
 	item := DocItem{
 		Name:       method.Name,
 		Kind:       "method",
-		DocComment: joinDocComment(method.DocComment),
+		DocComment: tokens.DocCommentText(method.DocComment),
 		Signature:  buildMethodSignature(method),
 		Visibility: normalizeVisibility(method.Visibility),
 		SourceFile: sourcePath,
@@ -118,7 +118,7 @@ func ExtractFieldDoc(field *tokens.Field, sourcePath string) DocItem {
 	return DocItem{
 		Name:       field.Name,
 		Kind:       "field",
-		DocComment: joinDocComment(field.DocComment),
+		DocComment: tokens.DocCommentText(field.DocComment),
 		Signature:  buildFieldSignature(field),
 		Visibility: normalizeVisibility(field.Visibility),
 		SourceFile: sourcePath,
@@ -129,24 +129,6 @@ func ExtractFieldDoc(field *tokens.Field, sourcePath string) DocItem {
 }
 
 // Helper functions
-
-func joinDocComment(lines []string) string {
-	if len(lines) == 0 {
-		return ""
-	}
-
-	// Strip leading "///" and whitespace from each line
-	cleaned := make([]string, len(lines))
-	for i, line := range lines {
-		// Remove "///" prefix
-		line = strings.TrimPrefix(line, "///")
-		// Remove leading space (common convention)
-		line = strings.TrimPrefix(line, " ")
-		cleaned[i] = line
-	}
-
-	return strings.Join(cleaned, "\n")
-}
 
 func normalizeVisibility(vis string) string {
 	if vis == "" {

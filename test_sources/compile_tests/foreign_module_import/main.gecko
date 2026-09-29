@@ -1,0 +1,12 @@
+package main
+
+import bridge
+
+external func main(): int32 {
+    let number: int32 = 0
+    let matched: int32 = bridge.c_abi.sscanf("42", "%d", out number)
+    if (matched != 1) {
+        return 1
+    }
+    return number - 42
+}

@@ -19,79 +19,73 @@ import (
 // resolution), falling back to file-based lookup otherwise.
 func GetSignatureHelp(ctx *analysis.AnalysisContext, content, filePath string, line, col int) *protocol.SignatureHelp {
 	lines := strings.Split(content, "\n")
-	if line >= len(lines) {
+	if line < 0 || line >= len(lines) {
 		return nil
 	}
 	lineText := lines[line]
+	if col < 0 {
+		return nil
+	}
 	if col > len(lineText) {
 		col = len(lineText)
 	}
-
-	// Find the opening parenthesis and count commas to determine active parameter
-	parenDepth := 0
-	activeParam := 0
-	callStart := -1
-
-	// Scan backwards from cursor to find the function call
-	for i := col - 1; i >= 0; i-- {
-		ch := lineText[i]
-		if ch == ')' {
-			parenDepth++
-		} else if ch == '(' {
-			if parenDepth == 0 {
-				callStart = i
-				break
-			}
-			parenDepth--
-		} else if ch == ',' && parenDepth == 0 {
-			activeParam++
-		}
+	offset := col
+	for i := 0; i < line; i++ {
+		offset += len(lines[i]) + 1
 	}
-
+	callStart, activeParam := openCallAt(content[:offset])
 	if callStart < 0 {
 		return nil
 	}
 
-	// Extract function/method name before the parenthesis
+	callText := content[:offset]
 	nameEnd := callStart
+	for nameEnd > 0 && (callText[nameEnd-1] == ' ' || callText[nameEnd-1] == '\t') {
+		nameEnd--
+	}
 	nameStart := nameEnd
-	for nameStart > 0 && isIdentChar(lineText[nameStart-1]) {
+	for nameStart > 0 && isIdentChar(callText[nameStart-1]) {
 		nameStart--
 	}
 	if nameStart >= nameEnd {
 		return nil
 	}
-	funcName := lineText[nameStart:nameEnd]
+	funcName := callText[nameStart:nameEnd]
 
 	// Check if it's a method call (preceded by '.')
 	var objName string
-	if nameStart > 0 && lineText[nameStart-1] == '.' {
+	if nameStart > 0 && callText[nameStart-1] == '.' {
 		objEnd := nameStart - 1
 		objStart := objEnd
-		for objStart > 0 && isIdentChar(lineText[objStart-1]) {
+		for objStart > 0 && isIdentChar(callText[objStart-1]) {
 			objStart--
 		}
 		if objStart < objEnd {
-			objName = lineText[objStart:objEnd]
+			objName = callText[objStart:objEnd]
 		}
 	}
 
 	// Check if it's a static method call (preceded by '::')
 	var typeName string
-	if nameStart > 1 && lineText[nameStart-1] == ':' && lineText[nameStart-2] == ':' {
+	if nameStart > 1 && callText[nameStart-1] == ':' && callText[nameStart-2] == ':' {
 		typeEnd := nameStart - 2
 		typeStart := typeEnd
-		for typeStart > 0 && isIdentChar(lineText[typeStart-1]) {
+		for typeStart > 0 && isIdentChar(callText[typeStart-1]) {
 			typeStart--
 		}
 		if typeStart < typeEnd {
-			typeName = lineText[typeStart:typeEnd]
+			typeName = callText[typeStart:typeEnd]
 		}
 	}
 
 	// Parse the file to look up function signatures (used as fallback)
-	sanitizedContent := sanitizeForParsing(content, line)
-	file, _ := parser.Parser.ParseString(filePath, sanitizedContent)
+	var file *tokens.File
+	if ctx != nil {
+		file = ctx.MainFile
+	} else {
+		sanitizedContent := sanitizeForParsing(content, line)
+		file, _ = parser.Parser.ParseString(filePath, sanitizedContent)
+	}
 	if file == nil {
 		return nil
 	}
@@ -109,10 +103,7 @@ func GetSignatureHelp(ctx *analysis.AnalysisContext, content, filePath string, l
 			signature = findStaticMethodSignature(file, typeName, funcName)
 		} else if objName != "" {
 			// Instance method call - resolve variable type and look up method
-			varType := lookupVariableTypeInScope(file, objName, line+1)
-			if varType == "" {
-				varType = lookupVariableType(file, objName)
-			}
+			varType := receiverVariableType(ctx, file, objName, line+1)
 			if varType != "" {
 				parsedType := parseGenericType(varType)
 				signature = findMethodSignature(file, filePath, parsedType.BaseName, funcName, parsedType.TypeArgs)
@@ -132,6 +123,74 @@ func GetSignatureHelp(ctx *analysis.AnalysisContext, content, filePath string, l
 		ActiveSignature: 0,
 		ActiveParameter: uint32(activeParam),
 	}
+}
+
+func openCallAt(content string) (int, int) {
+	type frame struct {
+		kind   byte
+		start  int
+		commas int
+	}
+	var stack []frame
+	var quote byte
+	lineComment := false
+	blockComment := false
+	for i := 0; i < len(content); i++ {
+		ch := content[i]
+		if lineComment {
+			if ch == '\n' {
+				lineComment = false
+			}
+			continue
+		}
+		if blockComment {
+			if ch == '*' && i+1 < len(content) && content[i+1] == '/' {
+				blockComment = false
+				i++
+			}
+			continue
+		}
+		if quote != 0 {
+			if ch == '\\' {
+				i++
+			} else if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '/' && i+1 < len(content) {
+			if content[i+1] == '/' {
+				lineComment = true
+				i++
+				continue
+			}
+			if content[i+1] == '*' {
+				blockComment = true
+				i++
+				continue
+			}
+		}
+		switch ch {
+		case '"', '\'':
+			quote = ch
+		case '(', '[', '{':
+			stack = append(stack, frame{kind: ch, start: i})
+		case ')', ']', '}':
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		case ',':
+			if len(stack) > 0 && stack[len(stack)-1].kind == '(' {
+				stack[len(stack)-1].commas++
+			}
+		}
+	}
+	for i := len(stack) - 1; i >= 0; i-- {
+		if stack[i].kind == '(' {
+			return stack[i].start, stack[i].commas
+		}
+	}
+	return -1, 0
 }
 
 // findFunctionSignature finds a top-level function signature
@@ -167,11 +226,7 @@ func signatureFromGraph(ctx *analysis.AnalysisContext, typeName, objName, funcNa
 		// Instance method: resolve the receiver type from the graph.
 		t := ctx.VariableType(objName, line, col)
 		if t != nil {
-			recv := analysis.FormatTypeRef(t)
-			recv = strings.TrimSuffix(recv, "*")
-			recv = strings.TrimSuffix(recv, "!")
-			base := parseGenericType(recv).BaseName
-			for _, sig := range sg.MethodsOfType(base) {
+			for _, sig := range sg.MethodsForType(t) {
 				if sig.Name == funcName {
 					return buildSignatureInfoFromSig(sig)
 				}

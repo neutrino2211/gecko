@@ -15,12 +15,24 @@ func (a *analyzer) inferMethodCallStatement(call *tokens.MethodCall, env *flowEn
 		return
 	}
 	lit := &tokens.Literal{Symbol: call.Base, Chain: call.Chain}
+	lit.Pos = call.Pos
 	expr := &tokens.Expression{Cond: &tokens.ConditionalExpr{LogicalOr: &tokens.OrExpression{LogicalOr: &tokens.LogicalOr{LogicalAnd: &tokens.LogicalAnd{Equality: &tokens.Equality{Comparison: &tokens.Comparison{Addition: &tokens.Addition{Multiplication: &tokens.Multiplication{Unary: &tokens.Unary{Primary: &tokens.Primary{Literal: lit}}}}}}}}}}}
 	a.inferExpression(expr, env, nil)
+	for index := len(call.Chain) - 1; index >= 0; index-- {
+		if resolution := a.program.chainCalls[call.Chain[index]]; resolution != nil {
+			a.program.methodCalls[call] = cloneCallResolution(resolution)
+			break
+		}
+	}
 }
 
 func (a *analyzer) inferExpression(expr *tokens.Expression, env *flowEnv, expected *tokens.TypeRef) *tokens.TypeRef {
-	if expr == nil || expr.Cond == nil || expr.Cond.LogicalOr == nil {
+	if expr == nil {
+		return nil
+	}
+	before := len(a.program.diagnostics)
+	defer a.recordExpressionOutcome(expr, before)
+	if expr.Cond == nil || expr.Cond.LogicalOr == nil {
 		return nil
 	}
 	// Handle ternary: condition must be bool, result type is from true/false branches
@@ -98,6 +110,9 @@ func (a *analyzer) inferEquality(eq *tokens.Equality, env *flowEnv, expected *to
 	if eq == nil {
 		return nil
 	}
+	if eq.Next != nil {
+		expected = nil
+	}
 	left := a.inferComparison(eq.Comparison, env, expected)
 	if eq.Next != nil {
 		a.inferEquality(eq.Next, env, expected)
@@ -109,6 +124,9 @@ func (a *analyzer) inferEquality(eq *tokens.Equality, env *flowEnv, expected *to
 func (a *analyzer) inferComparison(c *tokens.Comparison, env *flowEnv, expected *tokens.TypeRef) *tokens.TypeRef {
 	if c == nil {
 		return nil
+	}
+	if c.Next != nil {
+		expected = nil
 	}
 	left := a.inferAddition(c.Addition, env, expected)
 	if c.Next != nil {
@@ -189,6 +207,7 @@ func (a *analyzer) inferUnary(un *tokens.Unary, env *flowEnv, expected *tokens.T
 	if un.Primary != nil {
 		result := a.inferPrimary(un.Primary, env, expected)
 		if un.Cast != nil && un.Cast.Type != nil {
+			a.recordTypeRef(un.Cast.Type)
 			return CloneTypeRef(un.Cast.Type)
 		}
 		return result
@@ -227,16 +246,16 @@ func (a *analyzer) analyzeUnsafeBlock(block *tokens.UnsafeBlock, env *flowEnv) *
 			a.inferExpression(handler.ToExpression(), bodyEnv, nil)
 		}
 	}
-	bodyEnv = a.analyzeEntries(block.Body, bodyEnv)
-	bindName, hasBind := tokens.UnsafeBlockBindNames[block]
+	bodyEnv = a.analyzeEntries(block.Body, bodyEnv, block.Pos, block.EndPos)
+	bindName, hasBind := a.program.unsafeBindNames[block]
 	if !hasBind {
 		return nil
 	}
-	enumName := tokens.UnsafeBlockErrorNames[block]
+	enumName := a.program.unsafeErrorNames[block]
 	if enumName == "" {
 		a.unsafeBlockCounter++
 		enumName = fmt.Sprintf("__gecko_unsafe_err%d", a.unsafeBlockCounter)
-		tokens.UnsafeBlockErrorNames[block] = enumName
+		a.program.unsafeErrorNames[block] = enumName
 	}
 	if _, ok := a.program.classes[enumName]; !ok {
 		a.program.classes[enumName] = &ClassInfo{
@@ -290,12 +309,20 @@ func (a *analyzer) inferLiteral(l *tokens.Literal, env *flowEnv, expected *token
 		inferred = a.inferIntrinsic(l.Intrinsic, env)
 	case l.FuncCall != nil:
 		inferred = a.inferFuncCall(l.FuncCall, env, expected)
+	case l.Lambda != nil:
+		inferred = a.inferLambda(l.Lambda, env, expected)
+	case l.Match != nil:
+		inferred = a.inferMatch(l.Match, env, expected)
+	case l.IncDec != nil:
+		if target := env.lookup(l.IncDec.Target); target != nil {
+			a.recordOccurrence(target.SymbolID, l.IncDec.Pos, l.IncDec.Target, false)
+		}
 	case (l.Symbol == "nil" || l.Symbol == "null") && len(l.Chain) == 0:
 		inferred = &tokens.TypeRef{Type: "void", Pointer: true}
 	case l.Symbol != "":
 		inferred = a.inferSymbolLiteral(l, env)
 	case l.StructType != "":
-		inferred = &tokens.TypeRef{Type: l.StructType, TypeArgs: cloneTypeRefSlice(l.StructTypeArgs)}
+		inferred = a.inferStructLiteral(l)
 	case len(l.Array) > 0:
 		first := a.inferLiteral(l.Array[0], env, nil)
 		if first != nil {
@@ -326,11 +353,13 @@ func cloneTypeRefSlice(in []*tokens.TypeRef) []*tokens.TypeRef {
 func (a *analyzer) inferSymbolLiteral(l *tokens.Literal, env *flowEnv) *tokens.TypeRef {
 	var current *tokens.TypeRef
 	if v := env.lookup(l.Symbol); v != nil {
+		a.recordOccurrence(v.SymbolID, l.Pos, l.Symbol, false)
 		current = CloneTypeRef(v.Type)
 		if current != nil && current.Pointer && env.nonNull[v.SymbolID] {
 			current.NonNull = true
 		}
 	} else if gt, ok := a.program.globalsByName[l.Symbol]; ok {
+		a.recordOccurrence(a.program.globalSymbolIDs[l.Symbol], l.Pos, l.Symbol, false)
 		current = CloneTypeRef(gt)
 		if current != nil && current.Pointer {
 			if sid, exists := a.program.globalSymbolIDs[l.Symbol]; exists && env.nonNull[sid] {
@@ -340,6 +369,9 @@ func (a *analyzer) inferSymbolLiteral(l *tokens.Literal, env *flowEnv) *tokens.T
 	}
 
 	if current == nil {
+		if enumType := a.inferEnumLiteral(l); enumType != nil {
+			return enumType
+		}
 		if a.setupNames[l.Symbol] {
 			a.program.addDiagnostic(Diagnostic{
 				Severity: SeverityError,
@@ -367,6 +399,9 @@ func (a *analyzer) inferSymbolLiteral(l *tokens.Literal, env *flowEnv) *tokens.T
 		if chain == nil {
 			continue
 		}
+		for _, argument := range chain.TypeArgs {
+			a.recordTypeRef(argument)
+		}
 		if chain.IsMethodCall() {
 			ret := a.inferMethodOnType(current, chain, env)
 			if ret == nil {
@@ -375,7 +410,7 @@ func (a *analyzer) inferSymbolLiteral(l *tokens.Literal, env *flowEnv) *tokens.T
 			current = ret
 			continue
 		}
-		classInfo := a.program.classes[current.Type]
+		classInfo := a.classInfoForType(current)
 		if classInfo == nil {
 			return nil
 		}
@@ -383,6 +418,7 @@ func (a *analyzer) inferSymbolLiteral(l *tokens.Literal, env *flowEnv) *tokens.T
 		if fieldType == nil {
 			return nil
 		}
+		a.recordOccurrence(classInfo.FieldSymbolIDs[chain.Name], chain.Pos, chain.Name, false)
 		subst := classTypeSubst(current, classInfo.TypeParams)
 		current = SubstituteTypeParams(fieldType, subst)
 	}
@@ -402,7 +438,7 @@ func (a *analyzer) inferIndexAccessType(receiver *tokens.TypeRef, indexExpr *tok
 		if len(candidates) == 0 {
 			continue
 		}
-		attempt := a.resolveCallCandidates(candidates, nil, []*tokens.Argument{arg}, receiver, nil, env, lexer.Position{})
+		attempt := a.resolveCallCandidates(candidates, nil, []*tokens.Argument{arg}, receiver, nil, env, lexer.Position{}, 0)
 		if attempt == nil {
 			continue
 		}
@@ -441,52 +477,17 @@ func (a *analyzer) inferMethodOnType(receiver *tokens.TypeRef, chain *tokens.Cha
 	if receiver == nil || chain == nil {
 		return nil
 	}
-	candidates := a.program.staticMethods[receiver.Type][chain.Name]
+	candidates, resolvedReceiver := a.methodCandidatesForReceiver(receiver, chain.Name)
 	if len(candidates) == 0 {
+		a.program.chainCalls[chain] = &CallResolution{Status: ResolutionIncomplete, ReceiverType: CloneTypeRef(receiver)}
 		return nil
 	}
-	attempt := a.resolveCallCandidates(candidates, chain.TypeArgs, chain.Args, receiver, nil, env, chain.Pos)
+	attempt := a.resolveCallCandidates(candidates, chain.TypeArgs, chain.Args, resolvedReceiver, nil, env, chain.Pos, chain.EndPos.Offset)
 	if attempt == nil {
+		a.program.chainCalls[chain] = &CallResolution{Status: ResolutionInvalid, ReceiverType: CloneTypeRef(resolvedReceiver)}
 		return nil
 	}
+	a.program.chainCalls[chain] = resolvedCall(attempt, resolvedReceiver, len(chain.TypeArgs) > 0)
+	a.recordCallOccurrence(attempt.signature.SymbolID, chain.Pos, chain.Name)
 	return CloneTypeRef(attempt.returnTyp)
-}
-
-func (a *analyzer) inferIntrinsic(intr *tokens.Intrinsic, env *flowEnv) *tokens.TypeRef {
-	if intr == nil {
-		return nil
-	}
-	for _, arg := range intr.Args {
-		a.inferExpression(arg, env, nil)
-	}
-	switch intr.Name {
-	case "move":
-		if len(intr.Args) == 1 {
-			return a.inferExpression(intr.Args[0], env, nil)
-		}
-		return nil
-	case "borrow", "borrow_mut":
-		return a.inferBorrow(intr, env)
-	case "size_of", "align_of":
-		return &tokens.TypeRef{Type: "uint64"}
-	case "alloc":
-		return &tokens.TypeRef{Type: "void", Pointer: true}
-	case "deref", "read_volatile":
-		if len(intr.Args) == 1 {
-			t := a.inferExpression(intr.Args[0], env, nil)
-			if t != nil && t.Pointer {
-				t = CloneTypeRef(t)
-				t.Pointer = false
-				t.NonNull = false
-				t.Const = false
-				t.Volatile = false
-				return t
-			}
-		}
-		return nil
-	case "is_null", "is_not_null":
-		return &tokens.TypeRef{Type: "bool"}
-	default:
-		return nil
-	}
 }

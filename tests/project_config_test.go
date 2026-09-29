@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -134,5 +135,52 @@ main = "src/main.gecko"
 	}
 	if *cfg.Build.Treeshake {
 		t.Fatalf("expected build.treeshake=false, got true")
+	}
+}
+
+func TestProjectConfigReaderUsesOpenContent(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "gecko.toml")
+	if err := os.WriteFile(path, []byte("[build]\nbackend = \"c\"\n"), 0o644); err != nil {
+		t.Fatalf("writing project config: %v", err)
+	}
+	reader := func(candidate string) ([]byte, error) {
+		if candidate == path {
+			return []byte("[build]\nbackend = \"asm\"\n"), nil
+		}
+		return os.ReadFile(candidate)
+	}
+	project, err := config.LoadProjectConfigWithReader(filepath.Join(root, "src"), reader)
+	if err != nil || project.Build.Backend != "asm" || project.ConfigPath != path {
+		t.Fatalf("open config was not used: %#v, %v", project, err)
+	}
+	reader = func(candidate string) ([]byte, error) {
+		if candidate == path {
+			return []byte("[build]\nbackend = [\n"), nil
+		}
+		return os.ReadFile(candidate)
+	}
+	if _, err := config.LoadProjectConfigWithReader(root, reader); err == nil {
+		t.Fatal("malformed open config was accepted")
+	} else {
+		var configErr *config.ProjectConfigError
+		if !errors.As(err, &configErr) || configErr.Path != path {
+			t.Fatalf("config error lost its path: %v", err)
+		}
+	}
+}
+
+func TestResolveCompileTarget(t *testing.T) {
+	project := &config.ProjectConfig{Build: config.BuildConfig{DefaultTarget: "x86_64-unknown-linux-gnu"}}
+	target, err := config.ResolveCompileTarget(project, "", "arm64", "darwin")
+	if err != nil || target.Key != project.Build.DefaultTarget || target.Arch != "amd64" || target.Vendor != "unknown" || target.Platform != "linux" {
+		t.Fatalf("incorrect default target: %#v, %v", target, err)
+	}
+	target, err = config.ResolveCompileTarget(project, "aarch64-apple-darwin", "amd64", "linux")
+	if err != nil || target.Arch != "arm64" || target.Platform != "darwin" {
+		t.Fatalf("incorrect override target: %#v, %v", target, err)
+	}
+	if _, err := config.ResolveCompileTarget(project, "invalid", "amd64", "linux"); err == nil {
+		t.Fatal("invalid target was accepted")
 	}
 }

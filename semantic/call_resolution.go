@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/alecthomas/participle/v2/lexer"
+	geckoerrors "github.com/neutrino2211/gecko/errors"
 	"github.com/neutrino2211/gecko/tokens"
 )
 
@@ -15,56 +16,62 @@ func (a *analyzer) inferFuncCall(call *tokens.FuncCall, env *flowEnv, expected *
 	if call == nil {
 		return nil
 	}
-	candidates := a.lookupCallCandidates(call)
-	if len(candidates) == 0 && call.Module != "" {
-		receiver := a.lookupReceiverType(call.Module, env)
-		if receiver != nil {
-			candidates = a.program.staticMethods[receiver.Type][call.Function]
-			if len(candidates) > 0 {
-				attempt := a.resolveCallCandidates(candidates, call.TypeArgs, call.Arguments, receiver, expected, env, call.Pos)
-				if attempt != nil {
-					res := &CallResolution{
-						CalleeID:         attempt.signature.SymbolID,
-						ReturnType:       CloneTypeRef(attempt.returnTyp),
-						InferredTypeArgs: make(map[string]*tokens.TypeRef),
-						UsedExplicitArgs: len(call.TypeArgs) > 0,
-					}
-					for name, typ := range attempt.subst {
-						res.InferredTypeArgs[name] = CloneTypeRef(typ)
-					}
-					a.program.funcCalls[call] = res
-					return CloneTypeRef(attempt.returnTyp)
-				}
-			}
+	if env != nil {
+		if receiver := env.lookup(call.Module); receiver != nil {
+			a.recordOccurrence(receiver.SymbolID, call.Pos, call.Module, false)
+		} else {
+			a.recordModuleQualifier(call.Module, call.Pos)
 		}
 	}
+	if call.StaticModule != "" {
+		a.recordModuleQualifier(call.StaticModule, call.Pos)
+	}
+	if call.StaticType != "" {
+		position := call.Pos
+		if call.StaticModule != "" {
+			position.Offset += len(call.StaticModule) + 1
+			position.Column += len(call.StaticModule) + 1
+		}
+		staticType := &tokens.TypeRef{
+			Module:   call.StaticModule,
+			Type:     call.StaticType,
+			TypeArgs: call.StaticTypeArgs,
+		}
+		staticType.Pos = position
+		a.recordTypeRef(staticType)
+	}
+	for _, argument := range call.TypeArgs {
+		a.recordTypeRef(argument)
+	}
+	var candidates []*FunctionSignature
+	var receiver *tokens.TypeRef
+	if call.Module != "" {
+		receiver = a.lookupReceiverType(call.Module, env)
+	}
+	if receiver != nil {
+		candidates, receiver = a.methodCandidatesForReceiver(receiver, call.Function)
+	} else {
+		candidates = a.lookupCallCandidates(call)
+	}
 	if len(candidates) == 0 {
+		a.program.funcCalls[call] = &CallResolution{Status: ResolutionIncomplete, ReceiverType: CloneTypeRef(receiver)}
 		return nil
 	}
-
-	var ownerReceiver *tokens.TypeRef
 	if call.StaticType != "" {
-		ownerReceiver = &tokens.TypeRef{
+		receiver = &tokens.TypeRef{
 			Type:     call.StaticType,
 			TypeArgs: cloneTypeRefSlice(call.StaticTypeArgs),
 		}
 	}
-
-	attempt := a.resolveCallCandidates(candidates, call.TypeArgs, call.Arguments, ownerReceiver, expected, env, call.Pos)
+	attempt := a.resolveCallCandidates(candidates, call.TypeArgs, call.Arguments, receiver, expected, env, call.Pos, call.EndPos.Offset)
 	if attempt == nil {
+		a.program.funcCalls[call] = &CallResolution{Status: ResolutionInvalid, ReceiverType: CloneTypeRef(receiver)}
 		return nil
 	}
 
-	res := &CallResolution{
-		CalleeID:         attempt.signature.SymbolID,
-		ReturnType:       CloneTypeRef(attempt.returnTyp),
-		InferredTypeArgs: make(map[string]*tokens.TypeRef),
-		UsedExplicitArgs: len(call.TypeArgs) > 0,
-	}
-	for name, typ := range attempt.subst {
-		res.InferredTypeArgs[name] = CloneTypeRef(typ)
-	}
+	res := resolvedCall(attempt, receiver, len(call.TypeArgs) > 0)
 	a.program.funcCalls[call] = res
+	a.recordCallOccurrence(res.CalleeID, call.Pos, call.Function)
 	return CloneTypeRef(attempt.returnTyp)
 }
 
@@ -100,7 +107,24 @@ func (a *analyzer) lookupCallCandidates(call *tokens.FuncCall) []*FunctionSignat
 	if call.StaticType != "" {
 		cands := a.program.staticMethods[call.StaticType][call.Function]
 		if call.StaticModule == "" {
-			return append([]*FunctionSignature{}, cands...)
+			id := a.classSymbolID(call.StaticType, "")
+			if id == 0 {
+				id = a.traitSymbolID(call.StaticType, "")
+			}
+			if id == 0 {
+				if len(a.program.classSymbolIDs[call.StaticType])+len(a.program.traitSymbolIDs[call.StaticType]) > 1 {
+					return nil
+				}
+				return append([]*FunctionSignature{}, cands...)
+			}
+			module := symbolModule(a.program.SymbolByID(id))
+			filtered := make([]*FunctionSignature, 0, len(cands))
+			for _, candidate := range cands {
+				if candidate.Module == module {
+					filtered = append(filtered, candidate)
+				}
+			}
+			return filtered
 		}
 		filtered := make([]*FunctionSignature, 0, len(cands))
 		for _, c := range cands {
@@ -119,27 +143,76 @@ func (a *analyzer) lookupCallCandidates(call *tokens.FuncCall) []*FunctionSignat
 	return append([]*FunctionSignature{}, a.program.functionsByName[call.Function]...)
 }
 
-func (a *analyzer) resolveCallCandidates(candidates []*FunctionSignature, explicitTypeArgs []*tokens.TypeRef, args []*tokens.Argument, receiver *tokens.TypeRef, expected *tokens.TypeRef, env *flowEnv, pos lexer.Position) *resolutionAttempt {
-	_ = pos
+func (a *analyzer) resolveCallCandidates(candidates []*FunctionSignature, explicitTypeArgs []*tokens.TypeRef, args []*tokens.Argument, receiver *tokens.TypeRef, expected *tokens.TypeRef, env *flowEnv, pos lexer.Position, endOffset int) *resolutionAttempt {
 	if len(candidates) == 0 {
 		return nil
 	}
-	valid := make([]*resolutionAttempt, 0)
+	if len(candidates) == 1 && candidates[0] != nil && (candidates[0].OwnerType == "" || receiver != nil) && pos.Line > 0 {
+		sig := candidates[0]
+		params := callParameters(sig, receiver)
+		if !callAcceptsArgumentCount(sig, params, len(args)) {
+			expectedCount := len(params)
+			if sig.Variadic {
+				expectedCount = fixedParameterCount(params)
+			}
+			argumentName := "arguments"
+			if expectedCount == 1 {
+				argumentName = "argument"
+			}
+			message := fmt.Sprintf("Function '%s' expects %d %s, got %d", sig.Name, expectedCount, argumentName, len(args))
+			if sig.Variadic {
+				message = fmt.Sprintf("Variadic function '%s' expects at least %d %s, got %d", sig.Name, expectedCount, argumentName, len(args))
+			}
+			a.program.addDiagnostic(Diagnostic{
+				Severity:  SeverityError,
+				Kind:      DiagnosticArgumentCount,
+				Title:     "Argument Count Mismatch",
+				Message:   message,
+				Pos:       pos,
+				EndOffset: endOffset,
+				Code:      geckoerrors.CodeArgumentCount,
+			})
+			return nil
+		}
+	}
+	if len(candidates) == 1 {
+		before := len(a.program.diagnostics)
+		attempt := a.tryResolveCandidate(candidates[0], explicitTypeArgs, args, receiver, expected, env)
+		if attempt != nil {
+			attempt.diagnostics = append([]Diagnostic(nil), a.program.diagnostics[before:]...)
+		}
+		return attempt
+	}
+	type validCandidate struct {
+		attempt *resolutionAttempt
+		probe   *analyzer
+	}
+	valid := make([]validCandidate, 0)
+	var failure []Diagnostic
 	for _, cand := range candidates {
 		if cand == nil {
 			continue
 		}
-		attempt := a.tryResolveCandidate(cand, explicitTypeArgs, args, receiver, expected, env)
+		probe := a.candidateProbe()
+		attempt := probe.tryResolveCandidate(cand, explicitTypeArgs, args, receiver, expected, env)
+		candidateDiagnostics := append([]Diagnostic(nil), probe.program.diagnostics[len(a.program.diagnostics):]...)
 		if attempt != nil {
-			valid = append(valid, attempt)
+			attempt.diagnostics = candidateDiagnostics
+			valid = append(valid, validCandidate{attempt: attempt, probe: probe})
+		} else if len(failure) == 0 && len(candidateDiagnostics) > 0 {
+			failure = candidateDiagnostics
 		}
 	}
 	if len(valid) == 0 {
+		for _, diagnostic := range failure {
+			a.program.addDiagnostic(diagnostic)
+		}
 		return nil
 	}
 	if len(valid) > 1 {
 		hasGenericCandidate := false
-		for _, attempt := range valid {
+		for _, candidate := range valid {
+			attempt := candidate.attempt
 			if attempt != nil && attempt.signature != nil && len(attempt.signature.TypeParams) > 0 {
 				hasGenericCandidate = true
 				break
@@ -147,17 +220,23 @@ func (a *analyzer) resolveCallCandidates(candidates []*FunctionSignature, explic
 		}
 		if hasGenericCandidate {
 			a.program.addDiagnostic(Diagnostic{
-				Severity: SeverityError,
-				Kind:     DiagnosticInferenceAmbiguity,
-				Title:    "Type Inference Ambiguity",
-				Message:  "Multiple callable overloads matched; provide explicit type arguments to disambiguate",
-				Help:     "Use explicit `<...>` type arguments on the call.",
+				Severity:  SeverityError,
+				Kind:      DiagnosticInferenceAmbiguity,
+				Title:     "Type Inference Ambiguity",
+				Message:   "Multiple callable overloads matched; provide explicit type arguments to disambiguate",
+				Help:      "Use explicit `<...>` type arguments on the call.",
+				Pos:       pos,
+				EndOffset: endOffset,
 			})
 			return nil
 		}
-		return valid[0]
 	}
-	return valid[0]
+	selected := valid[0]
+	*a.program = *selected.probe.program
+	a.nameForID = selected.probe.nameForID
+	a.setupNames = selected.probe.setupNames
+	a.unsafeBlockCounter = selected.probe.unsafeBlockCounter
+	return selected.attempt
 }
 
 func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs []*tokens.TypeRef, args []*tokens.Argument, receiver *tokens.TypeRef, expected *tokens.TypeRef, env *flowEnv) *resolutionAttempt {
@@ -171,12 +250,12 @@ func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs 
 	}
 
 	// Set Self type for resolving Self in method signatures
-	oldSelfType := CurrentSelfType
+	oldSelfType := a.selfType
 	if sig.OwnerType != "" {
-		CurrentSelfType = sig.OwnerType
+		a.selfType = sig.OwnerType
 	}
 	defer func() {
-		CurrentSelfType = oldSelfType
+		a.selfType = oldSelfType
 	}()
 
 	ownerTypeParams := a.ownerTypeParams(sig.OwnerType)
@@ -206,7 +285,6 @@ func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs 
 		}
 	}
 
-	paramStart := 0
 	if receiver != nil && len(sig.Params) > 0 {
 		first := sig.Params[0]
 		if first != nil && first.Name == "self" {
@@ -228,38 +306,37 @@ func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs 
 					}
 				}
 			}
-			paramStart = 1
 		}
 	}
 
-	params := sig.Params[paramStart:]
-	fixedCount := 0
-	for _, p := range params {
-		if p != nil && p.Variadic {
-			break
-		}
-		fixedCount++
-	}
-
-	if len(args) < fixedCount {
-		return nil
-	}
-	if !sig.Variadic && len(args) > len(params) {
+	params := callParameters(sig, receiver)
+	if !callAcceptsArgumentCount(sig, params, len(args)) {
 		return nil
 	}
 
+	bindings := make([]CallArgumentBinding, 0, len(args))
 	for i, arg := range args {
+		binding := CallArgumentBinding{ArgumentIndex: i, ParameterIndex: -1}
 		if arg == nil {
+			bindings = append(bindings, binding)
 			continue
 		}
 		var param *tokens.Value
 		if i < len(params) {
 			param = params[i]
+			binding.ParameterIndex = i
 		} else if len(params) > 0 && params[len(params)-1] != nil && params[len(params)-1].Variadic {
 			param = params[len(params)-1]
+			binding.ParameterIndex = len(params) - 1
 		} else if sig.Variadic {
 			// C-style variadics (`...`) accept unconstrained trailing args.
 			param = nil
+		}
+		if receiver != nil && len(sig.Params) > 0 && sig.Params[0] != nil && sig.Params[0].Name == "self" && binding.ParameterIndex >= 0 {
+			binding.ParameterIndex++
+		}
+		if param != nil {
+			binding.ParameterName = param.Name
 		}
 
 		var expectedArg *tokens.TypeRef
@@ -267,14 +344,15 @@ func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs 
 			expectedArg = SubstituteTypeParams(param.Type, subst)
 		}
 		actual := a.inferArgumentType(arg, env, expectedArg)
+		binding.ActualType = CloneTypeRef(actual)
 		if param != nil && param.Type != nil {
 			if err := unifyType(param.Type, actual, subst, typeParamsByName); err != nil {
 				concreteExpected := SubstituteTypeParams(param.Type, subst)
-				if concreteExpected != nil && actual != nil && TypesCompatible(concreteExpected, actual) {
+				if concreteExpected != nil && actual != nil && a.typesCompatible(concreteExpected, actual) {
 					// Allow backend-compatible argument coercions (for example string vs string*!).
 					goto argCompatible
 				}
-				if concreteExpected != nil && actual != nil && !isUnresolvedTypeParamRef(concreteExpected, typeParamsByName) && !TypesCompatible(concreteExpected, actual) {
+				if concreteExpected != nil && actual != nil && !isUnresolvedTypeParamRef(concreteExpected, typeParamsByName) && !a.typesCompatible(concreteExpected, actual) {
 					a.program.addDiagnostic(Diagnostic{
 						Severity: SeverityError,
 						Kind:     DiagnosticTypeMismatch,
@@ -291,7 +369,7 @@ func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs 
 		if param != nil && param.Type != nil {
 			concreteExpected = SubstituteTypeParams(param.Type, subst)
 		}
-		if concreteExpected != nil && actual != nil && !isUnresolvedTypeParamRef(concreteExpected, typeParamsByName) && !TypesCompatible(concreteExpected, actual) {
+		if concreteExpected != nil && actual != nil && !isUnresolvedTypeParamRef(concreteExpected, typeParamsByName) && !a.typesCompatible(concreteExpected, actual) {
 			a.program.addDiagnostic(Diagnostic{
 				Severity: SeverityError,
 				Kind:     DiagnosticTypeMismatch,
@@ -301,6 +379,8 @@ func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs 
 			})
 			return nil
 		}
+		binding.ExpectedType = CloneTypeRef(concreteExpected)
+		bindings = append(bindings, binding)
 	}
 
 	if expected != nil && sig.ReturnType != nil {
@@ -346,8 +426,28 @@ func (a *analyzer) tryResolveCandidate(sig *FunctionSignature, explicitTypeArgs 
 
 	ret := SubstituteTypeParams(sig.ReturnType, subst)
 	ret = resolveSelfType(ret, sig.OwnerType)
-	if expected != nil && ret != nil && !TypesCompatible(expected, ret) {
+	if expected != nil && ret != nil && !a.typesCompatible(expected, ret) {
 		return nil
 	}
-	return &resolutionAttempt{signature: sig, returnTyp: ret, subst: subst}
+	return &resolutionAttempt{signature: sig, returnTyp: ret, subst: subst, arguments: bindings}
+}
+
+func callParameters(sig *FunctionSignature, receiver *tokens.TypeRef) []*tokens.Value {
+	if receiver != nil && len(sig.Params) > 0 && sig.Params[0] != nil && sig.Params[0].Name == "self" {
+		return sig.Params[1:]
+	}
+	return sig.Params
+}
+
+func fixedParameterCount(params []*tokens.Value) int {
+	for index, param := range params {
+		if param != nil && param.Variadic {
+			return index
+		}
+	}
+	return len(params)
+}
+
+func callAcceptsArgumentCount(sig *FunctionSignature, params []*tokens.Value, count int) bool {
+	return count >= fixedParameterCount(params) && (sig.Variadic || count <= len(params))
 }

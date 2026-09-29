@@ -58,7 +58,12 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 					if j > 0 {
 						args += ", "
 					}
-					args += impl.moveCallArgument(arg.Value, impl.ExpressionToCString(arg.Value, scope), scope)
+					argExpr := impl.ExpressionToCString(arg.Value, scope)
+					if arg.Out {
+						args += "&" + argExpr
+					} else {
+						args += impl.moveCallArgument(arg.Value, argExpr, scope)
+					}
 				}
 				// Generate: module__func(args), unless a foreign/imported module
 				// resolves to an external/link alias.
@@ -75,6 +80,13 @@ func (impl *CBackendImplementation) processChain(base string, l *tokens.Literal,
 					result = funcName + "()"
 				}
 			} else {
+				if moduleScope != nil {
+					if childScope, ok := moduleScope.Children[chain.Name]; ok {
+						moduleScope = childScope
+						moduleName = chain.Name
+						continue
+					}
+				}
 				// Module constant access: module.CONSTANT -> module__CONSTANT
 				if i == 0 {
 					result = moduleName + "__" + chain.Name

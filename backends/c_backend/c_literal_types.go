@@ -87,7 +87,7 @@ func reportUseAfterMoveIfNeeded(scope *ast.Ast, fullVarName string, symbol strin
 	}
 	scope.ErrorScope.NewCompileTimeError(
 		"Move Error",
-		"use after move: '"+symbol+"' has been moved\nhelp: reinitialize '"+symbol+"' before use or use Clone/Rc for shared ownership",
+		"use after move: '"+symbol+"' has been moved\nhelp: reinitialize '"+symbol+"' before use or explicitly duplicate it with a project-defined API",
 		pos,
 	)
 }

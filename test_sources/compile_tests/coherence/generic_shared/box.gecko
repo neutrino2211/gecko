@@ -1,0 +1,5 @@
+package box
+
+public class Box<T> {
+    let value: T
+}

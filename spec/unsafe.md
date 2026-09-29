@@ -31,11 +31,16 @@ document focuses on the handler model layered on top of it.
 A handler is an instance of a type that implements the `UnsafeHandler` trait:
 
 ```gecko
+@unsafe_handler_hook(.guard, .catch)
 trait UnsafeHandler {
     func guard(self, op: UnsafeOp): bool
     func catch(self, op: UnsafeOp): void
 }
 ```
+
+The trait and operation type can be defined locally under different names.
+The hook marks the trait as the handler capability; the two method references
+identify the guard and failure paths. Neither name is built into the compiler.
 
 - `guard` is called around every intrinsic the handler covers. Return `true` to
   permit the operation, `false` to reject it.
@@ -63,7 +68,8 @@ defers and automatic drops run before leaving, unless a catch traps.
 ## Declaring handler coverage
 
 `@attach_handler("write_volatile", "read_volatile", ...)` on an
-`impl UnsafeHandler for X` declares which intrinsics instances of that type cover.
+An implementation of the registered handler trait declares which intrinsics
+instances of that type cover.
 It does not construct or activate a handler. Activation is explicit through
 `with`, including the arguments supplied to the handler constructor. Importing
 `NonNull`, `Bounds`, or `Assume` does not automatically enable checks.

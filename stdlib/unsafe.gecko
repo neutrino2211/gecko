@@ -24,6 +24,7 @@ public class UnsafeOp {
 ///       the process stops and NO `Result` is produced on failure. A result
 ///       form may still be used for successful execution. Trapping handlers
 ///       (NonNull, Bounds, Assume below) express fatal assertions.
+@unsafe_handler_hook(.guard, .catch)
 public trait UnsafeHandler {
     func guard(self, op: UnsafeOp): bool
     func catch(self, op: UnsafeOp): void

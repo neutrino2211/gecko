@@ -147,20 +147,18 @@ func (impl *CBackendImplementation) generateForInLoop(scope *ast.Ast, l *tokens.
 	class := classOpt.Unwrap()
 
 	// Get the iterator hook to find trait and method names.
-	iterHook := hooks.GetHookRegistry().GetHook(scope.GetRoot().Scope, hooks.HookIterator)
-	requiredIteratorTrait := "Iterator"
-	hasNextMethod := "has_next"
-	nextMethod := "next"
-	if iterHook != nil {
-		if iterHook.TraitName != "" {
-			requiredIteratorTrait = iterHook.TraitName
-		}
-		if len(iterHook.Methods) >= 2 {
-			// Hook should define [next, has_next] methods.
-			nextMethod = iterHook.Methods[0]
-			hasNextMethod = iterHook.Methods[1]
-		}
+	iterHook, found := impl.resolveVisibleOperatorHook(scope, hooks.HookIterator, forIn.Pos)
+	if !found {
+		scope.ErrorScope.NewCompileTimeError("Iterator Error", "No visible trait registers @iterator_hook", forIn.Pos)
+		return
 	}
+	requiredIteratorTrait := iterHook.TraitName
+	if len(iterHook.Methods) != 2 {
+		scope.ErrorScope.NewCompileTimeError("Iterator Error", "@iterator_hook requires next and has_next methods", forIn.Pos)
+		return
+	}
+	nextMethod := iterHook.Methods[0]
+	hasNextMethod := iterHook.Methods[1]
 
 	// Find a trait implementation that satisfies the iterator requirement.
 	var iteratorTraitName string

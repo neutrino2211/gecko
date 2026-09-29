@@ -3,9 +3,7 @@
 package semantic
 
 import (
-	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/neutrino2211/gecko/tokens"
 )
@@ -94,53 +92,7 @@ func SubstituteTypeParams(t *tokens.TypeRef, subst map[string]*tokens.TypeRef) *
 	return out
 }
 
-func TypeRefString(t *tokens.TypeRef) string {
-	if t == nil {
-		return "unknown"
-	}
-	if t.Array != nil {
-		return "[]" + TypeRefString(t.Array)
-	}
-	if t.Size != nil {
-		return fmt.Sprintf("[%s]%s", t.Size.Size, TypeRefString(t.Size.Type))
-	}
-	if t.FuncType != nil {
-		parts := make([]string, 0, len(t.FuncType.ParamTypes))
-		for _, p := range t.FuncType.ParamTypes {
-			parts = append(parts, TypeRefString(p))
-		}
-		ret := "void"
-		if t.FuncType.ReturnType != nil {
-			ret = TypeRefString(t.FuncType.ReturnType)
-		}
-		return "func(" + strings.Join(parts, ", ") + "): " + ret
-	}
-
-	name := t.Type
-	if t.Module != "" {
-		name = t.Module + "." + name
-	}
-	if len(t.TypeArgs) > 0 {
-		args := make([]string, 0, len(t.TypeArgs))
-		for _, arg := range t.TypeArgs {
-			args = append(args, TypeRefString(arg))
-		}
-		name += "<" + strings.Join(args, ", ") + ">"
-	}
-	if t.Volatile {
-		name += " volatile"
-	}
-	if t.Const {
-		name += " readonly"
-	}
-	if t.Pointer {
-		name += "*"
-	}
-	if t.NonNull {
-		name += "!"
-	}
-	return name
-}
+func TypeRefString(t *tokens.TypeRef) string { return tokens.FormatTypeRef(t) }
 
 func IsNumericType(t *tokens.TypeRef) bool {
 	if t == nil {
@@ -213,20 +165,6 @@ func TypesCompatible(expected, actual *tokens.TypeRef) bool {
 		return true
 	}
 
-	// Resolve Self to the current class type
-	if CurrentSelfType != "" {
-		if expected.Type == "Self" {
-			resolved := *expected
-			resolved.Type = CurrentSelfType
-			return TypesCompatible(&resolved, actual)
-		}
-		if actual.Type == "Self" {
-			resolved := *actual
-			resolved.Type = CurrentSelfType
-			return TypesCompatible(expected, &resolved)
-		}
-	}
-
 	if IsNumericType(expected) && IsNumericType(actual) {
 		return true
 	}
@@ -268,4 +206,8 @@ func collectUnresolvedTypeParams(typeParams []*tokens.TypeParam, subst map[strin
 	}
 	sort.Strings(unresolved)
 	return unresolved
+}
+
+func (a *analyzer) typesCompatible(expected, actual *tokens.TypeRef) bool {
+	return TypesCompatible(resolveSelfType(expected, a.selfType), resolveSelfType(actual, a.selfType))
 }

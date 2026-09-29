@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"go.lsp.dev/jsonrpc2"
+	"go.lsp.dev/protocol"
 )
 
 func main() {
@@ -32,13 +33,20 @@ func main() {
 	conn := jsonrpc2.NewConn(stream)
 	server.conn = conn
 
-	conn.Go(ctx, server.Handle)
+	conn.Go(ctx, server.requestHandler())
 	<-conn.Done()
+	if server.exiting {
+		return
+	}
 
 	if err := conn.Err(); err != nil {
 		log.Printf("Connection error: %v", err)
 		os.Exit(1)
 	}
+}
+
+func (s *Server) requestHandler() jsonrpc2.Handler {
+	return protocol.CancelHandler(jsonrpc2.AsyncHandler(s.Handle))
 }
 
 type readWriteCloser struct {

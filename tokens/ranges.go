@@ -12,7 +12,7 @@ func (f *File) ComputeRanges() {
 }
 
 func computeEntryRange(entry *Entry) {
-	if entry == nil {
+	if entry == nil || entry.EndPos.Offset > entry.Pos.Offset {
 		return
 	}
 
@@ -48,7 +48,7 @@ func computeEntryRange(entry *Entry) {
 }
 
 func computeMethodRange(m *Method) {
-	if m == nil {
+	if m == nil || m.EndPos.Offset > m.Pos.Offset {
 		return
 	}
 
@@ -71,7 +71,7 @@ func computeMethodRange(m *Method) {
 }
 
 func computeClassRange(c *Class) {
-	if c == nil {
+	if c == nil || c.EndPos.Offset > c.Pos.Offset {
 		return
 	}
 
@@ -97,7 +97,7 @@ func computeClassRange(c *Class) {
 }
 
 func computeTraitRange(t *Trait) {
-	if t == nil {
+	if t == nil || t.EndPos.Offset > t.Pos.Offset {
 		return
 	}
 
@@ -115,7 +115,7 @@ func computeTraitRange(t *Trait) {
 }
 
 func computeImplementationRange(impl *Implementation) {
-	if impl == nil {
+	if impl == nil || impl.EndPos.Offset > impl.Pos.Offset {
 		return
 	}
 
@@ -133,7 +133,7 @@ func computeImplementationRange(impl *Implementation) {
 }
 
 func computeImplFieldRange(f *ImplementationField) {
-	if f == nil {
+	if f == nil || f.EndPos.Offset > f.Pos.Offset {
 		return
 	}
 
@@ -152,7 +152,7 @@ func computeImplFieldRange(f *ImplementationField) {
 }
 
 func computeIfRange(i *If) {
-	if i == nil {
+	if i == nil || i.EndPos.Offset > i.Pos.Offset {
 		return
 	}
 
@@ -186,7 +186,7 @@ func computeIfRange(i *If) {
 }
 
 func computeElseIfRange(ei *ElseIf) {
-	if ei == nil {
+	if ei == nil || ei.EndPos.Offset > ei.Pos.Offset {
 		return
 	}
 
@@ -218,7 +218,7 @@ func computeElseIfRange(ei *ElseIf) {
 }
 
 func computeElseRange(e *Else) {
-	if e == nil {
+	if e == nil || e.EndPos.Offset > e.Pos.Offset {
 		return
 	}
 
@@ -235,7 +235,7 @@ func computeElseRange(e *Else) {
 }
 
 func computeLoopRange(l *Loop) {
-	if l == nil {
+	if l == nil || l.EndPos.Offset > l.Pos.Offset {
 		return
 	}
 
@@ -252,7 +252,7 @@ func computeLoopRange(l *Loop) {
 }
 
 func computeFieldRange(f *Field) {
-	if f == nil {
+	if f == nil || f.EndPos.Offset > f.Pos.Offset {
 		return
 	}
 	// For simple fields, end is on the same line

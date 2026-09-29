@@ -3,11 +3,19 @@
 package main
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
 	"go.lsp.dev/protocol"
 )
+
+func TestParseNestedGenericType(t *testing.T) {
+	parsed := parseGenericType("Result<Vec<int32>, Option<string>>*!")
+	if parsed.BaseName != "Result" || !reflect.DeepEqual(parsed.TypeArgs, []string{"Vec<int32>", "Option<string>"}) {
+		t.Fatalf("incorrect generic type: %#v", parsed)
+	}
+}
 
 func TestImportCompletions(t *testing.T) {
 	// Path to the main.gecko file which imports testmodule

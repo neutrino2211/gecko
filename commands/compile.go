@@ -13,6 +13,7 @@ import (
 	cbackend "github.com/neutrino2211/gecko/backends/c_backend"
 	"github.com/neutrino2211/gecko/compiler"
 	"github.com/neutrino2211/gecko/config"
+	"github.com/neutrino2211/gecko/errors"
 	"github.com/neutrino2211/gecko/logger"
 	"github.com/urfave/cli/v2"
 )
@@ -75,9 +76,10 @@ var CompileCommand = &cli.Command{
 		}
 
 		failed := false
+		var scopes []*errors.ErrorScope
 		for _, pos := range sources {
 			treeshakeEnabled := resolveTreeshakeEnabled(ctx, projectCfg)
-			outFile := compiler.Compile(pos, &config.CompileCfg{
+			compilation := compiler.CompileWithDiagnostics(pos, &config.CompileCfg{
 				Arch:         ctx.String("target-arch"),
 				Platform:     ctx.String("target-platform"),
 				Vendor:       ctx.String("target-vendor"),
@@ -90,6 +92,8 @@ var CompileCommand = &cli.Command{
 				Ctx:          ctx,
 				Project:      projectCfg,
 			})
+			scopes = append(scopes, compilation.Scopes...)
+			outFile := compilation.Artifact
 
 			if outFile == "" {
 				failed = true
@@ -122,7 +126,7 @@ var CompileCommand = &cli.Command{
 			}
 		}
 
-		hasErrors := compiler.PrintErrorSummary()
+		hasErrors := compiler.PrintErrorSummary(scopes)
 		if failed || hasErrors {
 			return fmt.Errorf("compilation failed")
 		}
@@ -292,8 +296,10 @@ func compileToC(ctx *cli.Context, source string, projectCfg *config.ProjectConfi
 		Ctx:          ctx,
 		Project:      projectCfg,
 	}
-	compiled := compiler.Compile(source, compileCfg)
+	compilation := compiler.CompileWithDiagnostics(source, compileCfg)
+	compiled := compilation.Artifact
 	if compiled == "" {
+		compiler.PrintErrorSummary(compilation.Scopes)
 		return "", treeshakeEnabled, fmt.Errorf("compilation failed for %s", source)
 	}
 

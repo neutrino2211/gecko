@@ -1,10 +1,12 @@
 // spec: spec/types.md, spec/functions.md, spec/classes.md, spec/traits.md, spec/generics.md, spec/modules.md, spec/control-flow.md, spec/operators.md, spec/pointers.md, spec/memory.md, spec/c-interop.md, spec/attributes.md
 package parser
+
 import (
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/neutrino2211/gecko/tokens"
 )
+
 // geckoLexer tokenizes Gecko source. lexer.MustSimple evaluates rules in order
 // and emits the first rule that matches at the current offset, so rule ordering
 // is significant. The rules are grouped from most specific to most general:
@@ -60,3 +62,27 @@ var Parser = participle.MustBuild[tokens.File](
 	participle.UseLookahead(50),
 	participle.Elide("Comment", "Whitespace"),
 )
+
+type SourceToken struct {
+	Kind   string
+	Value  string
+	Offset int
+}
+
+func LexSource(filename, source string) []SourceToken {
+	stream, err := geckoLexer.LexString(filename, source)
+	if err != nil {
+		return nil
+	}
+	names := lexer.SymbolsByRune(geckoLexer)
+	var result []SourceToken
+	for {
+		token, err := stream.Next()
+		if err != nil || token.Type == lexer.EOF {
+			return result
+		}
+		result = append(result, SourceToken{
+			Kind: names[token.Type], Value: token.Value, Offset: token.Pos.Offset,
+		})
+	}
+}

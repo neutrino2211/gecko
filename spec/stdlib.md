@@ -45,6 +45,7 @@ public trait Clone {
     func clone(self): Self
 }
 
+@copy_hook
 public trait Copy {
 }
 
@@ -62,8 +63,9 @@ public trait Default {
 }
 ```
 
-`Drop`, `Borrow`, and `BorrowMut` hook integration is implemented.
-`Clone` is called explicitly. `Copy` marks values eligible for implicit bitwise duplication.
+`Drop`, `Copy`, `Borrow`, and `BorrowMut` hook integration is implemented.
+`Clone` is called explicitly. Only the registered `Copy` marker hook makes
+values eligible for implicit bitwise duplication; the name alone has no effect.
 
 **Dependencies:** None (freestanding-compatible)
 

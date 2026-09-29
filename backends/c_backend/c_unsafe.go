@@ -8,13 +8,10 @@ import (
 
 	"github.com/alecthomas/participle/v2/lexer"
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/hooks"
 	"github.com/neutrino2211/gecko/tokens"
 )
 
-// UnsafeHandlerCoverage is the global, program-wide map from a handler type
-// name to the intrinsics it guards. It is populated from `@attach_handler(...)`
-// attributes on `impl UnsafeHandler for X` blocks (see NewImplementation) and
-// read when lowering intrinsics inside `@unsafe with` blocks.
 var UnsafeHandlerCoverage = map[string][]string{}
 
 // unsafeHandlerCounter generates unique C variable names for activated handlers.
@@ -91,14 +88,21 @@ func scopeInUnsafe(scope *ast.Ast) bool {
 }
 
 func requireUnsafe(scope *ast.Ast, pos lexer.Position, what string) {
+	requireUnsafeSpan(scope, pos, what, 0)
+}
+
+func requireUnsafeSpan(scope *ast.Ast, pos lexer.Position, what string, length int) {
 	if scopeInUnsafe(scope) {
 		return
 	}
-	scope.ErrorScope.NewCompileTimeError(
+	message := scope.ErrorScope.NewCompileTimeError(
 		"Unsafe Required",
 		what+" is only allowed inside @unsafe functions or @unsafe { ... } blocks",
 		pos,
 	)
+	if length > 0 {
+		message.EndOffset = pos.Offset + length
+	}
 }
 
 // unsafeIntrinsics is the allowlist of intrinsics that may only be used inside
@@ -127,7 +131,7 @@ func requireUnsafeIntrinsic(name string, scope *ast.Ast, pos lexer.Position) {
 	if !unsafeIntrinsics[name] {
 		return
 	}
-	requireUnsafe(scope, pos, "@"+name)
+	requireUnsafeSpan(scope, pos, "@"+name, len(name)+1)
 }
 
 // requireUnsafeCall errors when a function/method marked @unsafe is invoked
@@ -164,11 +168,32 @@ func markMethodScopeUnsafe(m *tokens.Method, info *CScopeInformation) {
 	}
 }
 
-// unsafeOpCTypeName resolves the C type name for the `UnsafeOp` struct the same
-// way the backend names it for a `use`-imported type, so the guard wrapper's
-// variable declaration matches the signatures of the handler's guard/catch.
-func unsafeOpCTypeName(scope *ast.Ast) string {
-	return TypeRefToCType(&tokens.TypeRef{Type: "UnsafeOp"}, scope)
+func visibleUnsafeHandlerHook(scope *ast.Ast) *hooks.RegisteredHook {
+	if scope == nil {
+		return nil
+	}
+	candidates := visibleHooks(scope, hooks.HookUnsafeHandler)
+	if len(candidates) != 1 {
+		return nil
+	}
+	return candidates[0]
+}
+
+func unsafeOperationType(hook *hooks.RegisteredHook, scope *ast.Ast) string {
+	if hook == nil || len(hook.Methods) != 2 {
+		return ""
+	}
+	trait := TraitDefinitions[hook.TraitName]
+	if trait == nil {
+		return ""
+	}
+	for _, field := range trait.Fields {
+		if field.Name != hook.Methods[0] || len(field.Arguments) < 2 || field.Arguments[1].Type == nil {
+			continue
+		}
+		return TypeRefToCType(field.Arguments[1].Type, scope)
+	}
+	return ""
 }
 
 // unsafeHandlerVariant returns the (globally unique) C enumerator name for the
@@ -219,19 +244,7 @@ func registerUnsafeErrorEnum(scope *ast.Ast, info *CScopeInformation, enumName s
 // Type-level `readonly` on a non-pointer value also forbids reassignment.
 // `T readonly*` does not — the pointer may be rebound; only the pointee is readonly.
 func bindingIsConst(f *tokens.Field) bool {
-	if f == nil {
-		return false
-	}
-	if f.Mutability == "const" {
-		return true
-	}
-	if f.Type != nil && f.Type.Const && !f.Type.Pointer {
-		return true
-	}
-	if f.Type != nil && f.Type.Size != nil && f.Type.Size.Type != nil && f.Type.Size.Type.Const && !f.Type.Pointer {
-		return true
-	}
-	return false
+	return f.IsConstBinding()
 }
 
 func argBindingIsConst(t *tokens.TypeRef) bool {

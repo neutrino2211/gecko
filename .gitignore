@@ -30,6 +30,9 @@ test_sources/**/*.gecko.ll
 editors/vscode/node_modules/
 editors/vscode/out/
 editors/vscode/*.vsix
+editors/zed/target/
+editors/zed/extension.wasm
+editors/zed/grammars/
 
 # Example build outputs (compiled binaries)
 examples/*/demo

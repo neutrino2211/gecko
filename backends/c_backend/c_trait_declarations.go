@@ -12,10 +12,8 @@ import (
 
 // NewImplementation handles implementations (trait impls, inherent impls, arch impls)
 func (impl *CBackendImplementation) NewImplementation(scope *ast.Ast, i *tokens.Implementation) {
-	// Register unsafe-handler coverage from `@attach_handler(...)` attributes.
-	// `impl UnsafeHandler for X` declares (globally) which intrinsics X guards;
-	// the `@unsafe with` lowering consults this to wrap intrinsics with guards.
-	if i.GetName() == "UnsafeHandler" && i.GetFor() != "" {
+	handlerHook := visibleUnsafeHandlerHook(scope)
+	if handlerHook != nil && i.GetName() == handlerHook.TraitName && i.GetFor() != "" {
 		for _, attr := range i.GetAttributes() {
 			if attr.Name == "attach_handler" {
 				handler := normalizeHandlerTypeName(i.GetFor())
@@ -38,11 +36,6 @@ func (impl *CBackendImplementation) NewImplementation(scope *ast.Ast, i *tokens.
 
 		// Check if the target class is a registered generic class
 		if Generics.IsGenericClass(className) {
-			originModule := Generics.GenericClassOrigins[className]
-			if !impl.validateInherentImplCoherence(scope, className, originModule, i.Pos) {
-				return
-			}
-
 			// Store the impl with the generic class for later instantiation
 			classToken := Generics.GenericClasses[className]
 			if classToken != nil {
@@ -55,10 +48,6 @@ func (impl *CBackendImplementation) NewImplementation(scope *ast.Ast, i *tokens.
 		classOpt := scope.ResolveClass(className)
 		if !classOpt.IsNil() {
 			class := classOpt.Unwrap()
-			if !impl.validateInherentImplCoherence(scope, className, class.GetOriginModule(), i.Pos) {
-				return
-			}
-
 			// If this impl has type params but class is not generic, that's an error
 			if len(typeParams) > 0 {
 				scope.ErrorScope.NewCompileTimeError(
@@ -203,12 +192,13 @@ func (impl *CBackendImplementation) NewTrait(scope *ast.Ast, t *tokens.Trait) {
 				continue
 			}
 			owner := inheritedOwner[childField.Name]
-			scope.ErrorScope.NewCompileTimeError(
+			message := scope.ErrorScope.NewCompileTimeError(
 				"Trait Inheritance Error",
 				"Method '"+childField.Name+"' in trait '"+t.Name+"' conflicts with inherited method '"+owner+"."+childField.Name+
 					"': "+reason+" (parent: "+TraitMethodSignature(parentField)+", child: "+TraitMethodSignature(childField)+")",
 				childField.Pos,
 			)
+			decorateTraitOverrideDiagnostic(scope, message, parentField, childField, reason)
 			restoreOnError()
 			return
 		}
@@ -396,10 +386,8 @@ func (impl *CBackendImplementation) NewTraitMethod(scope *ast.Ast, classScope *a
 	mthInfo.CurrentFunc = mangledName
 	mthInfo.CurrentFuncReturnType = m.Type // Track return type for validation
 	markMethodScopeUnsafe(m, mthInfo)
-	// guard/catch of an UnsafeHandler are themselves the unsafe boundary, so
-	// their bodies may use the unsafe intrinsics (e.g. @trap) without an
-	// explicit @unsafe block.
-	if strings.Contains(mangledName, "__UnsafeHandler__guard") || strings.Contains(mangledName, "__UnsafeHandler__catch") {
+	handlerHook := visibleUnsafeHandlerHook(scope)
+	if handlerHook != nil && (strings.Contains(mangledName, "__"+handlerHook.TraitName+"__"+handlerHook.Methods[0]) || strings.Contains(mangledName, "__"+handlerHook.TraitName+"__"+handlerHook.Methods[1])) {
 		mthInfo.InUnsafe = true
 	}
 	(*CScopeDataMap)[methodScope.GetFullName()] = mthInfo

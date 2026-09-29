@@ -17,6 +17,19 @@ type compileOnlyTest struct {
 var allTestBackends = []string{"c"}
 
 var compileTests = []compileTest{
+	{"no_magic_copy", "test_sources/compile_tests/no_magic_copy/main.gecko", 12, false},
+	{"no_magic_copy_name", "test_sources/compile_tests/no_magic_copy_name/main.gecko", 0, true},
+	{"no_magic_handler", "test_sources/compile_tests/no_magic_handler/main.gecko", 23, false},
+	{"no_magic_handler_name", "test_sources/compile_tests/no_magic_handler_name/main.gecko", 0, true},
+	{"no_magic_iterator_name", "test_sources/compile_tests/no_magic_iterator_name/main.gecko", 0, true},
+	{"initialized_constant", "test_sources/compile_tests/initialized_constant/main.gecko", 3, false},
+	{"uninitialized_constant", "test_sources/compile_tests/uninitialized_constant/main.gecko", 0, true},
+	{"constant_reassignment", "test_sources/compile_tests/constant_reassignment/main.gecko", 0, true},
+	{"return_shape_error", "test_sources/compile_tests/return_shape_error/main.gecko", 0, true},
+	{"unknown_struct_field", "test_sources/compile_tests/unknown_struct_field/main.gecko", 0, true},
+	{"call_argument_count", "test_sources/compile_tests/call_argument_count/main.gecko", 0, true},
+	{"method_argument_count", "test_sources/compile_tests/method_argument_count/main.gecko", 0, true},
+	{"method_comparison", "test_sources/compile_tests/method_comparison/main.gecko", 0, false},
 	{"move_intrinsic_error", "test_sources/compile_tests/move_intrinsic_error/main.gecko", 0, true},
 	{"borrow_custom_hook", "test_sources/compile_tests/borrow_custom_hook/main.gecko", 0, false},
 	{"borrow_const_error", "test_sources/compile_tests/borrow_const_error/main.gecko", 0, true},
@@ -119,6 +132,7 @@ var compileTests = []compileTest{
 
 	// Directory imports with lazy resolution
 	{"directory_imports", "test_sources/compile_tests/directory_imports/main.gecko", 35, false},
+	{"directory_reference_frontend", "test_sources/compile_tests/directory_reference_frontend/main.gecko", 11, false},
 
 	// Qualified type syntax (module.Type)
 	{"qualified_types", "test_sources/compile_tests/qualified_types/main.gecko", 75, false},
@@ -162,6 +176,8 @@ var compileTests = []compileTest{
 
 	// C import tests
 	{"cimport", "test_sources/compile_tests/cimport/main.gecko", 0, false},
+	{"deprecation_diagnostics", "test_sources/compile_tests/deprecation_diagnostics/main.gecko", 0, false},
+	{"foreign_module_import", "test_sources/compile_tests/foreign_module_import/main.gecko", 0, false},
 	{"import_use_constants", "test_sources/compile_tests/import_use_constants/main.gecko", 42, false},
 
 	// Packed structs

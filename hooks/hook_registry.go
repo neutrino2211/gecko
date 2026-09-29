@@ -16,9 +16,11 @@ type HookType string
 
 const (
 	// Lifecycle hooks
-	HookDrop      HookType = "drop_hook"
-	HookBorrow    HookType = "borrow_hook"
-	HookBorrowMut HookType = "borrow_mut_hook"
+	HookDrop          HookType = "drop_hook"
+	HookCopy          HookType = "copy_hook"
+	HookBorrow        HookType = "borrow_hook"
+	HookBorrowMut     HookType = "borrow_mut_hook"
+	HookUnsafeHandler HookType = "unsafe_handler_hook"
 
 	// Arithmetic operator hooks
 	HookAdd HookType = "add_hook"
@@ -67,9 +69,11 @@ type HookSignature struct {
 // Known hook signatures
 var hookSignatures = map[HookType]HookSignature{
 	// Lifecycle
-	HookDrop:      {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "void"},
-	HookBorrow:    {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "T"},
-	HookBorrowMut: {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "T"},
+	HookDrop:          {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "void"},
+	HookCopy:          {MethodCount: 0},
+	HookBorrow:        {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "T"},
+	HookBorrowMut:     {MethodCount: 1, HasSelf: true, ParamCount: 0, ReturnType: "T"},
+	HookUnsafeHandler: {MethodCount: 2, HasSelf: true, ParamCount: 1, ReturnType: "any"},
 
 	// Arithmetic (binary operators return T, unary returns Self)
 	HookAdd: {MethodCount: 1, HasSelf: true, ParamCount: 1, ReturnType: "T"},
@@ -249,6 +253,10 @@ func ValidateTraitForHook(trait *tokens.Trait, hookType HookType, methods []stri
 		)
 		return false
 	}
+	if hookType == HookCopy && len(trait.Fields) != 0 {
+		errorScope.NewCompileTimeError("Hook Signature Error", "@copy_hook requires a marker trait without methods", trait.Pos)
+		return false
+	}
 
 	// Verify each method exists in the trait
 	traitMethods := make(map[string]*tokens.Method)
@@ -257,7 +265,7 @@ func ValidateTraitForHook(trait *tokens.Trait, hookType HookType, methods []stri
 		traitMethods[m.Name] = m
 	}
 
-	for _, methodName := range methods {
+	for index, methodName := range methods {
 		method, exists := traitMethods[methodName]
 		if !exists {
 			errorScope.NewCompileTimeError(
@@ -270,6 +278,28 @@ func ValidateTraitForHook(trait *tokens.Trait, hookType HookType, methods []stri
 
 		// Validate method signature
 		if !validateMethodSignature(method, sig, hookType, errorScope) {
+			return false
+		}
+		if hookType == HookUnsafeHandler {
+			expected := "bool"
+			if index == 1 {
+				expected = "void"
+			}
+			actual := "void"
+			if method.Type != nil {
+				actual = method.Type.Type
+			}
+			if actual != expected {
+				errorScope.NewCompileTimeError("Hook Signature Error", "Method '"+methodName+"' for @unsafe_handler_hook must return "+expected, method.Pos)
+				return false
+			}
+		}
+	}
+	if hookType == HookUnsafeHandler {
+		guard := traitMethods[methods[0]]
+		catch := traitMethods[methods[1]]
+		if len(guard.Arguments) != 2 || len(catch.Arguments) != 2 || guard.Arguments[1].Type == nil || catch.Arguments[1].Type == nil || guard.Arguments[1].Type.Type != catch.Arguments[1].Type.Type {
+			errorScope.NewCompileTimeError("Hook Signature Error", "@unsafe_handler_hook methods must accept the same operation type", trait.Pos)
 			return false
 		}
 	}
@@ -350,7 +380,7 @@ func ProcessTraitHooks(trait *tokens.Trait, modulePath string, errorScope *error
 		}
 
 		methods := attr.GetHookMethods()
-		if len(methods) == 0 {
+		if len(methods) == 0 && hookType != HookCopy {
 			errorScope.NewCompileTimeError(
 				"Hook Error",
 				"Hook '"+string(hookType)+"' requires method reference(s), e.g., @"+string(hookType)+"(.methodName)",

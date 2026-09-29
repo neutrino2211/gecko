@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/neutrino2211/gecko/ast"
+	"github.com/neutrino2211/gecko/hooks"
 	"github.com/neutrino2211/gecko/tokens"
 )
 
@@ -14,12 +15,14 @@ type unsafeSetupOperation struct {
 }
 
 type unsafeSetupContext struct {
-	Preparing    bool
-	Producer     *tokens.Intrinsic
-	Handlers     []*UnsafeHandlerInstance
-	Allocations  []unsafeSetupOperation
-	FailIndex    string
-	FailureLabel string
+	Preparing     bool
+	Producer      *tokens.Intrinsic
+	Handlers      []*UnsafeHandlerInstance
+	Hook          *hooks.RegisteredHook
+	OperationType string
+	Allocations   []unsafeSetupOperation
+	FailIndex     string
+	FailureLabel  string
 }
 
 func findUnsafeSetup(scope *ast.Ast) *unsafeSetupContext {
@@ -73,15 +76,27 @@ func (impl *CBackendImplementation) newUnsafeSetupBlock(parent *ast.Ast, block *
 		impl.NewVariable(scope, field)
 	}
 	ctx.Preparing = false
+	if len(block.Handlers) > 0 {
+		ctx.Hook = visibleUnsafeHandlerHook(scope)
+		if ctx.Hook == nil {
+			scope.ErrorScope.NewCompileTimeError("Unsafe Handler Error", "No visible trait registers @unsafe_handler_hook", block.Pos)
+			return
+		}
+		ctx.OperationType = unsafeOperationType(ctx.Hook, scope)
+		if ctx.OperationType == "" {
+			scope.ErrorScope.NewCompileTimeError("Unsafe Handler Error", "Cannot resolve the registered handler operation type", block.Pos)
+			return
+		}
+	}
 	for idx, h := range block.Handlers {
 		expr := h.ToExpression()
 		typ := impl.GetTypeOfExpression(expr, scope)
 		valid := typ != nil && !typ.Pointer
 		if valid {
-			_, valid = impl.GetOperatorTraitName(typ.Type, "UnsafeHandler", scope)
+			_, valid = impl.GetOperatorTraitName(typ.Type, ctx.Hook.TraitName, scope)
 		}
 		if !valid {
-			scope.ErrorScope.NewCompileTimeError("Unsafe Handler Error", "Handler must implement UnsafeHandler", h.Pos)
+			scope.ErrorScope.NewCompileTimeError("Unsafe Handler Error", "Handler must implement "+ctx.Hook.TraitName, h.Pos)
 			return
 		}
 		typeName := strings.TrimSpace(impl.inferExpressionType(expr, scope))
@@ -169,8 +184,8 @@ func (impl *CBackendImplementation) setupGuardChecks(scope *ast.Ast, ctx *unsafe
 		if !handlerCovers(h.TypeName, name) {
 			continue
 		}
-		guard := h.TypeName + "__UnsafeHandler__guard"
-		catch := h.TypeName + "__UnsafeHandler__catch"
+		guard := h.TypeName + "__" + ctx.Hook.TraitName + "__" + ctx.Hook.Methods[0]
+		catch := h.TypeName + "__" + ctx.Hook.TraitName + "__" + ctx.Hook.Methods[1]
 		fmt.Fprintf(&checks, "if (!%s(&%s, __op)) { %s(&%s, __op); __gecko_rejected = 1; if (%s < 0) %s = %d; }\n", guard, h.VarName, catch, h.VarName, ctx.FailIndex, ctx.FailIndex, h.Index)
 	}
 	if checks.Len() == 0 {
@@ -190,7 +205,7 @@ func (impl *CBackendImplementation) setupGuardChecks(scope *ast.Ast, ctx *unsafe
 			break
 		}
 	}
-	return "{ int __gecko_rejected = 0; " + unsafeOpCTypeName(scope) + " __op = { .ptr = (void*)(" + ptr + "), .size = (" + size + ") };\n" + checks.String() + "if (__gecko_rejected) {\n" + cleanup + "goto " + ctx.FailureLabel + ";\n}\n}\n"
+	return "{ int __gecko_rejected = 0; " + ctx.OperationType + " __op = { .ptr = (void*)(" + ptr + "), .size = (" + size + ") };\n" + checks.String() + "if (__gecko_rejected) {\n" + cleanup + "goto " + ctx.FailureLabel + ";\n}\n}\n"
 }
 
 func (impl *CBackendImplementation) intrinsicAlloc(i *tokens.Intrinsic, scope *ast.Ast) string {
